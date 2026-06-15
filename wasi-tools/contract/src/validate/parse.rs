@@ -73,9 +73,9 @@ pub fn id_str(info: Option<&Value>) -> Option<&str> {
     info?.get("x-specify-id")?.as_str()
 }
 
-/// Mirror of the kebab-case rule used by `composition.screen-slugs-kebab`
-/// and `RegistryProject::name`. Inlined here so the id check stays
-/// self-contained and so the 64-character cap is enforced.
+/// Mirror of the kebab-case rule used by `RegistryProject::name`.
+/// Inlined here so the id check stays self-contained and so the
+/// 64-character cap is enforced.
 pub fn is_valid_specify_id(id: &str) -> bool {
     if id.is_empty() || id.len() > 64 {
         return false;

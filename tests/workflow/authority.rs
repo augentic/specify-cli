@@ -431,7 +431,7 @@ fn plan_amend_override_bad_kind_refused() {
 }
 
 // ===================================================================
-// `specify plan propose` — RFC-29 D2 lead reconciliation
+// `specify plan propose` — lead reconciliation
 // (end-to-end coverage of the shipped command surface).
 //
 // `--dry-run` emits the `kind: request` envelope (flat lead catalog +

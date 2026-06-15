@@ -69,16 +69,6 @@ pub enum Error {
         found: String,
     },
 
-    /// The project's pinned `specify_version` has a smaller major than the
-    /// running binary; a migration must run before the CLI can operate.
-    #[error("project pinned to specify {from} but running {to}; run `specify migrate`")]
-    ProjectNeedsMigration {
-        /// Pinned major the project was last operated at.
-        from: String,
-        /// Running binary version requiring the migration.
-        to: String,
-    },
-
     /// A required artifact was not found at the expected path.
     #[error("{kind} not found at {}", path.display())]
     ArtifactNotFound {
@@ -168,9 +158,6 @@ impl Error {
                 ),
                 _ => None,
             },
-            Self::ProjectNeedsMigration { .. } => {
-                Some("run `specify migrate` to bring the project up to the running major.")
-            }
             _ => None,
         }
     }
@@ -188,7 +175,6 @@ impl Error {
             Self::Argument { .. } => Cow::Borrowed("argument"),
             Self::Validation { code, .. } => code.clone(),
             Self::CliTooOld { .. } => Cow::Borrowed("specify-version-too-old"),
-            Self::ProjectNeedsMigration { .. } => Cow::Borrowed("project-needs-migration"),
             Self::ArtifactNotFound { .. } => Cow::Borrowed("artifact-not-found"),
             Self::Filesystem { op, .. } => Cow::Owned(format!("filesystem-{op}")),
             Self::BranchPrepareFailed { .. } => Cow::Borrowed("branch-preparation-failed"),
@@ -252,20 +238,6 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("0.9.0") && msg.contains("1.0.0"), "both versions in display: {msg}");
         assert!(err.hint().is_none(), "CliTooOld has no recovery hint");
-    }
-
-    #[test]
-    fn needs_migration_discriminant_hint() {
-        let err = Error::ProjectNeedsMigration {
-            from: "1".to_string(),
-            to: "2".to_string(),
-        };
-        assert_eq!(err.variant_str(), "project-needs-migration");
-        assert!(err.to_string().contains("specify migrate"), "display names the fix command");
-        assert_eq!(
-            err.hint(),
-            Some("run `specify migrate` to bring the project up to the running major.")
-        );
     }
 
     #[test]

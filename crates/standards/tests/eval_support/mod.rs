@@ -1,19 +1,16 @@
-//! Shared scaffolding for the hint-evaluator integration
-//! tests.
+//! Shared scaffolding for the hint-umbrella integration tests.
 //!
-//! Each `tests/review_hint_*.rs` integration crate `mod`s this file
-//! to share the [`FakeToolRunner`] / `make_rule` / `build_model`
-//! plumbing. The scaffolding lives under `tests/<helper>/mod.rs`
-//! per Rust's idiom; the host workspace forbids `mod.rs` everywhere
-//! else (see `docs/standards/coding-standards.md` §"Module layout").
-
-#![allow(dead_code, reason = "Some helpers are only consumed by a subset of test crates.")]
+//! The `lint_hint` integration crate `mod`s this file to share the
+//! [`NoToolRunner`] / `make_rule` / `hint` plumbing. The scaffolding
+//! lives under `tests/<helper>/mod.rs` per Rust's idiom; the host
+//! workspace forbids `mod.rs` everywhere else (see
+//! `docs/standards/coding-standards.md` §"Module layout").
 
 use std::path::Path;
 
 use specify_diagnostics::Severity;
 use specify_standards::lint::eval::{ToolOutput, ToolRunError, ToolRunner};
-use specify_standards::rules::{Applicability, HintKind, Origin, PathRoot, ResolvedRule, RuleHint};
+use specify_standards::rules::{HintKind, Origin, PathRoot, ResolvedRule, RuleHint};
 
 pub fn make_rule(rule_id: &str, hints: Vec<RuleHint>) -> ResolvedRule {
     ResolvedRule {
@@ -33,29 +30,12 @@ pub fn make_rule(rule_id: &str, hints: Vec<RuleHint>) -> ResolvedRule {
     }
 }
 
-pub fn make_rule_with_adapter(rule_id: &str, adapter: &str, hints: Vec<RuleHint>) -> ResolvedRule {
-    let mut rule = make_rule(rule_id, hints);
-    rule.applicability = Some(Applicability {
-        adapters: Some(vec![adapter.to_string()]),
-        languages: None,
-        artifacts: None,
-        paths: None,
-    });
-    rule
-}
-
 pub fn hint(kind: HintKind, value: &str) -> RuleHint {
-    hint_with_config(kind, value, None)
-}
-
-pub fn hint_with_config(
-    kind: HintKind, value: &str, config: Option<serde_json::Value>,
-) -> RuleHint {
     RuleHint {
         kind,
         value: value.to_string(),
         description: None,
-        config,
+        config: None,
     }
 }
 
@@ -70,28 +50,5 @@ impl ToolRunner for NoToolRunner {
 
     fn is_declared(&self, _tool_name: &str) -> bool {
         false
-    }
-}
-
-pub struct FakeToolRunner {
-    pub declared: bool,
-    pub stdout: Vec<u8>,
-    pub stderr: Vec<u8>,
-    pub exit_code: i32,
-}
-
-impl ToolRunner for FakeToolRunner {
-    fn run(
-        &self, _tool_name: &str, _args: &[String], _project_dir: &Path,
-    ) -> Result<ToolOutput, ToolRunError> {
-        Ok(ToolOutput {
-            stdout: self.stdout.clone(),
-            stderr: self.stderr.clone(),
-            exit_code: self.exit_code,
-        })
-    }
-
-    fn is_declared(&self, _tool_name: &str) -> bool {
-        self.declared
     }
 }

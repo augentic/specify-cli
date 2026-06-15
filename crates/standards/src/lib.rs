@@ -1,5 +1,4 @@
-//! Specify standards layer — rule parser, resolver, lint engine, and
-//! framework checks.
+//! Specify standards layer — rule parser, resolver, and lint engine.
 //!
 //! Per the standards-layer dependency invariant, this crate is a standards-layer
 //! sibling of `specify-workflow`: it carries every rules/lint DTO, the CH-11
@@ -20,7 +19,6 @@
 //! Rule and resolver DTOs re-export at the crate root via `pub use rules::*`.
 //! Import diagnostic types from [`specify_diagnostics`] directly.
 
-pub mod framework;
 pub mod lint;
 pub mod rules;
 

@@ -12,11 +12,11 @@ jobs:
     uses: augentic/.github/.github/workflows/ci.yaml@main
     secrets: inherit
 
-  # The wasi-tools/ sibling workspace is not a member of the host
-  # workspace, so the reusable host job never builds it. Enforce its
-  # clippy posture and run its test suite here; dist blob <-> source
-  # parity stays guarded by the host-side digest drift tests
-  # (`dist_digests_pinned`, `tool contract::dist_digest_pinned`).
+  # The wasi-tools/ sibling workspace (contract + vectis adapter tools)
+  # is not a member of the host workspace, so the reusable host job never
+  # builds it. Enforce its clippy posture and run its test suite here;
+  # dist blob <-> source parity stays guarded by the host-side digest
+  # drift test (`tool contract::dist_digest_pinned`).
   wasi-tools:
     name: wasi-tools
     runs-on: ubuntu-latest

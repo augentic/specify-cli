@@ -85,22 +85,22 @@ fn preview_opaque_marks_actions() {
 }
 
 /// read → parse/merge → write round-trip over the `case-04-modified`
-/// parity fixture: a delta with a `## MODIFIED Requirements` block laid
+/// merge fixture: a delta with a `## MODIFIED Requirements` block laid
 /// out as a slice tree, planned, committed to a baseline, and read back
 /// byte-for-byte against the captured expected merge.
 #[test]
 fn round_trip_modified_baseline() {
     const BASELINE: &str = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../tests/fixtures/parity/case-04-modified/baseline.md"
+        "/../../tests/fixtures/merge/case-04-modified/baseline.md"
     ));
     const DELTA: &str = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../tests/fixtures/parity/case-04-modified/delta.md"
+        "/../../tests/fixtures/merge/case-04-modified/delta.md"
     ));
     const EXPECTED: &str = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../tests/fixtures/parity/case-04-modified/expected-merged.md"
+        "/../../tests/fixtures/merge/case-04-modified/expected-merged.md"
     ));
 
     let dir = TempDir::new().expect("tempdir");

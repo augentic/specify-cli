@@ -6,6 +6,7 @@ use tempfile::tempdir;
 use crate::Platform;
 use crate::config::ProjectConfig;
 use crate::init::{InitOptions, fixed_now, init};
+use crate::test_cache::{expected_cache_dir, scoped_cache};
 
 /// Build `--upgrade` options anchored at `project_dir`. Every
 /// scaffold-shaped field is inert in upgrade mode.
@@ -112,7 +113,7 @@ fn repo_root() -> PathBuf {
 
 fn seed_adapter_cache(project_dir: &Path, name: &str) {
     let fixture = repo_root().join("tests/fixtures/adapters/targets").join(name);
-    let cache = project_dir.join(".specify/cache/manifests/targets").join(name);
+    let cache = expected_cache_dir(project_dir).join("manifests/targets").join(name);
     fs::create_dir_all(cache.join("briefs")).expect("mkdir cache dir");
     for entry in fs::read_dir(&fixture).expect("read fixture dir") {
         let entry = entry.unwrap();
@@ -132,6 +133,7 @@ fn seed_adapter_cache(project_dir: &Path, name: &str) {
 #[test]
 fn upgrade_with_platforms_updates_config() {
     let tmp = tempdir().unwrap();
+    let _cache = scoped_cache(&tmp);
     seed_project_yaml(tmp.path(), "name: demo\nadapter: vectis-stub\nspecify_version: 0.1.0\n");
     seed_adapter_cache(tmp.path(), "vectis-stub");
 
@@ -159,6 +161,7 @@ fn upgrade_with_platforms_updates_config() {
 #[test]
 fn upgrade_platforms_no_core_fails() {
     let tmp = tempdir().unwrap();
+    let _cache = scoped_cache(&tmp);
     seed_project_yaml(tmp.path(), "name: demo\nadapter: vectis-stub\nspecify_version: 0.1.0\n");
     seed_adapter_cache(tmp.path(), "vectis-stub");
 

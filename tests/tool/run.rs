@@ -4,6 +4,7 @@ use std::fmt::Write as _;
 use std::fs;
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -22,6 +23,15 @@ struct ToolFixtures {
 }
 
 impl ToolFixtures {
+    /// Shared lazy fixture copy for tests that only READ the fixture
+    /// trees. Tests that mutate their tree (manifest rewrites, files
+    /// written under the project root) must call `new()` for a private
+    /// copy instead.
+    fn shared() -> &'static Self {
+        static SHARED: OnceLock<ToolFixtures> = OnceLock::new();
+        SHARED.get_or_init(Self::new)
+    }
+
     fn new() -> Self {
         let tmp = tempdir().expect("tempdir");
         let root = tmp.path().to_path_buf();
@@ -136,10 +146,12 @@ fn assert_validation_rule(value: &Value, rule_id: &str) {
 
 #[test]
 fn help_lists_active_verbs() {
-    let assert = specify_cmd().args(["tool", "--help"]).assert().success();
-    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
+    // `tool --help` must exit 0; the verb inventory is asserted via the
+    // contract dump rather than exact clap wording.
+    specify_cmd().args(["tool", "--help"]).assert().success();
+    let verbs = crate::common::contract_dump_verbs(&["tool"]);
     for verb in ["run", "fetch", "gc", "schema"] {
-        assert!(stdout.contains(verb), "tool --help must list `{verb}`, got:\n{stdout}");
+        assert!(verbs.iter().any(|v| v == verb), "tool must declare `{verb}`, got: {verbs:?}");
     }
 }
 
@@ -446,7 +458,9 @@ fn denied_fs_lifecycle_fail_pre_guest() {
 
 #[test]
 fn adapter_non_zero_exit_caches_by_scope() {
-    let fixtures = ToolFixtures::new();
+    // Read-only against the fixture tree (the cache dir is private),
+    // so it can use the shared copy.
+    let fixtures = ToolFixtures::shared();
     let cache = cache_dir("exit-seven");
     let assert = specify_cmd()
         .current_dir(fixtures.cap_project())

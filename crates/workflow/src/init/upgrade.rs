@@ -19,12 +19,9 @@ use crate::init::{InitOptions, InitResult, resolve_version, validate_platforms};
 
 /// Run the re-entry version bump.
 ///
-/// Loads the existing config through the migration carve-out
-/// ([`ProjectConfig::load_for_migration`], which never raises
-/// [`Error::ProjectNeedsMigration`]), refuses if a migration is owed,
-/// then bumps `specify_version` to the running binary's version — but
-/// only when it differs, so an already-current project is a true no-op
-/// (no `project.yaml` write).
+/// Loads the existing config, then bumps `specify_version` to the
+/// running binary's version — but only when it differs, so an
+/// already-current project is a true no-op (no `project.yaml` write).
 ///
 /// # Errors
 ///
@@ -32,16 +29,9 @@ use crate::init::{InitOptions, InitResult, resolve_version, validate_platforms};
 ///   `--upgrade` requires an existing project.
 /// - [`Error::CliTooOld`] when the pinned floor is newer than this
 ///   binary (propagated by the loader).
-/// - [`Error::ProjectNeedsMigration`] when the pinned major is older
-///   than this binary's (exit 4 — the operator must run `specify
-///   migrate` first). Dormant while the binary is pre-1.0: the
-///   migration tuple is always `None` at major `0`.
 /// - filesystem / serialisation errors from rewriting `project.yaml`.
 pub(super) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
-    let (mut cfg, migration) = ProjectConfig::load_for_migration(opts.project_dir)?;
-    if let Some((from, to)) = migration {
-        return Err(Error::ProjectNeedsMigration { from, to });
-    }
+    let mut cfg = ProjectConfig::load(opts.project_dir)?;
 
     let layout = Layout::new(opts.project_dir);
     let config_path = layout.config_path();

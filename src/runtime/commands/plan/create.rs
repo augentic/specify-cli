@@ -61,7 +61,7 @@ pub(super) fn create(
     // byte-identical `plan.amend.authority-override` journal events
     // and share the unknown-slice gate. Empty `clears` / `clear_all`
     // slices keep the create path scoped to set-only semantics.
-    let now = jiff::Timestamp::now();
+    let now = ctx.now();
     let plan_name = plan.name.clone();
     let override_events =
         mutate_authority_overrides(&mut plan, &plan_name, &override_assigns, &[], &[], now)?;

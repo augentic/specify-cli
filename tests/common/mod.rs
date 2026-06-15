@@ -2,32 +2,32 @@
 //!
 //! Each test file `mod common;` to pull these in (cargo's "include
 //! shared module" idiom for `tests/`). Some test files use only a
-//! subset; the crate-level `#![expect(dead_code, ...)]` below keeps
-//! the unused-helper warnings off without per-item attributes.
+//! subset; the module-root `#![allow(dead_code, unused_imports, ...)]`
+//! below keeps the unused-helper warnings off without per-item
+//! attributes (`allow`, not `expect`: fulfilment varies per binary).
 
-#![expect(
+#![allow(
     dead_code,
-    reason = "test helpers shared across integration test binaries; not every binary uses every helper"
+    unused_imports,
+    reason = "test helpers shared across integration test binaries; not every binary uses every helper or re-export"
 )]
 
+mod fs_git;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command as ProcessCommand;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use assert_cmd::Command;
+pub use fs_git::{GIT_ENV, copy_dir, run_git};
 use serde_json::Value;
 use specify_error::Result;
 use tempfile::{TempDir, tempdir};
 
 /// Panic with a descriptive message when a handler returned an error.
 ///
-/// Mirrors the inline `assert_ok` previously colocated with `specify
-/// registry`'s unit tests. Hoisted here so future integration tests can
-/// share the same `Result<()>`-shaped success check without re-inventing
-/// the wrapper.
+/// The shared `Result<()>`-shaped success check for integration tests.
 #[track_caller]
 pub fn assert_ok(result: Result<()>, what: &str) {
     result.unwrap_or_else(|err| panic!("{what} failed: {err}"));
@@ -48,19 +48,66 @@ pub fn omnia_schema_dir() -> PathBuf {
 /// Build a fresh `assert_cmd::Command` for the locally-built `specify`
 /// binary. Scrubs the ambient `SPECIFY_*` env overrides so an
 /// operator shell mid-workspace-run (exported `SPECIFY_PLAN_DIR`)
-/// cannot skew test plan resolution.
+/// cannot skew test plan resolution. Pins the wasmtime compilation
+/// cache to one repo-local directory: tests isolate `SPECIFY_TOOLS_CACHE`
+/// per test, which would otherwise defeat compiled-component reuse and
+/// make every WASI-dispatching test pay the full Cranelift compile.
 pub fn specify_cmd() -> Command {
     let mut cmd = Command::cargo_bin("specify").expect("cargo_bin(specify)");
     cmd.env_remove("SPECIFY_PLAN_DIR");
     cmd.env_remove("SPECIFY_FORMAT");
+    cmd.env("SPECIFY_WASMTIME_CACHE", repo_root().join("target").join("wasmtime-cache"));
+    // Pin the out-of-tree adapter/codex cache into a per-process temp
+    // root so the developer's real OS cache is never touched and the
+    // cache lands somewhere the test can locate via `expected_cache_dir`.
+    cmd.env("SPECIFY_PROJECT_CACHE", isolated_cache_root());
+    // Pin the persistent Git mirror root into a per-process temp root so
+    // remote-peer materialisation never touches the developer's real OS
+    // cache and mirror reuse is observable across invocations in one test.
+    cmd.env("SPECIFY_MIRROR_CACHE", isolated_mirror_root());
     cmd
+}
+
+/// Per-process out-of-tree Git-mirror root. One temp directory per test
+/// binary process, isolated from other tests and from `~/.cache`.
+pub fn isolated_mirror_root() -> &'static Path {
+    use std::sync::OnceLock;
+    static ROOT: OnceLock<PathBuf> = OnceLock::new();
+    ROOT.get_or_init(|| {
+        let dir = std::env::temp_dir().join(format!("specify-mirror-cache-{}", std::process::id()));
+        fs::create_dir_all(&dir).expect("create isolated mirror cache root");
+        dir
+    })
+}
+
+/// Per-process out-of-tree project-cache root. One temp directory per
+/// test binary process (nextest runs each test in its own process), so
+/// every `specify` invocation in a test shares one cache, isolated from
+/// other tests and from `~/.cache`.
+pub fn isolated_cache_root() -> &'static Path {
+    use std::sync::OnceLock;
+    static ROOT: OnceLock<PathBuf> = OnceLock::new();
+    ROOT.get_or_init(|| {
+        let dir =
+            std::env::temp_dir().join(format!("specify-project-cache-{}", std::process::id()));
+        fs::create_dir_all(&dir).expect("create isolated project cache root");
+        dir
+    })
+}
+
+/// The out-of-tree cache directory the binary resolves for `project_dir`
+/// under the test's [`isolated_cache_root`]. Mirror of the production
+/// resolver, so tests assert cache contents (`manifests/`, `codex/`)
+/// without depending on the developer's OS cache.
+pub fn expected_cache_dir(project_dir: &Path) -> PathBuf {
+    specify_schema::cache::project_cache_dir_in(isolated_cache_root(), project_dir)
 }
 
 /// Exclusive hold on `<root>/.specify/plan.lock` for the guard's
 /// lifetime — stands in for the `/spec:execute` driver session now
 /// that the plan-state-writing verbs (`plan next`, per-entry
 /// `plan transition`, `slice merge run`) probe the lock and refuse an
-/// unlocked driver (RFC-44 R2). Dropping the guard closes the file
+/// unlocked driver. Dropping the guard closes the file
 /// and releases the OS advisory lock.
 pub struct PlanLock {
     _file: fs::File,
@@ -106,6 +153,30 @@ pub fn stamp_slice_outcome(
     .expect("stamp outcome");
 }
 
+/// Subcommand names beneath the given command path (empty slice for
+/// the top level), read from `specify contract dump`. The robust verb
+/// inventory help tests assert against instead of exact clap wording.
+pub fn contract_dump_verbs(path: &[&str]) -> Vec<String> {
+    let assert = specify_cmd().args(["--format", "json", "contract", "dump"]).assert().success();
+    let dump: Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("contract dump JSON");
+    let mut node = &dump["commands"];
+    for name in path {
+        node = node["subcommands"]
+            .as_array()
+            .expect("subcommands array")
+            .iter()
+            .find(|n| n["name"] == *name)
+            .unwrap_or_else(|| panic!("verb `{name}` missing from contract dump"));
+    }
+    node["subcommands"]
+        .as_array()
+        .expect("subcommands array")
+        .iter()
+        .map(|n| n["name"].as_str().expect("verb name").to_string())
+        .collect()
+}
+
 /// Hex-encoded SHA-256 of the bytes at `path`, used by every tool
 /// integration suite to pin a `sha256:` digest into a manifest fixture.
 ///
@@ -114,7 +185,7 @@ pub fn stamp_slice_outcome(
 /// Panics if `path` cannot be read.
 pub fn sha256_hex(path: &Path) -> String {
     let bytes = fs::read(path).expect("read bytes for sha256");
-    specify_digest::sha256_hex(&bytes)
+    specify_schema::digest::sha256_hex(&bytes)
 }
 
 /// Scaffold a minimal target-adapter project declaring a single WASI tool.
@@ -167,38 +238,6 @@ pub fn scaffold_tool_project(
     (project, cache)
 }
 
-/// Deterministic git author/committer identity for tests that exercise
-/// real `git commit` invocations.
-pub const GIT_ENV: [(&str, &str); 4] = [
-    ("GIT_AUTHOR_NAME", "Specify Test"),
-    ("GIT_AUTHOR_EMAIL", "specify-test@example.com"),
-    ("GIT_COMMITTER_NAME", "Specify Test"),
-    ("GIT_COMMITTER_EMAIL", "specify-test@example.com"),
-];
-
-/// Run `git` in `root` with [`GIT_ENV`] applied, asserting success
-/// and returning captured stdout.
-///
-/// # Panics
-///
-/// Panics if git fails to start or exits non-zero.
-pub fn run_git(root: &Path, args: &[&str]) -> String {
-    let output = ProcessCommand::new("git")
-        .current_dir(root)
-        .args(args)
-        .envs(GIT_ENV)
-        .output()
-        .unwrap_or_else(|err| panic!("git {} failed to start: {err}", args.join(" ")));
-    assert!(
-        output.status.success(),
-        "git {} failed\nstdout:\n{}\nstderr:\n{}",
-        args.join(" "),
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    String::from_utf8(output.stdout).expect("git stdout utf8")
-}
-
 /// Pinned RFC 3339 timestamp every journal-reading suite normalises
 /// event `timestamp` fields to. CLI-driven emits stamp
 /// `Timestamp::now()`; tests rewrite the value to this placeholder so
@@ -210,10 +249,9 @@ pub const FIXED_TIMESTAMP: &str = "2026-05-21T20:00:00Z";
 /// [`FIXED_TIMESTAMP`].
 ///
 /// This is the single home for the journal-reading + timestamp
-/// normalisation pattern (previously copied into `tests/journal.rs`,
-/// `tests/slice_build.rs`, and `tests/source_survey.rs`): callers that
-/// want structured journal assertions parse the lines here and assert
-/// on fields, rather than substring-matching raw JSON text.
+/// normalisation pattern: callers that want structured journal
+/// assertions parse the lines here and assert on fields, rather than
+/// substring-matching raw JSON text.
 ///
 /// # Panics
 ///
@@ -245,26 +283,6 @@ pub fn read_journal_normalized(root: &Path) -> Vec<Value> {
 pub fn parse_json(stdout: &[u8]) -> Value {
     let text = std::str::from_utf8(stdout).expect("utf8 stdout");
     serde_json::from_str(text).unwrap_or_else(|err| panic!("stdout not JSON ({err}):\n{text}"))
-}
-
-/// Recursively copy `src` into `dst`, creating directories as needed.
-///
-/// # Panics
-///
-/// Panics if a fixture directory cannot be read or copied into the test
-/// workspace.
-pub fn copy_dir(src: &Path, dst: &Path) {
-    fs::create_dir_all(dst).expect("create_dir_all dst");
-    for entry in fs::read_dir(src).expect("read_dir src") {
-        let entry = entry.expect("dir entry");
-        let kind = entry.file_type().expect("file_type");
-        let target = dst.join(entry.file_name());
-        if kind.is_dir() {
-            copy_dir(&entry.path(), &target);
-        } else {
-            fs::copy(entry.path(), &target).expect("copy");
-        }
-    }
 }
 
 /// Recursively snapshot every regular file under `root` as a
@@ -467,7 +485,8 @@ impl Project {
     /// branch.
     #[must_use]
     pub fn with_cached_schema(self) -> Self {
-        copy_dir(&omnia_schema_dir(), &self.root.join(".specify/cache/manifests/targets/omnia"));
+        let cached = expected_cache_dir(&self.root).join("manifests/targets/omnia");
+        copy_dir(&omnia_schema_dir(), &cached);
         self
     }
 

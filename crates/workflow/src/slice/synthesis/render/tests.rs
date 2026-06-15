@@ -109,7 +109,7 @@ fn unknown_block_renders_empty_sources() {
     // round-trips the provenance validator cleanly.
     let raw = "version: 1
 slice: bootstrap-core
-project: shop-mobile
+project: mobile
 requirements:
   - id: REQ-001
     title: Buildable core crate

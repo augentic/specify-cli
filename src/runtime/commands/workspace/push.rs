@@ -1,6 +1,5 @@
 use std::io::Write;
 
-use jiff::Timestamp;
 use serde::Serialize;
 use specify_error::{Error, Result};
 use specify_workflow::change::Plan;
@@ -38,7 +37,7 @@ pub fn push(ctx: &Ctx, projects: &[String], dry_run: bool) -> Result<()> {
     // emit nothing.
     if !dry_run && !any_failed {
         let event = journal::Event::new(
-            Timestamp::now(),
+            ctx.now(),
             journal::EventKind::WorkspacePushCompleted {
                 plan_name: plan_name.clone(),
                 branch: format!("specify/{plan_name}"),
@@ -83,30 +82,27 @@ fn write_push_text(w: &mut dyn Write, body: &PushBody) -> std::io::Result<()> {
     let prefix = if body.dry_run { "[dry-run] " } else { "" };
     writeln!(w, "{prefix}specify: workspace push — {}", body.plan_name)?;
     writeln!(w)?;
-    let mut counts = [0_usize; 6];
+    let mut counts = [0_usize; 5];
     for r in &body.projects {
         let raw = r.status.to_string();
-        let label =
-            if body.dry_run && matches!(r.status, PushOutcome::Pushed | PushOutcome::Created) {
-                format!("would-{raw}")
-            } else {
-                raw
-            };
-        let pr = r.pr_number.map_or_else(String::new, |n| format!("PR #{n}"));
-        writeln!(w, "  {:<20} {:<14} {} {}", r.name, label, r.branch.as_deref().unwrap_or(""), pr)?;
+        let label = if body.dry_run && matches!(r.status, PushOutcome::Pushed) {
+            format!("would-{raw}")
+        } else {
+            raw
+        };
+        writeln!(w, "  {:<20} {:<14} {}", r.name, label, r.branch.as_deref().unwrap_or(""))?;
         counts[match r.status {
-            PushOutcome::Created => 0,
-            PushOutcome::Pushed => 1,
-            PushOutcome::UpToDate => 2,
-            PushOutcome::LocalOnly => 3,
-            PushOutcome::NoBranch => 4,
-            PushOutcome::Failed => 5,
+            PushOutcome::Pushed => 0,
+            PushOutcome::UpToDate => 1,
+            PushOutcome::LocalOnly => 2,
+            PushOutcome::NoBranch => 3,
+            PushOutcome::Failed => 4,
         }] += 1;
     }
     writeln!(w)?;
     writeln!(
         w,
-        "{} created, {} pushed, {} up-to-date, {} local-only, {} no-branch. {} failed.",
-        counts[0], counts[1], counts[2], counts[3], counts[4], counts[5]
+        "{} pushed, {} up-to-date, {} local-only, {} no-branch. {} failed.",
+        counts[0], counts[1], counts[2], counts[3], counts[4]
     )
 }

@@ -1,6 +1,6 @@
 //! Embed a sorted inventory of the `tests/` tree at build time so
 //! `specify contract dump` publishes the named-test surface that
-//! documentation cites (RFC-44 R1 / RFC-43 named-test citations).
+//! documentation cites (the cli-contract named-test citations).
 
 use std::path::{Path, PathBuf};
 use std::{env, fs};

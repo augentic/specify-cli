@@ -247,3 +247,96 @@ fn skill_name_plugin_prefix(
     }
     out
 }
+
+#[cfg(test)]
+mod unit {
+    use serde_json::json;
+
+    use super::*;
+    use crate::lint::eval::testkit::{candidates, empty_model, hint, hint_with_config, rule};
+    use crate::lint::{AdapterAxis, AdapterManifest, Skill};
+
+    fn manifest(name: &str, version: Option<&str>) -> AdapterManifest {
+        AdapterManifest {
+            axis: AdapterAxis::Targets,
+            name: name.to_string(),
+            path: format!("adapters/targets/{name}/adapter.yaml"),
+            version: version.map(str::to_string),
+            brief_keys: vec![],
+            tools: vec![],
+        }
+    }
+
+    fn skill(name: &str, plugin: &str) -> Skill {
+        Skill {
+            name: name.to_string(),
+            path: format!("plugins/{plugin}/skills/{name}/SKILL.md"),
+            plugin: plugin.to_string(),
+            frontmatter_ref: String::new(),
+            body_line_count: None,
+        }
+    }
+
+    #[test]
+    fn version_mismatch_and_absence_flagged() {
+        let mut model = empty_model();
+        model.adapter_manifests =
+            vec![manifest("ok", Some("2")), manifest("old", Some("1")), manifest("none", None)];
+        let cands = candidates(&[
+            "adapters/targets/ok/adapter.yaml",
+            "adapters/targets/old/adapter.yaml",
+            "adapters/targets/none/adapter.yaml",
+        ]);
+        let cfg = json!({ "field": "version", "equals": "2" });
+        let hint = hint_with_config(HintKind::ConstantEq, "adapter-manifest-field", Some(cfg));
+        let out = evaluate(&rule(), &hint, &cands, &model, &mut 1).expect("evaluate");
+        let titles: Vec<&str> = out.iter().map(|f| f.title.as_str()).collect();
+        assert_eq!(out.len(), 2, "{titles:?}");
+        assert!(titles.iter().any(|t| t.contains("'old' version '1'")), "{titles:?}");
+        assert!(titles.iter().any(|t| t.contains("'none' version '(absent)'")), "{titles:?}");
+    }
+
+    #[test]
+    fn non_version_field_is_unsupported() {
+        let model = empty_model();
+        let cfg = json!({ "field": "name", "equals": "x" });
+        let hint = hint_with_config(HintKind::ConstantEq, "adapter-manifest-field", Some(cfg));
+        evaluate(&rule(), &hint, &[], &model, &mut 1).unwrap_err();
+    }
+
+    #[test]
+    fn prefix_violations_flagged_with_overrides() {
+        let mut model = empty_model();
+        model.skills = vec![
+            skill("spec-plan", "spec"),    // wrong: spec maps to specify-
+            skill("specify-plan", "spec"), // right under the override
+            skill("client-sow", "client"), // right without an override
+            skill("Bad Name", "client"),   // malformed: skipped by the shape filter
+        ];
+        let cands = candidates(&[
+            "plugins/spec/skills/spec-plan/SKILL.md",
+            "plugins/spec/skills/specify-plan/SKILL.md",
+            "plugins/client/skills/client-sow/SKILL.md",
+            "plugins/client/skills/Bad Name/SKILL.md",
+        ]);
+        let cfg = json!({ "overrides": { "spec": "specify" } });
+        let hint = hint_with_config(HintKind::ConstantEq, "skill-name-plugin-prefix", Some(cfg));
+        let out = evaluate(&rule(), &hint, &cands, &model, &mut 1).expect("evaluate");
+        assert_eq!(out.len(), 1);
+        assert!(out[0].title.contains("'spec-plan'"), "{}", out[0].title);
+    }
+
+    #[test]
+    fn missing_config_is_unsupported() {
+        let model = empty_model();
+        let hint = hint(HintKind::ConstantEq, "skill-name-plugin-prefix");
+        evaluate(&rule(), &hint, &[], &model, &mut 1).unwrap_err();
+    }
+
+    #[test]
+    fn unknown_source_is_unsupported() {
+        let model = empty_model();
+        let hint = hint_with_config(HintKind::ConstantEq, "no-such-source", Some(json!({})));
+        evaluate(&rule(), &hint, &[], &model, &mut 1).unwrap_err();
+    }
+}

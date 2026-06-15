@@ -7,9 +7,9 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::Path;
 
-use specify_agents::{detect, fingerprint, render};
 use specify_error::{Error, Result};
-use specify_workflow::adapter::{ADAPTER_FILENAME, ResolvedTargetAdapter};
+use specify_workflow::adapter::{ADAPTER_FILENAME, AdapterLocation, ResolvedTargetAdapter};
+use specify_workflow::agents::{detect, fingerprint, render};
 use specify_workflow::config::{Layout, ProjectConfig};
 use specify_workflow::registry::{Registry, TopologyLock, TopologyProject};
 use specify_workflow::slice::SliceMetadata;
@@ -33,7 +33,7 @@ pub(super) fn render_input(ctx: &Ctx) -> Result<RenderAssembly> {
         None
     } else {
         let resolved = ctx.resolve_target_adapter()?;
-        collect_adapter_inputs(&mut collector, &resolved)?;
+        collect_adapter_inputs(&mut collector, &resolved, &ctx.project_dir)?;
         Some(adapter_summary(&resolved))
     };
     let detection = if ctx.config.workspace {
@@ -69,15 +69,44 @@ pub(super) fn render_input(ctx: &Ctx) -> Result<RenderAssembly> {
 
 fn collect_adapter_inputs(
     collector: &mut fingerprint::InputCollector, adapter: &ResolvedTargetAdapter,
+    project_dir: &Path,
 ) -> Result<()> {
     let manifest = adapter.location.path().join(ADAPTER_FILENAME);
-    if manifest.is_file() {
-        collector.add_file(&manifest)?;
-    }
+    add_adapter_input(collector, project_dir, &adapter.location, &manifest)?;
     for relative in adapter.manifest.briefs.values() {
         let brief_path = adapter.location.path().join(relative);
-        if brief_path.is_file() {
-            collector.add_file(&brief_path)?;
+        add_adapter_input(collector, project_dir, &adapter.location, &brief_path)?;
+    }
+    Ok(())
+}
+
+/// Record one adapter input file. A project-local adapter is recorded
+/// by its in-tree path; a cache-resolved adapter lives out-of-tree, so
+/// it is recorded under a cache-relative `cache:...` token instead (the
+/// physical bytes still drive the digest).
+fn add_adapter_input(
+    collector: &mut fingerprint::InputCollector, project_dir: &Path, location: &AdapterLocation,
+    path: &Path,
+) -> Result<()> {
+    if !path.is_file() {
+        return Ok(());
+    }
+    match location {
+        AdapterLocation::Local(_) => collector.add_file(path)?,
+        AdapterLocation::Cached(_) => {
+            let cache_dir = Layout::new(project_dir).cache_dir();
+            let logical = path.strip_prefix(&cache_dir).map_or_else(
+                |_| format!("cache:{}", path.display()),
+                |rel| {
+                    let rel = rel
+                        .components()
+                        .map(|c| c.as_os_str().to_string_lossy())
+                        .collect::<Vec<_>>()
+                        .join("/");
+                    format!("cache:{rel}")
+                },
+            );
+            collector.add_file_as(&logical, path);
         }
     }
     Ok(())
@@ -193,14 +222,14 @@ fn materialized_workspace_peers(
         return Ok(Vec::new());
     }
 
-    let workspace_dir = Layout::new(project_dir).specify_dir().join("workspace");
+    let workspace_dir = project_dir.join("workspace");
     let mut peers = Vec::new();
     for project in &registry.projects {
         let path = workspace_dir.join(&project.name);
         match fs::symlink_metadata(path) {
             Ok(_) => peers.push(render::Peer {
                 name: project.name.clone(),
-                path: format!(".specify/workspace/{}/", project.name),
+                path: format!("workspace/{}/", project.name),
             }),
             Err(err) if err.kind() == ErrorKind::NotFound => {}
             Err(err) => return Err(Error::Io(err)),

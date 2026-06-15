@@ -271,3 +271,84 @@ fn fenced_body_contains(
 
     findings
 }
+
+#[cfg(test)]
+mod unit {
+    use serde_json::json;
+
+    use super::*;
+    use crate::lint::FencedBlock;
+    use crate::lint::eval::testkit::{candidates, empty_model, hint, hint_with_config, rule};
+
+    fn block(path: &str, lang: &str, body: &str, line_start: u32, line_end: u32) -> FencedBlock {
+        FencedBlock {
+            path: path.to_string(),
+            line_start,
+            line_end,
+            lang: lang.to_string(),
+            body: body.to_string(),
+        }
+    }
+
+    #[test]
+    fn envelope_shapes_detected() {
+        let mut model = empty_model();
+        let path = "plugins/p/skills/s/SKILL.md";
+        model.fenced_blocks = vec![
+            block(path, "json", r#"{ "envelope-version": 6 }"#, 3, 5),
+            block(path, "json", r#"{ "ok": true, "data": {} }"#, 8, 10),
+            block(path, "json", r#"{ "ok": true }"#, 12, 13),
+            block(path, "text", r#"{ "envelope-version": 6 }"#, 15, 17),
+        ];
+        let cands = candidates(&[path]);
+        let hint = hint(HintKind::FencedBlock, "skill-envelope-json-in-body");
+        let out = evaluate(&rule(), &hint, &cands, &model, &mut 1).expect("evaluate");
+        // The bare `ok` fence and the non-json fence stay silent.
+        assert_eq!(out.len(), 2);
+    }
+
+    #[test]
+    fn long_json_fence_flagged() {
+        let mut model = empty_model();
+        let path = "docs/a.md";
+        model.fenced_blocks = vec![
+            block(path, "json", "{}", 1, 10),
+            block(path, "json", "{}", 20, 22),
+            block(path, "yaml", "{}", 30, 60),
+        ];
+        let cands = candidates(&[path]);
+        let cfg = json!({ "langs": ["json"], "max-lines": 5 });
+        let hint = hint_with_config(HintKind::FencedBlock, "inline-json-too-long", Some(cfg));
+        let out = evaluate(&rule(), &hint, &cands, &model, &mut 1).expect("evaluate");
+        assert_eq!(out.len(), 1);
+        assert!(out[0].title.contains("docs/a.md:1"), "{}", out[0].title);
+    }
+
+    #[test]
+    fn banned_substring_flagged() {
+        let mut model = empty_model();
+        let path = "docs/a.md";
+        model.fenced_blocks =
+            vec![block(path, "text", "a --> b", 1, 3), block(path, "text", "plain prose", 5, 7)];
+        let cands = candidates(&[path]);
+        let cfg = json!({ "langs": ["text"], "substrings": ["-->"] });
+        let hint = hint_with_config(HintKind::FencedBlock, "fenced-body-contains", Some(cfg));
+        let out = evaluate(&rule(), &hint, &cands, &model, &mut 1).expect("evaluate");
+        assert_eq!(out.len(), 1);
+        assert!(out[0].title.contains("`-->`"), "{}", out[0].title);
+    }
+
+    #[test]
+    fn missing_config_is_unsupported() {
+        let model = empty_model();
+        let hint = hint(HintKind::FencedBlock, "inline-json-too-long");
+        evaluate(&rule(), &hint, &[], &model, &mut 1).unwrap_err();
+    }
+
+    #[test]
+    fn unknown_source_is_unsupported() {
+        let model = empty_model();
+        let hint = hint(HintKind::FencedBlock, "no-such-source");
+        evaluate(&rule(), &hint, &[], &model, &mut 1).unwrap_err();
+    }
+}

@@ -13,7 +13,6 @@ Related docs:
 - [docs/standards/handler-shape.md](./docs/standards/handler-shape.md) — "The two lint handlers share one tail"
 - [adapters/shared/rules/core/README.md](https://github.com/augentic/specify/blob/main/adapters/shared/rules/core/README.md) (framework repo)
 - [docs/contributing/checks.md](https://github.com/augentic/specify/blob/main/docs/contributing/checks.md) — parity contract and extension guide (framework repo)
-- [docs/quality-debt.md](./docs/quality-debt.md) — suppression burn-down tied to A16
 
 ---
 
@@ -45,42 +44,32 @@ The engine is a generic dispatcher. Every framework `CORE-*` check is one of two
 
 | Road | Ids (example) | How it runs |
 | --- | --- | --- |
-| Road A — declarative hint | most of `CORE-001..052` | a generic per-kind evaluator (`lint/eval/*`) interprets the rule's `kind:` (`schema`, `reference-resolves`, `cardinality`, `set-coverage`, `set-eq`, `constant-eq`, `content-digest-eq`, `unique`, `fenced-block`, `regex`, `path-pattern`, `presence`, `field-grammar`, `cross-reference`, `cli-contract`) over `WorkspaceModel` facts; the mechanism selector rides `hint.value` (including the whole-tree `value: scenario` selector on `schema` and `unique`) and caps/sets/maps ride the rule's `config:` |
-| Road B — referenced WASI tool | `CORE-009`, `CORE-026`, the scenarios / skill-body / agent-teams / links-registry / marketplace / prose families | `kind: tool` value `<tool>` + a sentinel `path-pattern`; the engine resolves the tool by name and folds its `DiagnosticReport`. Policy rides the rule's `config:`, forwarded as a second positional arg |
+| Road A — declarative hint | most of `CORE-001..052` | a generic per-kind evaluator (`lint/eval/*`) interprets the rule's `kind:` (`schema`, `reference-resolves`, `cardinality`, `set-coverage`, `constant-eq`, `unique`, `fenced-block`, `regex`, `path-pattern`, `presence`, `field-grammar`, `cross-reference`, `cli-contract`) over `WorkspaceModel` facts; the mechanism selector rides `hint.value` (including the whole-tree `value: scenario` selector on `schema` and `unique`) and caps/sets/maps ride the rule's `config:` |
+| Road B — referenced tool | `CORE-009`, `CORE-026`, the scenarios / skill-body / links-registry / marketplace / prose families | `kind: tool` value `<tool>` + a sentinel `path-pattern`; the engine resolves the tool by name (in-process framework checkers) and folds its `DiagnosticReport`. Policy rides the rule's `config:`, forwarded as a second positional arg |
 
-There is no Wave-0 duplicate evaluation. `specify lint framework` resolves all `CORE-*` / `UNI-*` rules in one pass; no imperative `Check` producer runs on any invocation, and the `kind: authoring-predicate` bridge is fully removed. CORE-034 (`scenarios.stale-recorded-trace`, a git-only advisory that emitted no finding) was removed rather than ported; its sibling CORE-031 filesystem header validation lives in the `scenarios` tool.
+`specify lint framework` resolves all `CORE-*` / `UNI-*` rules in one pass; no imperative `Check` producer runs on any invocation, and `kind: authoring-predicate` is not a valid rule kind.
 
 ### Policy lives in `specify`, not the engine
 
-Every rule-specific value (a line cap, an owner→prefix map, an expected operation set, a canonical-doc path) rides the rule's `config:` in the `specify` repo — CORE-009's owner→prefix map, source-axis prefixes, and reserved-namespace owners included. The Layer-3 guard test [`crates/standards/tests/lint_engine_guards/no_embedded_policy.rs`](./crates/standards/tests/lint_engine_guards/no_embedded_policy.rs) fails if any eval arm or `framework/check` module reintroduces such a literal; the duplicated owner maps (`BUILTIN_NAMESPACES` / `TARGET_OWNERS`) are deleted.
+Every rule-specific value (a line cap, an owner→prefix map, an expected operation set, a canonical-doc path) rides the rule's `config:` in the `specify` repo — CORE-009's owner→prefix map, source-axis prefixes, and reserved-namespace owners included. The Layer-3 guard test [`crates/standards/tests/lint_engine_guards/no_embedded_policy.rs`](./crates/standards/tests/lint_engine_guards/no_embedded_policy.rs) fails if any eval arm reintroduces such a literal; the duplicated owner maps (`BUILTIN_NAMESPACES` / `TARGET_OWNERS`) are deleted.
 
 ### Framework tools
 
-Seven framework checkers — `scenarios`, `skill-body`, `agent-teams`, `links-registry`, `marketplace`, `prose`, `rules` — live in `wasi-tools/<name>/`, ship a prebuilt `dist/<name>-<ver>.wasm` embedded into the binary via `FrameworkToolRunner` ([`src/runtime/commands/lint/framework_tools.rs`](./src/runtime/commands/lint/framework_tools.rs)), and are name-resolved with `sha256: None` (digest pinning deferred until the source moves to its colocated home).
+Six framework checkers — `scenarios`, `skill-body`, `links-registry`, `marketplace`, `prose`, `rules` — run in-process as native modules under [`crates/standards/src/lint/framework_tools/`](./crates/standards/src/lint/framework_tools.rs), inside `specify-standards`. The `kind: tool` evaluator resolves a checker name against the in-process `framework_tools` inventory before the `ToolRunner` trait, calling it directly for typed findings (see [DECISIONS.md §"Framework lint engine"](./DECISIONS.md#framework-lint-engine-generic-dispatcher-road-a--road-b)).
 
-### Performance (post-migration)
+### Performance
 
 `make lint` on `augentic/specify` (release build, 2026-06-07): single-digit seconds — **~8s** wall (`real 8.7` for `make lint`, `real 7.8` for the bare release binary). Always measure against a `cargo build --release` binary; a debug/unoptimized build is many times slower and is not representative. Benchmark on your own hardware with `/usr/bin/time make lint`.
 
 ---
 
-## Done definition
+## Steady state
 
-### A19 — done
+The lint surface is a generic dispatcher with no imperative `Check` substrate:
 
-- [x] No bespoke `authoring::Exit` enum.
-- [x] Lint handlers share one `output::run_lint` kernel; no handler-local `println!`/`eprintln!`.
-- [x] `Exit::from(&Error)` is the only exit mapping for lint on both binaries.
-- [x] [handler-shape.md](./docs/standards/handler-shape.md) documents the lint kernel explicitly.
-
-### A16 — done (steady state; engine is a generic dispatcher)
-
-- [x] CORE-001..008 are owned by declarative rules.
-- [x] CORE-009 + CORE-026 migrated to the `rules` WASI tool; `CORE_ID_TABLE` is empty; the CORE-009 `AuthoringProducer` and `framework::check::run` are deleted.
-- [x] CORE-034 removed; the `kind: authoring-predicate` bridge (`HintKind::AuthoringPredicate`, `lint/eval/authoring_predicate.rs`, `ScenariosCheck`) deleted. No imperative-predicate bridge remains.
-- [x] No rule policy in the engine; `lint_no_embedded_policy` Layer-3 guard is green. `BUILTIN_NAMESPACES` / `TARGET_OWNERS` deleted.
-- [x] Framework lint runs no imperative `Check` producer on `make lint`.
-- [x] Transitional `core_parity` scaffolding and Road B integration parity tests deleted; coverage rests on the generic per-kind evaluator suite, the schema byte-match gate, and the tools' in-crate tests.
+- Lint handlers share one `output::run_lint` kernel; `Exit::from(&Error)` is the only exit mapping on both binaries ([handler-shape.md](./docs/standards/handler-shape.md)).
+- Road A declarative rules and Road B name-resolved checkers are the only producers; there is no `kind: authoring-predicate` and no `specify_standards::framework` substrate. Rust-quality predicates live dev-only at `tests/rust_quality/checks.rs`.
+- No rule policy lives in the engine; the `lint_no_embedded_policy` Layer-3 guard enforces this. Coverage rests on the generic per-kind evaluator suite, the schema byte-match gate, and the tools' in-crate tests.
 
 ---
 
@@ -88,10 +77,9 @@ Seven framework checkers — `scenarios`, `skill-body`, `agent-teams`, `links-re
 
 | Topic | Repository | Files |
 | --- | --- | --- |
-| Steady-state posture | specify-cli | [DECISIONS.md §"Framework lint engine: generic dispatcher (Road A / Road B)"](./DECISIONS.md#framework-lint-engine-generic-dispatcher-road-a--road-b), this file §A16 |
+| Steady-state posture | specify-cli | [DECISIONS.md §"Framework lint engine: generic dispatcher (Road A / Road B)"](./DECISIONS.md#framework-lint-engine-generic-dispatcher-road-a--road-b), this file §"Steady state" |
 | Contributor model + extension guide | specify | [docs/contributing/checks.md](https://github.com/augentic/specify/blob/main/docs/contributing/checks.md) |
 | CORE rule authoring | specify | [adapters/shared/rules/core/README.md](https://github.com/augentic/specify/blob/main/adapters/shared/rules/core/README.md) |
 | Declarative CORE rules | specify | `adapters/shared/rules/core/CORE-*.md` |
 | Layer-3 policy guard | specify-cli | [crates/standards/tests/lint_engine_guards/no_embedded_policy.rs](./crates/standards/tests/lint_engine_guards/no_embedded_policy.rs) |
 | Per-kind evaluator suite | specify-cli | `crates/standards/tests/lint_hint_*.rs` |
-| Suppression burn-down | specify-cli | [docs/quality-debt.md](./docs/quality-debt.md) |

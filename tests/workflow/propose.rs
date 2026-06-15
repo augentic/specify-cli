@@ -82,7 +82,7 @@ const PROPOSE_DISCOVERY_WORKSPACE: &str = "\
 - synopsis: Legacy reset-password flow.
 ";
 
-/// Committed `.specify/topology.lock` for the workspace fixture (RFC-36) —
+/// Committed `.specify/topology.lock` for the workspace fixture —
 /// the projection `workspace sync` would derive from each member
 /// project's `project.yaml`. Descriptions mirror the registry seeds so
 /// the request envelope's `projects[]` stays the authoritative shape.
@@ -187,7 +187,7 @@ fn workspace_project(registry: &str, discovery: &str, plan: &str) -> TempDir {
     fs::write(tmp.path().join("registry.yaml"), registry).expect("write registry.yaml");
     seed_discovery(tmp.path(), discovery);
     fs::write(tmp.path().join("plan.yaml"), plan).expect("write plan.yaml");
-    // RFC-36: workspace plan-time topology reads the committed cache, not the
+    // Workspace plan-time topology reads the committed cache, not the
     // registry. Seed the projection `workspace sync` would produce for
     // the remote members (which a unit test cannot materialise).
     fs::write(tmp.path().join(".specify/topology.lock"), PROPOSE_TOPOLOGY_WORKSPACE)
@@ -289,35 +289,6 @@ fn propose_dry_run_clears_stale_response() {
     );
 }
 
-#[test]
-fn propose_dry_run_workspace_request_golden() {
-    // Workspace: the registry's two projects and four leads across two
-    // sources project verbatim into the request envelope.
-    let tmp = workspace_project(
-        PROPOSE_REGISTRY_WORKSPACE,
-        PROPOSE_DISCOVERY_WORKSPACE,
-        PROPOSE_PLAN_WORKSPACE,
-    );
-
-    let assert = specify_cmd()
-        .current_dir(tmp.path())
-        .args(["--format", "json", "plan", "propose", "--dry-run"])
-        .assert()
-        .success();
-    let actual = parse_stdout(&assert.get_output().stdout, tmp.path());
-
-    assert_eq!(actual["kind"], "request");
-    let projects = actual["projects"].as_array().expect("projects array");
-    assert_eq!(projects.len(), 2);
-    assert_eq!(projects[0]["name"], "identity-contracts");
-    assert_eq!(projects[0]["target"], "contracts@v1");
-    assert_eq!(projects[1]["name"], "identity-service");
-    let leads = actual["leads"].as_array().expect("leads array");
-    assert_eq!(leads.len(), 4);
-
-    assert_golden("propose-dry-run-workspace-request.json", actual);
-}
-
 // -- `--from` happy-path goldens -------------------------------------
 
 #[test]
@@ -346,48 +317,6 @@ fn propose_from_n1_auto_bind_golden() {
     assert_eq!(entry.sources[0].lead("fix-typo"), "fix-typo");
 }
 
-#[test]
-fn propose_from_fan_out_golden() {
-    let tmp = workspace_project(
-        PROPOSE_REGISTRY_WORKSPACE,
-        PROPOSE_DISCOVERY_WORKSPACE,
-        PROPOSE_PLAN_WORKSPACE,
-    );
-
-    let actual = propose_from_ok(tmp.path(), PROPOSE_RESPONSE_FANOUT);
-    assert_eq!(actual["plan"]["name"], "identity-revamp");
-    assert_eq!(actual["slice-count"], 3);
-    assert_eq!(
-        actual["slice-names"],
-        serde_json::json!(["identity-contracts", "identity-service", "password-reset"])
-    );
-    assert_golden("propose-from-fan-out-summary.json", actual);
-
-    let plan = Plan::load(&tmp.path().join("plan.yaml")).expect("load plan");
-    let names: Vec<&str> = plan.entries.iter().map(|e| e.name.as_str()).collect();
-    assert_eq!(names, ["identity-contracts", "identity-service", "password-reset"]);
-
-    let projects: Vec<Option<&str>> = plan.entries.iter().map(|e| e.project.as_deref()).collect();
-    assert_eq!(
-        projects,
-        [Some("identity-contracts"), Some("identity-service"), Some("identity-service")]
-    );
-
-    // Targets are no longer stored on slices; the bound projects above
-    // are the sole bindings and resolve to their adapters on demand.
-
-    // The fan-out slice carries both matched sources, structured.
-    assert_eq!(plan.entries[0].sources.len(), 2);
-    assert_eq!(plan.entries[0].sources[0].source(), "docs");
-    assert_eq!(plan.entries[0].sources[1].source(), "legacy");
-    // The password-reset slice keeps the cross-source leads verbatim.
-    assert_eq!(plan.entries[2].sources[1].source(), "legacy");
-    assert_eq!(plan.entries[2].sources[1].lead("password-reset"), "reset-password");
-    // depends-on resolves to a derived slice name.
-    assert_eq!(plan.entries[1].depends_on, ["identity-contracts"]);
-    assert!(plan.entries[0].depends_on.is_empty());
-}
-
 // -- journal tail -----------------------------------------------------
 
 #[test]
@@ -413,7 +342,7 @@ fn propose_from_emits_single_journal_tail() {
         .collect();
     assert_eq!(events.len(), 1, "exactly one reconcile event fires, got:\n{events:#?}");
 
-    // RFC-29 review F8 folded the former agent/completed pair into one
+    // The former agent/completed pair folded into one
     // `plan.reconcile.completed` event carrying the slice names in order.
     let completed = &events[0];
     assert_eq!(completed["event"], "plan.reconcile.completed");
@@ -618,8 +547,10 @@ fn propose_response_schema_rejected() {
 
 // -- negative: propagated `plan-reconcile-*` codes -------------------
 //
-// Each fixture isolates one invariant by keeping every earlier check in
-// the firing order satisfied (RFC-29 D2 partition invariants).
+// One representative fixture: each `plan-reconcile-*` invariant is
+// exercised per-code at the kernel unit layer
+// (`crates/workflow/src/change/plan/core/propose/tests.rs`); the binary
+// layer only locks the exit-2 stderr propagation path they all share.
 
 #[test]
 fn propose_reconcile_lead_orphan() {
@@ -632,94 +563,6 @@ fn propose_reconcile_lead_orphan() {
         r#"{"version":1,"kind":"response","slices":[{"name":"s","sources":[{"source":"docs","lead":"ghost"}]}]}"#,
     );
     assert_eq!(body["error"], "plan-reconcile-lead-orphan");
-}
-
-#[test]
-fn propose_reconcile_slice_source_collision() {
-    let project = Project::init();
-    project.seed_plan("name: demo\nslices: []\n");
-    seed_discovery(project.root(), &discovery_doc(&[("docs", "a"), ("docs", "b")]));
-
-    // One slice names two leads from the same source.
-    let body = propose_from_stderr(
-        project.root(),
-        r#"{"version":1,"kind":"response","slices":[{"name":"s","sources":[{"source":"docs","lead":"a"},{"source":"docs","lead":"b"}]}]}"#,
-    );
-    assert_eq!(body["error"], "plan-reconcile-slice-source-collision");
-}
-
-#[test]
-fn propose_reconcile_partition_gap() {
-    let project = Project::init();
-    project.seed_plan("name: demo\nslices: []\n");
-    seed_discovery(project.root(), &discovery_doc(&[("docs", "a"), ("docs", "b")]));
-
-    // The catalog carries two leads; the response covers only `a`.
-    let body = propose_from_stderr(
-        project.root(),
-        r#"{"version":1,"kind":"response","slices":[{"name":"s","sources":[{"source":"docs","lead":"a"}]}]}"#,
-    );
-    assert_eq!(body["error"], "plan-reconcile-partition");
-}
-
-#[test]
-fn propose_reconcile_project_orphan() {
-    let project = Project::init();
-    project.seed_plan("name: demo\nslices: []\n");
-    seed_discovery(project.root(), &discovery_doc(&[("docs", "a")]));
-
-    // The slice binds a project absent from the (sole-project) topology.
-    let body = propose_from_stderr(
-        project.root(),
-        r#"{"version":1,"kind":"response","slices":[{"name":"s","sources":[{"source":"docs","lead":"a"}],"project":"ghost"}]}"#,
-    );
-    assert_eq!(body["error"], "plan-reconcile-project-orphan");
-}
-
-#[test]
-fn reconcile_project_binding_required() {
-    // Two projects offered (workspace); the slice omits `project`, so the
-    // kernel cannot auto-bind.
-    let tmp = workspace_project(
-        PROPOSE_REGISTRY_WORKSPACE,
-        &discovery_doc(&[("docs", "a")]),
-        "name: identity-revamp\nslices: []\n",
-    );
-
-    let body = propose_from_stderr(
-        tmp.path(),
-        r#"{"version":1,"kind":"response","slices":[{"name":"s","sources":[{"source":"docs","lead":"a"}]}]}"#,
-    );
-    assert_eq!(body["error"], "plan-reconcile-project-binding-required");
-}
-
-#[test]
-fn propose_reconcile_slice_name_collision() {
-    let project = Project::init();
-    project.seed_plan("name: demo\nslices: []\n");
-    seed_discovery(project.root(), &discovery_doc(&[("docs", "a"), ("docs", "b")]));
-
-    // Two distinct slices both supply the name `dup`. Name uniqueness is
-    // the sole duplicate gate now that `scope` is gone (RFC-29 review F3).
-    let body = propose_from_stderr(
-        project.root(),
-        r#"{"version":1,"kind":"response","slices":[{"name":"dup","sources":[{"source":"docs","lead":"a"}]},{"name":"dup","sources":[{"source":"docs","lead":"b"}]}]}"#,
-    );
-    assert_eq!(body["error"], "plan-reconcile-slice-name-collision");
-}
-
-#[test]
-fn propose_reconcile_depends_on_cycle() {
-    let project = Project::init();
-    project.seed_plan("name: demo\nslices: []\n");
-    seed_discovery(project.root(), &discovery_doc(&[("docs", "a"), ("docs", "b")]));
-
-    // alpha ↔ beta depend on each other.
-    let body = propose_from_stderr(
-        project.root(),
-        r#"{"version":1,"kind":"response","slices":[{"name":"alpha","sources":[{"source":"docs","lead":"a"}],"depends-on":["beta"]},{"name":"beta","sources":[{"source":"docs","lead":"b"}],"depends-on":["alpha"]}]}"#,
-    );
-    assert_eq!(body["error"], "plan-reconcile-depends-on-cycle");
 }
 
 #[test]

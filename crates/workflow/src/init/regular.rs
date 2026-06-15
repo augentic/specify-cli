@@ -1,6 +1,6 @@
 //! Regular (non-workspace) init body. Scaffolds the per-project `.specify/`
-//! tree, resolves the requested adapter into the cache, and writes
-//! `project.yaml`.
+//! tree, resolves the requested adapter into the out-of-tree cache, and
+//! writes `project.yaml`.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -23,7 +23,7 @@ use crate::init::{
 /// `pipeline.define[]`; refine synthesises the canonical set directly
 /// (see `DECISIONS.md` §"Adapter loader axis routing"). The exact
 /// scaffold keys mirror the validation registry namespaces in
-/// `specify_validate::registry::rules_for`.
+/// `specify_model::validate::registry::rules_for`.
 const SCAFFOLDED_RULE_KEYS: &[&str] = &["proposal", "specs", "design", "tasks"];
 
 pub(super) fn run(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, Error> {
@@ -39,12 +39,13 @@ pub(super) fn run(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, E
     // are not pre-touched — their owning verbs mint them on demand.
     // `.specify/specs/` is retained as a per-project convention used
     // by the bundled `omnia` adapter.
+    // The memoization cache is out-of-tree (OS cache, created on demand
+    // by `cache_adapter` / `cache_codex`), so it is not scaffolded here.
     for dir in [
         layout.specify_dir(),
         layout.slices_dir(),
         layout.specify_dir().join("specs"),
         layout.archive_dir(),
-        layout.cache_dir(),
     ] {
         let already = dir.exists();
         fs::create_dir_all(&dir)?;

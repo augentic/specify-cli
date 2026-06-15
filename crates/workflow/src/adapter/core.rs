@@ -40,9 +40,9 @@ pub const ADAPTER_FILENAME: &str = "adapter.yaml";
 /// Parent directory for in-repo adapter trees.
 pub const ADAPTERS_DIR: &str = "adapters";
 
-/// Manifest-cache root segment under `.specify/cache/`.
+/// Manifest-cache tenant segment under the out-of-tree project cache.
 ///
-/// `.specify/cache/manifests/{sources,targets}/<name>/` mirrors the
+/// `<project-cache>/manifests/{sources,targets}/<name>/` mirrors the
 /// in-repo `adapters/{sources,targets}/<name>/` tree (see
 /// [DECISIONS.md §"Cache layout"]).
 ///
@@ -51,16 +51,14 @@ pub const MANIFESTS_CACHE_DIR: &str = "manifests";
 
 /// Axis discriminator for an adapter manifest.
 ///
-/// Source vs target — see workflow §Adapter axis. The closed enum is
+/// Source vs target — see workflow §Adapter vocabulary. The closed enum is
 /// used by the resolver dispatcher (`commands::resolve_adapter`) and
 /// the manifest-cache helpers ([`cache_dir`], `adapter_axis_dir`);
 /// the in-memory manifests themselves are axis-typed
 /// ([`SourceAdapter`] / [`TargetAdapter`]) so internal call sites no
 /// longer carry the `axis` argument forward past the resolver
 /// boundary.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::Display, clap::ValueEnum,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::Display)]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
 pub enum Axis {
@@ -104,7 +102,7 @@ pub fn adapter_axis_dir(project_dir: &Path, axis: Axis) -> PathBuf {
 
 /// One declared WASI tool inside an adapter manifest.
 ///
-/// Decoupled from [`specify_tool::manifest::Tool`] so adapter loading
+/// Decoupled from [`specify_tool_manifest::Tool`] so adapter loading
 /// does not pull in the WASI runtime surface; sidecar `tools.yaml`
 /// continues to be the authoritative source for tool resolution.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -157,13 +155,72 @@ pub struct PlatformsCapability {
     pub default: Vec<Platform>,
 }
 
+/// Typed outcome of [`PlatformsCapability::check`].
+///
+/// Each caller maps the violation onto its own diagnostic-code family
+/// (`project-platforms-*` at init, `topology-cache-project-platforms-*`
+/// at topology resolution) so the rules themselves live in one place.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PlatformsViolation {
+    /// The capability demands a platform set but none was declared.
+    /// Carries the capability's display-formatted `default` set for the
+    /// caller's hint text.
+    RequiredButMissing {
+        /// Display-formatted `default` platform tokens.
+        defaults: Vec<String>,
+    },
+    /// A non-empty platform set omits the mandatory `core` member.
+    MissingCore,
+    /// A declared platform is outside the capability's `allowed` set.
+    /// Carries the display-formatted allowed set for the hint text.
+    NotAllowed {
+        /// The offending platform.
+        platform: Platform,
+        /// Display-formatted `allowed` platform tokens.
+        allowed: Vec<String>,
+    },
+}
+
+impl PlatformsCapability {
+    /// Validate a declared platform set against this capability: a
+    /// required capability refuses an empty set; a non-empty set must
+    /// include [`Platform::Core`] and stay inside `allowed`. An empty
+    /// set on a non-required capability passes (platforms are opt-in).
+    ///
+    /// # Errors
+    ///
+    /// Returns the first [`PlatformsViolation`] in rule order.
+    pub fn check(&self, platforms: &[Platform]) -> Result<(), PlatformsViolation> {
+        if platforms.is_empty() {
+            if self.required {
+                return Err(PlatformsViolation::RequiredButMissing {
+                    defaults: self.default.iter().map(ToString::to_string).collect(),
+                });
+            }
+            return Ok(());
+        }
+        if !platforms.contains(&Platform::Core) {
+            return Err(PlatformsViolation::MissingCore);
+        }
+        for p in platforms {
+            if !self.allowed.contains(p) {
+                return Err(PlatformsViolation::NotAllowed {
+                    platform: *p,
+                    allowed: self.allowed.iter().map(ToString::to_string).collect(),
+                });
+            }
+        }
+        Ok(())
+    }
+}
+
 /// Closed adapter execution mode.
 ///
 /// Declared by the required `execution:` field on `adapter.yaml`.
 /// Source adapters are agent-only (`source.schema.json` enumerates
 /// `["agent"]`); target adapters may still declare `tool`, though the
 /// target-side `build` / `merge` dispatch carries `agent` as a
-/// placeholder. See DECISIONS.md §"Adapter execution mode (D9)".
+/// placeholder. See DECISIONS.md §"Adapter execution mode".
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize, strum::Display)]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
@@ -184,8 +241,8 @@ pub enum Execution {
 pub enum AdapterLocation {
     /// Resolved from `<project_dir>/adapters/{sources,targets}/<name>/`.
     Local(PathBuf),
-    /// Resolved from the manifest cache at
-    /// `<project_dir>/.specify/cache/manifests/{sources,targets}/<name>/`.
+    /// Resolved from the out-of-tree manifest cache at
+    /// `<project-cache>/manifests/{sources,targets}/<name>/`.
     /// The manifest cache mirrors the in-repo adapter tree
     /// (`adapter.yaml` plus brief markdown) — see
     /// [DECISIONS.md §"Cache layout"].
@@ -214,16 +271,20 @@ impl AdapterLocation {
 }
 
 /// Manifest cache root for an axis —
-/// `.specify/cache/manifests/{sources,targets}/`.
+/// `<project-cache>/manifests/{sources,targets}/`, resolved out-of-tree
+/// from the OS cache (see [`crate::config::Layout::cache_dir`]).
 ///
 /// Path-only helper — the directory may or may not exist on disk.
 #[must_use]
 pub fn cache_axis_dir(project_dir: &Path, axis: Axis) -> PathBuf {
-    project_dir.join(".specify").join("cache").join(MANIFESTS_CACHE_DIR).join(axis.dir_segment())
+    crate::config::Layout::new(project_dir)
+        .cache_dir()
+        .join(MANIFESTS_CACHE_DIR)
+        .join(axis.dir_segment())
 }
 
 /// Manifest cache root for `(axis, name)` —
-/// `.specify/cache/manifests/{sources,targets}/<name>/`.
+/// `<project-cache>/manifests/{sources,targets}/<name>/`.
 ///
 /// This is the agent-populated mirror of `adapters/{sources,targets}/<name>/`
 /// — `adapter.yaml` plus the brief markdown files it references. See
@@ -243,10 +304,10 @@ pub fn cache_dir(project_dir: &Path, axis: Axis, name: &str) -> PathBuf {
 /// `<segment>` is the literal `survey` for the slice-less survey op or
 /// the slice name for extract.
 /// The write-only `$SCRATCH_DIR` preopen of the source-operation
-/// sandbox. Rooted under the transient working-state tree
-/// (`.specify/scratch/`), structurally disjoint from the memoization
-/// tree at `.specify/cache/`, so a scratch write can never pollute a
-/// cache artifact; see [DECISIONS.md §"Cache layout"].
+/// sandbox. Rooted under the transient in-tree working-state tree
+/// (`.specify/scratch/`), structurally disjoint from the out-of-tree
+/// memoization cache, so a scratch write can never pollute a cache
+/// artifact; see [DECISIONS.md §"Cache layout"].
 ///
 /// Path-only helper — the directory may or may not exist on disk.
 ///
@@ -358,8 +419,8 @@ pub struct TargetAdapter {
 pub struct ResolvedSourceAdapter {
     /// Parsed manifest.
     pub manifest: SourceAdapter,
-    /// Whether the manifest came from
-    /// `.specify/cache/manifests/sources/<name>/` or from
+    /// Whether the manifest came from the out-of-tree
+    /// `<project-cache>/manifests/sources/<name>/` or from
     /// `<project_dir>/adapters/sources/<name>/`, and the directory
     /// itself via [`AdapterLocation::path`].
     pub location: AdapterLocation,
@@ -372,8 +433,8 @@ pub struct ResolvedSourceAdapter {
 pub struct ResolvedTargetAdapter {
     /// Parsed manifest.
     pub manifest: TargetAdapter,
-    /// Whether the manifest came from
-    /// `.specify/cache/manifests/targets/<name>/` or from
+    /// Whether the manifest came from the out-of-tree
+    /// `<project-cache>/manifests/targets/<name>/` or from
     /// `<project_dir>/adapters/targets/<name>/`, and the directory
     /// itself via [`AdapterLocation::path`].
     pub location: AdapterLocation,

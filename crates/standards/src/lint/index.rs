@@ -1,15 +1,14 @@
 //! Project and framework indexer per the standards-layer contract
 //! §"`WorkspaceModel`" and the file scan contract.
 //!
-//! Phase 2 ships the project scan: a `.gitignore`-aware file walk,
+//! The project scan is a `.gitignore`-aware file walk,
 //! per-file extractors that run in parallel via `rayon`, and a
-//! sequential second pass that records symlinks, discovers codex
-//! rules, and resolves cross-file edges. The framework profile adds
+//! sequential second pass that records symlinks and resolves
+//! cross-file edges. The framework profile adds
 //! a wider include set, follow-the-link symlink
 //! traversal with cycle detection, and dedicated extractors for
 //! `plugins/**/SKILL.md`, `adapters/**/adapter.yaml`,
-//! `.cursor-plugin/marketplace.json`, `**/agent-teams.md` symlinks,
-//! and `adapters/**/briefs/*.md`.
+//! `**/agent-teams.md` symlinks, and `adapters/**/briefs/*.md`.
 //!
 //! Both profiles share the same per-file extractors (`frontmatter`,
 //! `markdown`, `ignore_directives`) and the same `WorkspaceModel`
@@ -20,16 +19,13 @@
 
 pub mod adapter;
 pub mod adapter_dir;
-pub mod agent_teams;
 pub mod brief;
-pub mod discover;
 pub mod files;
 pub mod framework;
 pub mod frontmatter;
 pub mod ignore_directives;
 pub mod languages;
 pub mod markdown;
-pub mod marketplace;
 pub mod path_util;
 pub mod scenario;
 pub mod skill;
@@ -40,9 +36,8 @@ use std::path::{Path, PathBuf};
 use rayon::prelude::*;
 
 use crate::lint::{
-    AdapterManifest, AgentTeam, Brief, File, Frontmatter, IgnoreDirective, MarkdownLink,
-    MarkdownSection, MarketplaceEntry, ScanProfile, Skill, Symlink, WorkspaceModel,
-    WorkspaceModelVersion,
+    AdapterManifest, Brief, File, Frontmatter, IgnoreDirective, MarkdownLink, MarkdownSection,
+    ScanProfile, Skill, Symlink, WorkspaceModel, WorkspaceModelVersion,
 };
 
 /// Closed error set for [`build`].
@@ -83,7 +78,7 @@ pub enum IndexError {
 /// runs the project-scope extractors. Under [`ScanProfile::Framework`]
 /// the walk applies the §F1 include set, follows symlinks with
 /// cycle detection, and runs the framework extractors
-/// (`skill`, `adapter`, `marketplace`, `agent_teams`, `brief`) in
+/// (`skill`, `adapter`, `marketplace`, `brief`) in
 /// addition to the shared markdown / frontmatter passes.
 ///
 /// `languages`, when non-empty, narrows the discovered file set to
@@ -158,8 +153,6 @@ fn build_project(
         link.resolves = resolve_link(project_dir, &link.from_path, &link.to_raw, &known_paths);
     }
 
-    let rule_index = discover::discover(project_dir);
-
     files_out.sort_by(|a, b| a.path.cmp(&b.path));
     frontmatter_out.sort_by(|a, b| a.path.cmp(&b.path));
     sort_sections(&mut sections_out);
@@ -180,29 +173,20 @@ fn build_project(
         symlinks: symlinks_facts,
         skills: Vec::new(),
         adapter_manifests: Vec::new(),
-        marketplace_entries: Vec::new(),
-        rule_index,
-        text_matches: Vec::new(),
         ignore_directives: ignore_directives_out,
         fenced_blocks: fenced_blocks_out,
         briefs: Vec::new(),
-        agent_teams: Vec::new(),
         scenarios: Vec::new(),
         adapter_dirs: Vec::new(),
     })
 }
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "framework indexer records fenced blocks alongside markdown facts"
-)]
 fn build_framework(
     project_dir: &Path, artifact_paths: &[PathBuf], languages: &[String],
 ) -> Result<WorkspaceModel, IndexError> {
     let discovery = framework::discover(project_dir, artifact_paths, languages)?;
     let discovered = discovery.files;
     let symlinks_facts = discovery.symlinks;
-    let agent_teams_facts = discovery.agent_teams;
 
     let per_file: Vec<FrameworkPerFile> = discovered
         .into_par_iter()
@@ -213,7 +197,6 @@ fn build_framework(
             let ignore_directives = ignore_directives::extract(&file);
             let skill = skill::extract(&file);
             let manifest = adapter::extract(&file);
-            let marketplace_entries = marketplace::extract(&file);
             let brief = brief::extract(&file);
             let fenced_blocks = markdown::extract_fenced_blocks(&file);
             FrameworkPerFile {
@@ -229,7 +212,6 @@ fn build_framework(
                 ignore_directives,
                 skill,
                 manifest,
-                marketplace_entries,
                 brief,
                 fenced_blocks,
             }
@@ -243,7 +225,6 @@ fn build_framework(
     let mut ignore_directives_out: Vec<IgnoreDirective> = Vec::new();
     let mut skills_out: Vec<Skill> = Vec::new();
     let mut manifests_out: Vec<AdapterManifest> = Vec::new();
-    let mut marketplace_out: Vec<MarketplaceEntry> = Vec::new();
     let mut briefs_out: Vec<Brief> = Vec::new();
     let mut fenced_blocks_out: Vec<crate::lint::FencedBlock> = Vec::new();
     for entry in per_file {
@@ -261,7 +242,6 @@ fn build_framework(
         if let Some(manifest) = entry.manifest {
             manifests_out.push(manifest);
         }
-        marketplace_out.extend(entry.marketplace_entries);
         if let Some(brief) = entry.brief {
             briefs_out.push(brief);
         }
@@ -284,8 +264,6 @@ fn build_framework(
         link.resolves = resolve_link(project_dir, &link.from_path, &link.to_raw, &known_paths);
     }
 
-    let rule_index = discover::discover(project_dir);
-
     files_out.sort_by(|a, b| a.path.cmp(&b.path));
     frontmatter_out.sort_by(|a, b| a.path.cmp(&b.path));
     sort_sections(&mut sections_out);
@@ -294,10 +272,7 @@ fn build_framework(
     sort_fenced_blocks(&mut fenced_blocks_out);
     skills_out.sort_by(|a, b| a.path.cmp(&b.path));
     manifests_out.sort_by(|a, b| a.path.cmp(&b.path));
-    marketplace_out.sort_by(|a, b| a.path_in_manifest.cmp(&b.path_in_manifest));
     briefs_out.sort_by(|a, b| a.path.cmp(&b.path));
-    let mut agent_teams_facts = agent_teams_facts;
-    agent_teams_facts.sort_by(|a: &AgentTeam, b: &AgentTeam| a.path.cmp(&b.path));
 
     Ok(WorkspaceModel {
         version: WorkspaceModelVersion,
@@ -312,13 +287,9 @@ fn build_framework(
         symlinks: symlinks_facts,
         skills: skills_out,
         adapter_manifests: manifests_out,
-        marketplace_entries: marketplace_out,
-        rule_index,
-        text_matches: Vec::new(),
         ignore_directives: ignore_directives_out,
         fenced_blocks: fenced_blocks_out,
         briefs: briefs_out,
-        agent_teams: agent_teams_facts,
         scenarios: scenario::extract(project_dir),
         adapter_dirs: adapter_dir::extract(project_dir),
     })
@@ -368,7 +339,6 @@ struct FrameworkPerFile {
     fenced_blocks: Vec<crate::lint::FencedBlock>,
     skill: Option<Skill>,
     manifest: Option<AdapterManifest>,
-    marketplace_entries: Vec<MarketplaceEntry>,
     brief: Option<Brief>,
 }
 

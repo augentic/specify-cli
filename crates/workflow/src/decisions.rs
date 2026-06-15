@@ -63,7 +63,7 @@ impl BaselineDecision {
 /// Parse the numeric component of a `DEC-NNNN` id. Returns `None` when
 /// the string is not a `DEC-` prefixed run of ASCII digits.
 #[must_use]
-pub fn dec_number(id: &str) -> Option<u32> {
+fn dec_number(id: &str) -> Option<u32> {
     id.strip_prefix("DEC-").filter(|tail| !tail.is_empty()).and_then(|tail| tail.parse().ok())
 }
 

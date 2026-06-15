@@ -1,4 +1,4 @@
-//! Integration tests for `specify contract dump` (RFC-44 R1).
+//! Integration tests for `specify contract dump`.
 //!
 //! Locks the dump payload to `schemas/contract/dump.schema.json`,
 //! pins sentinel rows from each contract section, and keeps the
@@ -8,15 +8,22 @@
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 
 use serde_json::Value;
 
 mod common;
 use common::{parse_stdout, repo_root, specify_cmd};
 
-fn dump_json() -> Value {
+/// Dumped once per test process; tests share the parsed payload so the
+/// binary is not re-spawned for every assertion suite.
+static DUMP: LazyLock<Value> = LazyLock::new(|| {
     let assert = specify_cmd().args(["--format", "json", "contract", "dump"]).assert().success();
     parse_stdout(&assert.get_output().stdout, &repo_root())
+});
+
+fn dump_json() -> &'static Value {
+    &DUMP
 }
 
 #[test]
@@ -24,7 +31,7 @@ fn dump_validates_against_schema() {
     let validator = specify_schema::compile_schema(specify_schema::CONTRACT_DUMP_JSON_SCHEMA)
         .expect("dump schema compiles");
     let dump = dump_json();
-    let errors: Vec<String> = validator.iter_errors(&dump).map(|err| err.to_string()).collect();
+    let errors: Vec<String> = validator.iter_errors(dump).map(|err| err.to_string()).collect();
     assert!(errors.is_empty(), "contract dump must satisfy its schema; errors: {errors:?}");
 }
 
@@ -56,7 +63,6 @@ fn dump_carries_known_surface() {
         "workspace",
         "completions",
         "contract",
-        "migrate",
         "upgrade",
         "plugins",
     ] {
@@ -69,7 +75,7 @@ fn dump_carries_known_surface() {
         .iter()
         .map(|row| row["code"].as_u64().expect("numeric exit code"))
         .collect();
-    assert_eq!(exit_codes, vec![0, 1, 2, 3, 4]);
+    assert_eq!(exit_codes, vec![0, 1, 2, 3]);
 
     let error_ids = dump["error-ids"].as_array().expect("error-ids array");
     assert!(error_ids.iter().any(|id| id == "adapter-not-found"));

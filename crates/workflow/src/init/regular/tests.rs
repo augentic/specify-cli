@@ -6,6 +6,7 @@ use tempfile::tempdir;
 use crate::config::ProjectConfig;
 use crate::init::cache::ManifestMeta;
 use crate::init::{InitOptions, fixed_now, init};
+use crate::test_cache::{expected_cache_dir, scoped_cache};
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -101,12 +102,13 @@ fn base_opts<'a>(project_dir: &'a Path, target_dir: &'a Path) -> InitOptions<'a>
 #[test]
 fn init_creates_specify_tree() {
     let tmp = tempdir().unwrap();
+    let _cache = scoped_cache(&tmp);
     let target_dir = omnia_target_dir();
     let result = init(base_opts(tmp.path(), &target_dir), fixed_now()).expect("init ok");
 
-    for sub in
-        [".specify", ".specify/slices", ".specify/specs", ".specify/archive", ".specify/cache"]
-    {
+    // The cache is regenerable, machine-owned state that lives
+    // out-of-tree; it is no longer part of the in-tree skeleton.
+    for sub in [".specify", ".specify/slices", ".specify/specs", ".specify/archive"] {
         assert!(tmp.path().join(sub).is_dir(), "expected directory {sub} to exist");
     }
     let config_path = tmp.path().join(".specify/project.yaml");
@@ -149,6 +151,7 @@ fn init_distributes_shared_codex() {
     let src = tempdir().unwrap();
     let omnia = synthetic_framework_source(src.path(), true);
     let project = tempdir().unwrap();
+    let _cache = scoped_cache(&project);
 
     let result = init(
         InitOptions {
@@ -169,13 +172,13 @@ fn init_distributes_shared_codex() {
         result.codex_present,
         "codex must be distributed from a source carrying the shared pack"
     );
-    let universal =
-        project.path().join(".specify/cache/codex/adapters/shared/rules/universal/UNI-901.md");
+    let codex = expected_cache_dir(project.path()).join("codex");
+    let universal = codex.join("adapters/shared/rules/universal/UNI-901.md");
     assert!(universal.is_file(), "universal pack must land in the codex cache");
-    let core = project.path().join(".specify/cache/codex/adapters/shared/rules/core/CORE-901.md");
+    let core = codex.join("adapters/shared/rules/core/CORE-901.md");
     assert!(!core.exists(), "core pack must NOT be distributed without --include-framework");
 
-    let meta = project.path().join(".specify/cache/codex/codex-meta.yaml");
+    let meta = codex.join("codex-meta.yaml");
     let meta_text = fs::read_to_string(&meta).expect("read codex meta");
     assert!(meta_text.contains("include_framework: false"), "meta:\n{meta_text}");
     assert!(
@@ -189,6 +192,7 @@ fn include_framework_distributes_core_pack() {
     let src = tempdir().unwrap();
     let omnia = synthetic_framework_source(src.path(), true);
     let project = tempdir().unwrap();
+    let _cache = scoped_cache(&project);
 
     init(
         InitOptions {
@@ -205,9 +209,10 @@ fn include_framework_distributes_core_pack() {
     )
     .expect("init ok");
 
-    let core = project.path().join(".specify/cache/codex/adapters/shared/rules/core/CORE-901.md");
+    let codex = expected_cache_dir(project.path()).join("codex");
+    let core = codex.join("adapters/shared/rules/core/CORE-901.md");
     assert!(core.is_file(), "core pack must be distributed under --include-framework");
-    let meta = project.path().join(".specify/cache/codex/codex-meta.yaml");
+    let meta = codex.join("codex-meta.yaml");
     let meta_text = fs::read_to_string(&meta).expect("read codex meta");
     assert!(meta_text.contains("include_framework: true"), "meta:\n{meta_text}");
 }
@@ -217,6 +222,7 @@ fn init_vendors_spec_runtime_in_cache() {
     let src = tempdir().unwrap();
     let omnia = synthetic_framework_source(src.path(), false);
     let project = tempdir().unwrap();
+    let _cache = scoped_cache(&project);
 
     init(
         InitOptions {
@@ -233,15 +239,12 @@ fn init_vendors_spec_runtime_in_cache() {
     )
     .expect("init ok");
 
-    let guardrails = project
-        .path()
-        .join(".specify/cache/manifests/targets/omnia/references/spec-runtime/guardrails.md");
+    let omnia_cache = expected_cache_dir(project.path()).join("manifests/targets/omnia");
+    let guardrails = omnia_cache.join("references/spec-runtime/guardrails.md");
     assert!(guardrails.is_file(), "spec-runtime must be vendored as regular files");
     let text = fs::read_to_string(&guardrails).expect("read vendored guardrails");
     assert!(text.contains("Single-writer for lifecycle state"));
-    let authority = project.path().join(
-        ".specify/cache/manifests/targets/omnia/references/spec-runtime/synthesis/authority.md",
-    );
+    let authority = omnia_cache.join("references/spec-runtime/synthesis/authority.md");
     assert!(authority.is_file(), "nested spec-runtime paths must vendor");
 }
 
@@ -251,14 +254,16 @@ fn init_without_shared_pack_skips_codex() {
     // `adapters/shared/rules/` tree, so codex distribution is a
     // silent no-op (fail-soft).
     let tmp = tempdir().unwrap();
+    let _cache = scoped_cache(&tmp);
     let result = init(base_opts(tmp.path(), &omnia_target_dir()), fixed_now()).expect("init ok");
     assert!(!result.codex_present, "no shared pack at the source means no codex distribution");
-    assert!(!tmp.path().join(".specify/cache/codex").exists());
+    assert!(!expected_cache_dir(tmp.path()).join("codex").exists());
 }
 
 #[test]
 fn reinit_idempotent() {
     let tmp = tempdir().unwrap();
+    let _cache = scoped_cache(&tmp);
     let target_dir = omnia_target_dir();
     let first = init(base_opts(tmp.path(), &target_dir), fixed_now()).expect("first init");
     let config = fs::read(&first.config_path).expect("read first config");
@@ -273,26 +278,25 @@ fn reinit_idempotent() {
 #[test]
 fn gitignore_missing_existing_duplicate() {
     let tmp = tempdir().unwrap();
+    let _cache = scoped_cache(&tmp);
     let target_dir = omnia_target_dir();
     let gitignore = tmp.path().join(".gitignore");
 
     init(base_opts(tmp.path(), &target_dir), fixed_now()).expect("init ok");
     let text = fs::read_to_string(&gitignore).expect("read gitignore");
-    assert!(text.contains(".specify/cache/"));
     assert!(text.contains(".specify/scratch/"));
-    assert!(text.contains(".specify/workspace/"));
+    assert!(text.contains("workspace/"));
 
     init(base_opts(tmp.path(), &target_dir), fixed_now()).expect("re-init ok");
     let text = fs::read_to_string(&gitignore).expect("reread gitignore");
-    let occurrences = text.matches(".specify/cache/").count();
-    assert_eq!(occurrences, 1);
     assert_eq!(text.matches(".specify/scratch/").count(), 1);
-    assert_eq!(text.matches(".specify/workspace/").count(), 1);
+    assert_eq!(text.matches("workspace/").count(), 1);
 }
 
 #[test]
 fn gitignore_appends_to_existing() {
     let tmp = tempdir().unwrap();
+    let _cache = scoped_cache(&tmp);
     let target_dir = omnia_target_dir();
     fs::write(tmp.path().join(".gitignore"), "target/\n").expect("seed gitignore");
 
@@ -300,43 +304,46 @@ fn gitignore_appends_to_existing() {
 
     let text = fs::read_to_string(tmp.path().join(".gitignore")).expect("read gitignore");
     assert!(text.contains("target/"));
-    assert!(text.contains(".specify/cache/"));
     assert!(text.contains(".specify/scratch/"));
-    assert!(text.contains(".specify/workspace/"));
-    assert_eq!(text.matches(".specify/cache/").count(), 1);
-    assert_eq!(text.matches(".specify/workspace/").count(), 1);
+    assert!(text.contains("workspace/"));
+    assert_eq!(text.matches(".specify/scratch/").count(), 1);
+    assert_eq!(text.matches("workspace/").count(), 1);
 }
 
 #[test]
 fn gitignore_existing_entry_noop() {
     let tmp = tempdir().unwrap();
+    let _cache = scoped_cache(&tmp);
     let target_dir = omnia_target_dir();
-    fs::write(tmp.path().join(".gitignore"), "target/\n.specify/cache/\n.specify/workspace/\n")
+    fs::write(tmp.path().join(".gitignore"), "target/\n.specify/scratch/\nworkspace/\n")
         .expect("seed gitignore");
 
     init(base_opts(tmp.path(), &target_dir), fixed_now()).expect("init ok");
 
     let text = fs::read_to_string(tmp.path().join(".gitignore")).expect("read");
-    assert_eq!(text.matches(".specify/cache/").count(), 1);
-    assert_eq!(text.matches(".specify/workspace/").count(), 1);
+    assert_eq!(text.matches(".specify/scratch/").count(), 1);
+    assert_eq!(text.matches("workspace/").count(), 1);
 }
 
 #[test]
 fn gitignore_appends_workspace_only() {
     let tmp = tempdir().unwrap();
+    let _cache = scoped_cache(&tmp);
     let target_dir = omnia_target_dir();
-    fs::write(tmp.path().join(".gitignore"), "target/\n.specify/cache/\n").expect("seed gitignore");
+    fs::write(tmp.path().join(".gitignore"), "target/\n.specify/scratch/\n")
+        .expect("seed gitignore");
 
     init(base_opts(tmp.path(), &target_dir), fixed_now()).expect("init ok");
 
     let text = fs::read_to_string(tmp.path().join(".gitignore")).expect("read");
-    assert_eq!(text.matches(".specify/cache/").count(), 1);
-    assert_eq!(text.matches(".specify/workspace/").count(), 1);
+    assert_eq!(text.matches(".specify/scratch/").count(), 1);
+    assert_eq!(text.matches("workspace/").count(), 1);
 }
 
 #[test]
 fn cache_present_matches_manifest_meta() {
     let tmp = tempdir().unwrap();
+    let _cache = scoped_cache(&tmp);
     let target_dir = omnia_target_dir();
     let result = init(base_opts(tmp.path(), &target_dir), fixed_now()).expect("init ok");
     assert!(result.cache_present);
@@ -353,6 +360,7 @@ fn cache_present_matches_manifest_meta() {
 #[test]
 fn init_writes_default_wasm_pkg_config() {
     let tmp = tempdir().unwrap();
+    let _cache = scoped_cache(&tmp);
     let target_dir = omnia_target_dir();
     let result = init(base_opts(tmp.path(), &target_dir), fixed_now()).expect("init ok");
 
@@ -370,6 +378,7 @@ fn init_writes_default_wasm_pkg_config() {
 #[test]
 fn reinit_preserves_wasm_pkg_config() {
     let tmp = tempdir().unwrap();
+    let _cache = scoped_cache(&tmp);
     let target_dir = omnia_target_dir();
     init(base_opts(tmp.path(), &target_dir), fixed_now()).expect("first init");
 
@@ -393,6 +402,7 @@ fn init_rejects_cross_axis_name_collision() {
     use specify_error::Error;
 
     let tmp = tempdir().unwrap();
+    let _cache = scoped_cache(&tmp);
     let target_dir = omnia_target_dir();
     // Plant a colliding source adapter under `adapters/sources/omnia/`.
     let source_root = tmp.path().join("adapters").join("sources").join("omnia");
@@ -418,7 +428,7 @@ description: Colliding source adapter for the init-time uniqueness check.
     assert_eq!(code, "adapter-name-axis-collision");
     // Cache must not have been clobbered: the target cache dir
     // should be absent because the check fires before the copy.
-    let cache_dir = tmp.path().join(".specify/cache/manifests/targets/omnia");
+    let cache_dir = expected_cache_dir(tmp.path()).join("manifests/targets/omnia");
     assert!(
         !cache_dir.exists(),
         "init must reject the collision before writing {}",
@@ -429,6 +439,7 @@ description: Colliding source adapter for the init-time uniqueness check.
 #[test]
 fn default_name_is_dir_basename() {
     let tmp = tempdir().unwrap();
+    let _cache = scoped_cache(&tmp);
     let project = tmp.path().join("my-project");
     fs::create_dir_all(&project).expect("create project dir");
     let target_dir = omnia_target_dir();
@@ -516,6 +527,7 @@ fn init_platforms_not_allowed_fails() {
     }
 
     let project = tempdir().unwrap();
+    let _cache = scoped_cache(&project);
     let platforms = [Platform::Core, Platform::Ios, Platform::Android];
     let err = init(
         InitOptions {
@@ -543,6 +555,7 @@ fn init_platforms_writes_yaml() {
     use crate::Platform;
 
     let tmp = tempdir().unwrap();
+    let _cache = scoped_cache(&tmp);
     let target_dir = vectis_stub_target_dir();
     let platforms = [Platform::Core, Platform::Ios, Platform::Android];
     let result = init(platforms_opts(tmp.path(), &target_dir, Some(&platforms)), fixed_now())
@@ -556,6 +569,7 @@ fn init_platforms_writes_yaml() {
 #[test]
 fn init_optional_no_platforms_ok() {
     let tmp = tempdir().unwrap();
+    let _cache = scoped_cache(&tmp);
     let target_dir = omnia_target_dir();
     let result = init(platforms_opts(tmp.path(), &target_dir, None), fixed_now())
         .expect("init without platforms on a non-required target must succeed");

@@ -3,10 +3,23 @@
 
 use std::path::PathBuf;
 
+use clap::builder::{PossibleValuesParser, TypedValueParser};
 use clap::{ArgAction, Subcommand};
 use specify_workflow::slice::{CreateIfExists, LifecycleStatus};
 
 use crate::runtime::commands::source::cli::Phase;
+
+/// Clap value parser for a workflow enum carrying strum's kebab-case
+/// `EnumString` + `VariantNames` derives. `specify-workflow` is
+/// clap-free, so the possible-values surface is reconstructed here at
+/// the CLI boundary from the strum metadata.
+fn kebab_enum<T>() -> impl TypedValueParser<Value = T>
+where
+    T: std::str::FromStr + strum::VariantNames + Clone + Send + Sync + 'static,
+    T::Err: std::error::Error + Send + Sync + 'static,
+{
+    PossibleValuesParser::new(T::VARIANTS).try_map(|value| value.parse::<T>())
+}
 
 #[derive(Subcommand)]
 pub enum SliceAction {
@@ -18,7 +31,7 @@ pub enum SliceAction {
         #[arg(long)]
         target: Option<String>,
         /// Behaviour when `<slices_dir>/<name>/` already exists
-        #[arg(long, value_enum, default_value = "fail")]
+        #[arg(long, value_parser = kebab_enum::<CreateIfExists>(), default_value = "fail")]
         if_exists: CreateIfExists,
     },
     /// Validate a slice's artifacts against adapter validation rules
@@ -117,7 +130,7 @@ pub enum SliceAction {
         /// Target status (`refining`, `refined`, `built`, or `dropped`).
         /// `merged` is reserved for `specify slice merge run` and is
         /// rejected with exit 2 if passed here.
-        #[arg(value_enum)]
+        #[arg(value_parser = kebab_enum::<LifecycleStatus>())]
         target: LifecycleStatus,
     },
     /// Scan or overwrite `touched_specs` on `metadata.yaml`

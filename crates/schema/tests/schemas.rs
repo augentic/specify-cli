@@ -6,82 +6,44 @@
 use jsonschema::{Registry, Resource};
 use serde_json::{Value, json};
 use specify_schema::{
-    ADAPTER_JSON_SCHEMA, BUILD_REPORT_JSON_SCHEMA, BUILD_REQUEST_JSON_SCHEMA,
-    COMPONENTS_JSON_SCHEMA, CONTRACT_DUMP_JSON_SCHEMA, DECISION_JSON_SCHEMA,
-    DIAGNOSTIC_JSON_SCHEMA, DIAGNOSTIC_REPORT_JSON_SCHEMA, EMBEDDED_SCHEMAS, EVIDENCE_JSON_SCHEMA,
-    FRAMEWORK_JSON_SCHEMA, LEAD_JSON_SCHEMA, MARKETPLACE_JSON_SCHEMA, PARTS_JSON_SCHEMA,
-    PLAN_JSON_SCHEMA, PROPOSAL_JSON_SCHEMA, PROVENANCE_JSON_SCHEMA, RESOLVED_RULES_JSON_SCHEMA,
-    RULE_JSON_SCHEMA, SCENARIO_JSON_SCHEMA, SKILL_JSON_SCHEMA, SLICE_MODEL_JSON_SCHEMA,
-    SOURCE_JSON_SCHEMA, SYNTHESIS_JSON_SCHEMA, TARGET_JSON_SCHEMA, TOOL_JSON_SCHEMA,
-    TOOL_SIDECAR_JSON_SCHEMA, TOPOLOGY_LOCK_JSON_SCHEMA, ValidationStatus,
-    WORKSPACE_MODEL_JSON_SCHEMA, compile_schema, validate_value,
+    BUILD_REPORT_JSON_SCHEMA, BUILD_REQUEST_JSON_SCHEMA, DECISION_JSON_SCHEMA,
+    DIAGNOSTIC_JSON_SCHEMA, DIAGNOSTIC_REPORT_JSON_SCHEMA, EMBEDDED_SCHEMAS, PARTS_JSON_SCHEMA,
+    RESOLVED_RULES_JSON_SCHEMA, RULE_JSON_SCHEMA, SLICE_MODEL_JSON_SCHEMA, SYNTHESIS_JSON_SCHEMA,
+    ValidationStatus, WORKSPACE_MODEL_JSON_SCHEMA, compile_schema, validate_value,
 };
 
+/// Every embedded schema compiles, table-driven over the canonical
+/// [`EMBEDDED_SCHEMAS`] inventory so a new constant is covered the
+/// moment it is registered there. The three envelope schemas whose
+/// relative `$ref`s cannot resolve standalone compile through their
+/// registry-backed validators instead. The two on-disk-only schemas
+/// (`manifest-meta`, `context-lock`) are appended explicitly — they
+/// ship without an embedded constant.
 #[test]
-fn plan_schema_compiles() {
-    compile_schema(PLAN_JSON_SCHEMA).expect("plan schema compiles");
+fn every_schema_compiles() {
+    let needs_registry =
+        ["SYNTHESIS_JSON_SCHEMA", "DIAGNOSTIC_REPORT_JSON_SCHEMA", "BUILD_REPORT_JSON_SCHEMA"];
+    for (name, relative, source) in EMBEDDED_SCHEMAS {
+        if needs_registry.contains(name) {
+            continue;
+        }
+        compile_schema(source).unwrap_or_else(|err| panic!("{name} ({relative}) compiles: {err}"));
+    }
+    let _synthesis = synthesis_validator();
+    let _diagnostic_report = diagnostic_report_validator();
+    let _build_report = build_report_validator();
+
+    let on_disk_only = [
+        ("manifest-meta", include_str!("../../../schemas/manifest-meta.schema.json")),
+        ("context-lock", include_str!("../../../schemas/context-lock.schema.json")),
+    ];
+    for (name, source) in on_disk_only {
+        compile_schema(source).unwrap_or_else(|err| panic!("{name} schema compiles: {err}"));
+    }
 }
 
-#[test]
-fn lead_schema_compiles() {
-    compile_schema(LEAD_JSON_SCHEMA).expect("lead schema compiles");
-}
-
-#[test]
-fn proposal_schema_compiles() {
-    compile_schema(PROPOSAL_JSON_SCHEMA).expect("proposal schema compiles");
-}
-
-#[test]
-fn topology_lock_schema_compiles() {
-    compile_schema(TOPOLOGY_LOCK_JSON_SCHEMA).expect("topology-lock schema compiles");
-}
-
-#[test]
-fn adapter_schema_compiles() {
-    compile_schema(ADAPTER_JSON_SCHEMA).expect("adapter schema compiles");
-}
-
-#[test]
-fn source_schema_compiles() {
-    compile_schema(SOURCE_JSON_SCHEMA).expect("source schema compiles");
-}
-
-#[test]
-fn target_schema_compiles() {
-    compile_schema(TARGET_JSON_SCHEMA).expect("target schema compiles");
-}
-
-#[test]
-fn tool_schema_compiles() {
-    compile_schema(TOOL_JSON_SCHEMA).expect("tool schema compiles");
-}
-
-#[test]
-fn tool_sidecar_schema_compiles() {
-    compile_schema(TOOL_SIDECAR_JSON_SCHEMA).expect("tool-sidecar schema compiles");
-}
-
-/// `manifest-meta.schema.json` ships on disk but is not embedded as a
-/// constant. Compile it straight from disk so a malformed edit fails
-/// in CI even without an `include_str!` binding.
-#[test]
-fn manifest_meta_schema_compiles_from_disk() {
-    let source = include_str!("../../../schemas/manifest-meta.schema.json");
-    compile_schema(source).expect("manifest-meta schema compiles");
-}
-
-/// `context-lock.schema.json` ships on disk but is not embedded as a
-/// constant; compile it straight from disk (see
-/// [`manifest_meta_schema_compiles_from_disk`]).
-#[test]
-fn context_lock_schema_compiles_from_disk() {
-    let source = include_str!("../../../schemas/context-lock.schema.json");
-    compile_schema(source).expect("context-lock schema compiles");
-}
-
-/// Every embedded schema constant must byte-match its on-disk source
-/// (REVIEW.md A11). `include_str!` binds at compile time, so this guards
+/// Every embedded schema constant must byte-match its on-disk source.
+/// `include_str!` binds at compile time, so this guards
 /// against a constant pointing at a stale or duplicated copy: each
 /// [`EMBEDDED_SCHEMAS`] entry re-reads the canonical workspace file at
 /// runtime and asserts equality. The inventory itself lives in the
@@ -101,21 +63,6 @@ fn embedded_schemas_match_on_disk_sources() {
             "{name} embed diverges from on-disk {relative}; re-run the embed or fix the file"
         );
     }
-}
-
-#[test]
-fn evidence_schema_compiles() {
-    compile_schema(EVIDENCE_JSON_SCHEMA).expect("evidence schema compiles");
-}
-
-#[test]
-fn provenance_schema_compiles() {
-    compile_schema(PROVENANCE_JSON_SCHEMA).expect("provenance schema compiles");
-}
-
-#[test]
-fn slice_model_schema_compiles() {
-    compile_schema(SLICE_MODEL_JSON_SCHEMA).expect("slice model schema compiles");
 }
 
 /// The single slice-model schema validates an agent synthesis response
@@ -167,11 +114,6 @@ fn synthesis_validator() -> jsonschema::Validator {
         .expect("synthesis schema compiles with model $ref resolved")
 }
 
-#[test]
-fn synthesis_schema_compiles() {
-    let _validator = synthesis_validator();
-}
-
 /// The synthesis-response worked example validates against the
 /// synthesis schema with the model `$ref` resolved.
 #[test]
@@ -215,17 +157,7 @@ fn synthesis_accepts_example() {
     assert!(errors.is_empty(), "RFC synthesis response must validate; errors: {errors:?}");
 }
 
-#[test]
-fn components_schema_compiles() {
-    compile_schema(COMPONENTS_JSON_SCHEMA).expect("components schema compiles");
-}
-
-#[test]
-fn parts_schema_compiles() {
-    compile_schema(PARTS_JSON_SCHEMA).expect("parts schema compiles");
-}
-
-/// The RFC-40 §C1 `parts.yaml` worked example validates: a kebab-case
+/// The `parts.yaml` worked example validates: a kebab-case
 /// part slug carrying a composition `group` fragment (with a `*-when`
 /// key and `items`) plus an optional description.
 #[test]
@@ -247,7 +179,7 @@ fn parts_schema_accepts_rfc_example() {
         }
     });
     let summaries =
-        validate_value(&instance, PARTS_JSON_SCHEMA, "parts", "parts.yaml RFC-40 §C1 example");
+        validate_value(&instance, PARTS_JSON_SCHEMA, "parts", "parts.yaml worked example");
     assert!(
         summaries.iter().all(|s| matches!(s.status, ValidationStatus::Pass)),
         "RFC parts example must validate; got {summaries:?}"
@@ -283,11 +215,6 @@ fn parts_schema_rejects_malformed() {
         summaries.iter().any(|s| matches!(s.status, ValidationStatus::Fail)),
         "a non-kebab part slug must be rejected"
     );
-}
-
-#[test]
-fn decision_schema_compiles() {
-    compile_schema(DECISION_JSON_SCHEMA).expect("decision schema compiles");
 }
 
 /// The slice-authored Decision Record example validates without
@@ -340,46 +267,6 @@ fn decision_accepts_baseline_form() {
 }
 
 #[test]
-fn resolved_codex_schema_compiles() {
-    compile_schema(RESOLVED_RULES_JSON_SCHEMA).expect("resolved codex schema compiles");
-}
-
-#[test]
-fn codex_rule_schema_compiles() {
-    compile_schema(RULE_JSON_SCHEMA).expect("codex-rule schema compiles");
-}
-
-#[test]
-fn skill_schema_compiles() {
-    compile_schema(SKILL_JSON_SCHEMA).expect("skill schema compiles");
-}
-
-#[test]
-fn scenario_schema_compiles() {
-    compile_schema(SCENARIO_JSON_SCHEMA).expect("scenario schema compiles");
-}
-
-#[test]
-fn marketplace_schema_compiles() {
-    compile_schema(MARKETPLACE_JSON_SCHEMA).expect("marketplace schema compiles");
-}
-
-#[test]
-fn framework_schema_compiles() {
-    compile_schema(FRAMEWORK_JSON_SCHEMA).expect("framework schema compiles");
-}
-
-#[test]
-fn lint_finding_schema_compiles() {
-    compile_schema(DIAGNOSTIC_JSON_SCHEMA).expect("lint finding schema compiles");
-}
-
-#[test]
-fn workspace_model_schema_compiles() {
-    compile_schema(WORKSPACE_MODEL_JSON_SCHEMA).expect("workspace-model schema compiles");
-}
-
-#[test]
 fn workspace_model_accepts_minimal() {
     let instance = json!({
         "version": 1,
@@ -393,10 +280,7 @@ fn workspace_model_accepts_minimal() {
         "markdown_links": [],
         "symlinks": [],
         "skills": [],
-        "adapter_manifests": [],
-        "marketplace_entries": [],
-        "rule_index": [],
-        "text_matches": []
+        "adapter_manifests": []
     });
     let summaries = validate_value(
         &instance,
@@ -410,12 +294,11 @@ fn workspace_model_accepts_minimal() {
     );
 }
 
-#[test]
-fn lint_result_schema_compiles() {
-    // The envelope $ref's `finding.schema.json` by relative URI; the
-    // standalone `compile_schema` helper has no resource registry, so
-    // compile through a registry that pins the finding schema under
-    // the same directory the relative ref resolves to.
+/// Compile the diagnostic-report envelope through a registry that pins
+/// the finding schema under the directory its relative
+/// `diagnostic.schema.json` `$ref` resolves to — the standalone
+/// `compile_schema` helper has no resource registry.
+fn diagnostic_report_validator() -> jsonschema::Validator {
     let envelope: Value =
         serde_json::from_str(DIAGNOSTIC_REPORT_JSON_SCHEMA).expect("lint-result schema parses");
     let finding: Value =
@@ -427,29 +310,15 @@ fn lint_result_schema_compiles() {
         )
         .and_then(jsonschema::RegistryBuilder::prepare)
         .expect("registry prepares");
-    let _validator = jsonschema::options()
+    jsonschema::options()
         .with_registry(&registry)
         .build(&envelope)
-        .expect("lint-result schema compiles with finding $ref resolved");
+        .expect("lint-result schema compiles with finding $ref resolved")
 }
 
 #[test]
 fn lint_result_accepts_one_finding() {
-    let envelope: Value =
-        serde_json::from_str(DIAGNOSTIC_REPORT_JSON_SCHEMA).expect("lint-result schema parses");
-    let finding: Value =
-        serde_json::from_str(DIAGNOSTIC_JSON_SCHEMA).expect("finding schema parses");
-    let registry = Registry::new()
-        .add(
-            "https://github.com/augentic/specify-cli/schemas/diagnostics/diagnostic.schema.json",
-            Resource::from_contents(finding),
-        )
-        .and_then(jsonschema::RegistryBuilder::prepare)
-        .expect("registry prepares");
-    let validator = jsonschema::options()
-        .with_registry(&registry)
-        .build(&envelope)
-        .expect("lint-result schema compiles with finding $ref resolved");
+    let validator = diagnostic_report_validator();
     let instance = json!({
         "version": 1,
         "summary": { "critical": 0, "important": 1, "suggestion": 0, "optional": 0 },
@@ -494,23 +363,13 @@ fn diagnostic_report_relative_ref() {
     assert_eq!(items_ref, "diagnostic.schema.json");
 }
 
-#[test]
-fn contract_dump_schema_compiles() {
-    compile_schema(CONTRACT_DUMP_JSON_SCHEMA).expect("contract-dump schema compiles");
-}
-
-#[test]
-fn build_request_schema_compiles() {
-    compile_schema(BUILD_REQUEST_JSON_SCHEMA).expect("build-request schema compiles");
-}
-
 /// The build-request worked example validates.
 #[test]
 fn build_request_schema_accepts_rfc_example() {
     let instance = json!({
         "version": 1,
         "slice": "identity-service",
-        "project-dir": "/workspace/.specify/workspace/identity-service",
+        "project-dir": "/workspace/workspace/identity-service",
         "inputs": {
             "root": "/workspace/.specify/slices/identity-service",
             "artifacts": {
@@ -554,11 +413,6 @@ fn build_report_validator() -> jsonschema::Validator {
         .with_registry(&registry)
         .build(&report)
         .expect("build-report schema compiles with diagnostic $ref resolved")
-}
-
-#[test]
-fn build_report_schema_compiles() {
-    let _validator = build_report_validator();
 }
 
 /// The build-report success example validates.
@@ -722,15 +576,7 @@ fn build_report_failure_with_findings() {
 /// implementation.
 #[test]
 fn codex_rule_accepts_reserved_kinds() {
-    let reserved = [
-        "unique",
-        "reference-resolves",
-        "set-coverage",
-        "cardinality",
-        "constant-eq",
-        "set-eq",
-        "content-digest-eq",
-    ];
+    let reserved = ["unique", "reference-resolves", "set-coverage", "cardinality", "constant-eq"];
     for kind in reserved {
         let instance = json!({
             "id": "UNI-014",
@@ -749,4 +595,85 @@ fn codex_rule_accepts_reserved_kinds() {
             "kind {kind} must validate; got {summaries:?}"
         );
     }
+}
+
+/// The `UNI-014` example for the `ResolvedRules` export validates
+/// cleanly against the resolved-codex schema.
+#[test]
+fn resolved_codex_accepts_example() {
+    let instance = json!({
+        "version": 1,
+        "target-adapter": "omnia",
+        "source-adapters": ["typescript"],
+        "rules": [
+            {
+                "rule-id": "UNI-014",
+                "title": "Hardcoded Configuration",
+                "severity": "important",
+                "trigger": "Generated code embeds environment-specific configuration instead of routing it through declared configuration.",
+                "lint-mode": "hybrid",
+                "origin": "shared",
+                "path-root": "rules-root",
+                "path": "adapters/shared/rules/universal/hardcoded-configuration.md",
+                "applicability": {
+                    "adapters": ["omnia"],
+                    "languages": ["rust"],
+                    "artifacts": ["code"]
+                },
+                "rule-hints": [
+                    {
+                        "kind": "regex",
+                        "value": "https?://",
+                        "description": "Literal URL in generated code."
+                    }
+                ],
+                "references": [
+                    {
+                        "label": "Omnia guardrails",
+                        "path": "adapters/targets/omnia/references/guardrails.md"
+                    }
+                ],
+                "body": "## Rule\n\nConfiguration values that vary between deployments must not be hardcoded in generated code.\n",
+                "deprecated": null
+            }
+        ]
+    });
+    let validator =
+        compile_schema(RESOLVED_RULES_JSON_SCHEMA).expect("resolved codex schema compiles");
+    let errors: Vec<String> = validator.iter_errors(&instance).map(|e| e.to_string()).collect();
+    assert!(errors.is_empty(), "UNI-014 example must validate; errors: {errors:?}");
+}
+
+/// The `FIND-0001` example for structured lint findings validates
+/// cleanly against the standalone diagnostic schema. The fingerprint
+/// placeholder `sha256:...` from the contract is replaced with a
+/// deterministic 64-hex-char digest so the fingerprint pattern check
+/// passes.
+#[test]
+fn review_finding_accepts_example() {
+    let instance = json!({
+        "id": "FIND-0001",
+        "rule-id": "UNI-014",
+        "title": "Literal deployment URL in generated handler",
+        "severity": "important",
+        "source": "hybrid",
+        "target-adapter": "omnia",
+        "slice": "billing-invoice-export",
+        "artifact": "code",
+        "location": {
+            "path": "crates/invoice_export/src/config.rs",
+            "line": 18
+        },
+        "evidence": {
+            "kind": "snippet",
+            "value": "const BASE_URL: &str = \"https://api.example.com\";"
+        },
+        "impact": "Generated code will point every deployment at the same external endpoint.",
+        "remediation": "Read the endpoint from Omnia configuration and add a required config key to the design.",
+        "confidence": "high",
+        "fingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    });
+    let validator = compile_schema(DIAGNOSTIC_JSON_SCHEMA).expect("review finding schema compiles");
+    let errors: Vec<String> = validator.iter_errors(&instance).map(|e| e.to_string()).collect();
+    assert!(errors.is_empty(), "FIND-0001 example must validate; errors: {errors:?}");
 }

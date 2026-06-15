@@ -23,7 +23,7 @@ use specify_error::Error;
 use specify_model::atomic::yaml_write;
 
 use crate::Platform;
-use crate::adapter::TargetAdapter;
+use crate::adapter::{PlatformsViolation, TargetAdapter};
 use crate::change::plan_finding;
 use crate::config::ProjectConfig;
 use crate::init::adapter_name_from_value;
@@ -248,8 +248,9 @@ impl TopologyProject {
 
 /// Backstop validation of a workspace slot's platforms against the
 /// resolved target adapter's [`crate::adapter::PlatformsCapability`].
-/// Mirrors the three `project-platforms-*` rules from
-/// [`crate::init::validate_platforms`], scoped to topology resolution.
+/// Maps each [`PlatformsViolation`] from the shared
+/// [`crate::adapter::PlatformsCapability::check`] kernel onto the
+/// `topology-cache-project-platforms-*` diagnostic family.
 fn validate_topology_platforms(
     registry_name: &str, platforms: &[Platform],
     capability: Option<&crate::adapter::PlatformsCapability>, target_name: &str,
@@ -258,9 +259,8 @@ fn validate_topology_platforms(
         return Ok(());
     };
 
-    if platforms.is_empty() && cap.required {
-        let defaults: Vec<String> = cap.default.iter().map(ToString::to_string).collect();
-        return Err(Error::validation_failed(
+    cap.check(platforms).map_err(|violation| match violation {
+        PlatformsViolation::RequiredButMissing { defaults } => Error::validation_failed(
             "topology-cache-project-platforms-missing",
             format!("workspace slot `{registry_name}` declares platforms"),
             format!(
@@ -268,38 +268,25 @@ fn validate_topology_platforms(
                  but project.yaml declares none; default set is [{}]",
                 defaults.join(", "),
             ),
-        ));
-    }
-
-    if !platforms.is_empty() && !platforms.contains(&Platform::Core) {
-        return Err(Error::validation_failed(
+        ),
+        PlatformsViolation::MissingCore => Error::validation_failed(
             "topology-cache-project-platforms-must-include-core",
             format!("workspace slot `{registry_name}` platform set includes `core`"),
             format!(
                 "workspace slot `{registry_name}` platform set must include `core`; \
                  every project that declares platforms requires the shared Rust core crate",
             ),
-        ));
-    }
-
-    if !platforms.is_empty() {
-        let allowed_display: Vec<String> = cap.allowed.iter().map(ToString::to_string).collect();
-        for p in platforms {
-            if !cap.allowed.contains(p) {
-                return Err(Error::validation_failed(
-                    "topology-cache-project-platforms-not-allowed",
-                    format!("workspace slot `{registry_name}` platform `{p}` is allowed"),
-                    format!(
-                        "workspace slot `{registry_name}` platform `{p}` is not allowed \
-                         by target '{target_name}'; allowed: [{}]",
-                        allowed_display.join(", "),
-                    ),
-                ));
-            }
-        }
-    }
-
-    Ok(())
+        ),
+        PlatformsViolation::NotAllowed { platform, allowed } => Error::validation_failed(
+            "topology-cache-project-platforms-not-allowed",
+            format!("workspace slot `{registry_name}` platform `{platform}` is allowed"),
+            format!(
+                "workspace slot `{registry_name}` platform `{platform}` is not allowed \
+                 by target '{target_name}'; allowed: [{}]",
+                allowed.join(", "),
+            ),
+        ),
+    })
 }
 
 /// Compare the committed `.specify/topology.lock` against each
@@ -318,7 +305,7 @@ fn validate_topology_platforms(
 /// The project's `project.yaml` plus its baseline are authoritative and
 /// the cache is the derived projection of them.
 ///
-/// `workspace_base` is `.specify/workspace`; `topology_lock_path` is
+/// `workspace_base` is the top-level `workspace/`; `topology_lock_path` is
 /// `.specify/topology.lock`. The binary handler renders the returned
 /// diagnostics — it owns no projection logic of its own.
 #[must_use]

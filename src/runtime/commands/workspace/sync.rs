@@ -1,6 +1,5 @@
 use std::io::Write;
 
-use jiff::Timestamp;
 use serde::Serialize;
 use specify_error::Result;
 use specify_workflow::journal;
@@ -21,7 +20,7 @@ pub fn sync(ctx: &Ctx, projects: &[String]) -> Result<()> {
         // workflow §Observability: one `workspace.sync.completed` per
         // successful sync; the registry-less no-op path emits nothing.
         let event = journal::Event::new(
-            Timestamp::now(),
+            ctx.now(),
             journal::EventKind::WorkspaceSyncCompleted {
                 projects: selected.iter().map(|p| p.name.clone()).collect(),
             },

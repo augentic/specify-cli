@@ -25,12 +25,6 @@ pub fn extract(file: &DiscoveredFile) -> Option<Frontmatter> {
     if file.language.as_deref() != Some("markdown") {
         return None;
     }
-    // Rule frontmatter is surfaced via the `rule_index` family
-    // per the doc-comment on `super::discover`; the two surfaces would
-    // double-count if the generic extractor also fired here.
-    if file.relative.starts_with(".specify/cache/codex/") {
-        return None;
-    }
     let text = file.text();
     let (frontmatter_body, _) = split(&text)?;
     let value: Value = serde_saphyr::from_str(frontmatter_body).ok()?;

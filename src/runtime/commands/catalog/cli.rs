@@ -16,7 +16,7 @@ pub enum CatalogAction {
     /// infer` tool and prints the name-free cluster report. `bind`
     /// consumes a skill-authored `{ fingerprint → slug }` bindings file
     /// (`--bindings`), reconciles it against the existing catalog under
-    /// the RFC-40 §B6 no-overwrite + one-skeleton-per-slug guards, and
+    /// the no-overwrite + one-skeleton-per-slug bind guards, and
     /// writes `components.yaml` (or prints the diff under `--dry-run`).
     Infer {
         /// Which phase to run — `report` (read-only) or `bind` (writes

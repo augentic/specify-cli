@@ -29,7 +29,6 @@
 use std::io::Write;
 use std::path::Path;
 
-use jiff::Timestamp;
 use serde::Serialize;
 use specify_error::{Error, Result};
 use specify_model::discovery::Discovery;
@@ -162,7 +161,7 @@ fn detect_missing_for_topology(
             let project_dir = if topology.len() == 1 {
                 ctx.project_dir.clone()
             } else {
-                ctx.layout().specify_dir().join("workspace").join(&p.name)
+                ctx.project_dir.join("workspace").join(&p.name)
             };
             let missing = vectis_missing_platforms(&project_dir, &p.platforms)?;
             Ok(ProjectMissingPlatforms {
@@ -194,7 +193,7 @@ struct ProposeSummary {
 /// the `plan.yaml` write has committed.
 fn emit_reconcile_event(ctx: &Ctx, projected: &Projected) -> Result<()> {
     let event = Event::new(
-        Timestamp::now(),
+        ctx.now(),
         EventKind::PlanReconcileCompleted {
             plan_name: projected.plan.name.clone().into(),
             slice_count: projected.outcome.slice_names.len(),

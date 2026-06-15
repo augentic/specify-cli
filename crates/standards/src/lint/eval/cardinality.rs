@@ -19,10 +19,9 @@
 //!   matching [`crate::lint::BriefScope`] and flag each brief whose
 //!   `body_line_count` exceeds `config.max`. The two scopes carry
 //!   distinct caps (a rule supplies both via `config`), so a rule that
-//!   enforces both budgets ships two `cardinality` hints. Like
-//!   `content-digest-eq`, the brief metrics narrow on a dedicated fact
-//!   family already scoped to brief paths, so they do not consult the
-//!   `path-pattern` candidate set.
+//!   enforces both budgets ships two `cardinality` hints. The brief
+//!   metrics narrow on a dedicated fact family already scoped to brief
+//!   paths, so they do not consult the `path-pattern` candidate set.
 //! - `skill-body-line-count` — counts the body lines of every
 //!   [`crate::lint::Skill`] in the candidate set (CORE-005) and flags
 //!   each skill whose `body_line_count` exceeds `config.max`. The cap
@@ -211,7 +210,7 @@ fn markdown_h2_sections(
 /// [`BriefScope`]. The cap is the `max` the rule file supplies. The
 /// `Brief` fact family is already restricted to brief paths, so this
 /// metric evaluates it directly rather than narrowing by the
-/// `path-pattern` candidate set (mirroring `content-digest-eq`).
+/// `path-pattern` candidate set.
 fn briefs(
     rule: &ResolvedRule, model: &WorkspaceModel, scope: BriefScope, max: u32, next_id: &mut u64,
 ) -> Vec<Diagnostic> {
@@ -251,4 +250,143 @@ fn briefs(
         out.push(finding);
     }
     out
+}
+
+#[cfg(test)]
+mod unit {
+    use serde_json::json;
+
+    use super::*;
+    use crate::lint::eval::testkit::{candidates, empty_model, hint, hint_with_config, rule};
+    use crate::lint::{Brief, MarkdownSection, Skill};
+
+    fn skill(name: &str, path: &str, lines: u32) -> Skill {
+        Skill {
+            name: name.to_string(),
+            path: path.to_string(),
+            plugin: "p".to_string(),
+            frontmatter_ref: path.to_string(),
+            body_line_count: Some(lines),
+        }
+    }
+
+    fn section(path: &str, level: u8, title: &str, lines: u32) -> MarkdownSection {
+        MarkdownSection {
+            path: path.to_string(),
+            level,
+            title: title.to_string(),
+            line_start: 1,
+            line_end: 1 + lines,
+            body_line_count: lines,
+        }
+    }
+
+    fn brief(path: &str, scope: BriefScope, lines: u32) -> Brief {
+        Brief {
+            path: path.to_string(),
+            axis: crate::lint::AdapterAxis::Targets,
+            adapter: "demo".to_string(),
+            operation: "build".to_string(),
+            scope,
+            sections: vec![],
+            body_line_count: lines,
+        }
+    }
+
+    fn flagged_paths(out: &[Diagnostic]) -> Vec<String> {
+        out.iter().filter_map(|f| Some(f.location.as_ref()?.path.clone())).collect()
+    }
+
+    #[test]
+    fn skill_body_over_cap() {
+        let mut model = empty_model();
+        model.skills = vec![
+            skill("big", "plugins/p/skills/big/SKILL.md", 6),
+            skill("small", "plugins/p/skills/small/SKILL.md", 1),
+        ];
+        let cands =
+            candidates(&["plugins/p/skills/big/SKILL.md", "plugins/p/skills/small/SKILL.md"]);
+        let hint = hint_with_config(
+            HintKind::Cardinality,
+            "skill-body-line-count",
+            Some(json!({ "max": 3 })),
+        );
+        let out = evaluate(&rule(), &hint, &cands, &model, &mut 1).expect("evaluate");
+        assert_eq!(flagged_paths(&out), vec!["plugins/p/skills/big/SKILL.md"]);
+    }
+
+    #[test]
+    fn skill_outside_candidates_skipped() {
+        let mut model = empty_model();
+        model.skills = vec![skill("big", "plugins/p/skills/big/SKILL.md", 6)];
+        let hint = hint_with_config(
+            HintKind::Cardinality,
+            "skill-body-line-count",
+            Some(json!({ "max": 3 })),
+        );
+        let out = evaluate(&rule(), &hint, &[], &model, &mut 1).expect("evaluate");
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn h2_sections_over_cap_only() {
+        let mut model = empty_model();
+        let path = "plugins/p/skills/s/SKILL.md";
+        model.markdown_sections = vec![
+            section(path, 2, "Big", 4),
+            section(path, 2, "Small", 1),
+            section(path, 3, "Deep", 9),
+        ];
+        let cands = candidates(&[path]);
+        let hint = hint_with_config(
+            HintKind::Cardinality,
+            "markdown-h2-section-body-line-count",
+            Some(json!({ "max": 3 })),
+        );
+        let out = evaluate(&rule(), &hint, &cands, &model, &mut 1).expect("evaluate");
+        // Only the over-cap level-2 section fires; the over-cap H3 is out of scope.
+        assert_eq!(out.len(), 1);
+        assert!(out[0].title.contains("'Big'"), "{}", out[0].title);
+    }
+
+    #[test]
+    fn brief_scopes_isolated() {
+        let mut model = empty_model();
+        model.briefs = vec![
+            brief("adapters/targets/demo/briefs/build.md", BriefScope::Parent, 5),
+            brief("adapters/targets/demo/briefs/build/phase.md", BriefScope::Phase, 2),
+        ];
+        let parent = hint_with_config(
+            HintKind::Cardinality,
+            "brief-parent-body-line-count",
+            Some(json!({ "max": 3 })),
+        );
+        let out = evaluate(&rule(), &parent, &[], &model, &mut 1).expect("evaluate");
+        assert_eq!(flagged_paths(&out), vec!["adapters/targets/demo/briefs/build.md"]);
+
+        // A phase cap the phase brief clears but the parent would exceed:
+        // scope isolation keeps the parent silent under the phase metric.
+        let phase = hint_with_config(
+            HintKind::Cardinality,
+            "brief-phase-body-line-count",
+            Some(json!({ "max": 1 })),
+        );
+        let out = evaluate(&rule(), &phase, &[], &model, &mut 1).expect("evaluate");
+        assert_eq!(flagged_paths(&out), vec!["adapters/targets/demo/briefs/build/phase.md"]);
+    }
+
+    #[test]
+    fn missing_config_is_unsupported() {
+        let model = empty_model();
+        let hint = hint(HintKind::Cardinality, "markdown-h2-section-body-line-count");
+        evaluate(&rule(), &hint, &[], &model, &mut 1).unwrap_err();
+    }
+
+    #[test]
+    fn unknown_metric_is_unsupported() {
+        let model = empty_model();
+        let hint =
+            hint_with_config(HintKind::Cardinality, "no-such-metric", Some(json!({ "max": 1 })));
+        evaluate(&rule(), &hint, &[], &model, &mut 1).unwrap_err();
+    }
 }

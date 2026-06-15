@@ -37,7 +37,6 @@ use crate::name::{PlanName, SliceName};
     serde::Serialize,
     serde::Deserialize,
     strum::Display,
-    clap::ValueEnum,
 )]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
@@ -76,7 +75,6 @@ pub enum Status {
     serde::Serialize,
     serde::Deserialize,
     strum::Display,
-    clap::ValueEnum,
 )]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
@@ -312,7 +310,7 @@ impl TargetRef {
     pub fn parse(input: &str) -> Result<Self, TargetRefParseError> {
         let (name, version_part) =
             input.split_once("@v").ok_or_else(|| TargetRefParseError::new(input))?;
-        if !is_kebab_target_name(name) {
+        if !specify_error::is_kebab_leading_alpha(name) {
             return Err(TargetRefParseError::new(input));
         }
         if version_part.is_empty() || !version_part.bytes().all(|b| b.is_ascii_digit()) {
@@ -324,25 +322,6 @@ impl TargetRef {
             version,
         })
     }
-}
-
-fn is_kebab_target_name(name: &str) -> bool {
-    let mut bytes = name.bytes();
-    let Some(first) = bytes.next() else {
-        return false;
-    };
-    if !first.is_ascii_lowercase() {
-        return false;
-    }
-    let mut prev_hyphen = false;
-    for b in bytes {
-        match b {
-            b'a'..=b'z' | b'0'..=b'9' => prev_hyphen = false,
-            b'-' if !prev_hyphen => prev_hyphen = true,
-            _ => return false,
-        }
-    }
-    !prev_hyphen
 }
 
 impl fmt::Display for TargetRef {

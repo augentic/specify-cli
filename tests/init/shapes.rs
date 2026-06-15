@@ -48,10 +48,10 @@ fn greenfield() {
     assert_eq!(body["specify-version"], BINARY_VERSION);
     assert_eq!(body["specify-version-changed"], true);
 
-    // Fresh init scaffolds the canonical `.specify/` skeleton.
-    for dir in
-        [".specify", ".specify/slices", ".specify/specs", ".specify/archive", ".specify/cache"]
-    {
+    // Fresh init scaffolds the canonical `.specify/` skeleton. The cache
+    // is regenerable, machine-owned state and lives out-of-tree, so it is
+    // no longer part of the in-tree skeleton.
+    for dir in [".specify", ".specify/slices", ".specify/specs", ".specify/archive"] {
         assert!(tmp.path().join(dir).is_dir(), "greenfield must scaffold {dir}");
     }
 

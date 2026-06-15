@@ -1,5 +1,5 @@
-//! Integration tests for the RFC-29c §"Drift validation" gate in
-//! `specify slice validate` (C9) — the seven typed-model findings over
+//! Integration tests for the drift-validation gate in
+//! `specify slice validate` — the seven typed-model findings over
 //! `<slice>/model.yaml`.
 //!
 //! Each test crafts a slice that trips exactly one finding and asserts

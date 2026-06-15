@@ -10,8 +10,8 @@
 //! rationale.
 //!
 //! Resolution is path-agnostic: each axis-specific loader probes
-//! `<project_dir>/.specify/cache/manifests/{sources,targets}/<name>/`
-//! first (the agent-populated manifest cache) and then
+//! `<project-cache>/manifests/{sources,targets}/<name>/`
+//! first (the agent-populated out-of-tree manifest cache) and then
 //! `<project_dir>/adapters/{sources,targets}/<name>/` (in-repo). The
 //! manifest cache mirrors the in-repo adapter tree so source and
 //! target adapters with colliding names disambiguate by axis. See
@@ -33,8 +33,8 @@ mod validate_manifest;
 
 pub use core::{
     ADAPTER_FILENAME, ADAPTERS_DIR, AdapterLocation, Axis, BuildInputDeclaration, Execution,
-    PlatformsCapability, ResolvedTargetAdapter, SourceAdapter, TargetAdapter, adapter_axis_dir,
-    cache_axis_dir, cache_dir, scratch_dir,
+    PlatformsCapability, PlatformsViolation, ResolvedTargetAdapter, SourceAdapter, TargetAdapter,
+    adapter_axis_dir, cache_axis_dir, cache_dir, scratch_dir,
 };
 
 pub use operation::{SourceOperation, TargetOperation};

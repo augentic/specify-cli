@@ -43,10 +43,12 @@ Each crate keeps its cross-binary helpers under `tests/<helper>/mod.rs` (the
 sole `mod.rs` exception blessed in
 [`docs/standards/coding-standards.md`](../docs/standards/coding-standards.md#module-layout)):
 
-- `specify` (root): `tests/common/mod.rs` — `copy_dir`, `snapshot_tree`, `assert_golden_at`, `Project`, `GIT_ENV`, tempdir-path substitution.
-- `specify-workflow`: `crates/workflow/tests/common/mod.rs` — `copy_dir`, `MockCmd`.
-- `specify-standards`: `crates/standards/tests/common/mod.rs` — `copy_dir`; `crates/standards/tests/eval_support/mod.rs` — `make_rule` / `hint` / `hint_with_config` / `NoToolRunner` rule-and-hint scaffolding.
+- `specify` (root): `tests/common/mod.rs` — `snapshot_tree`, `assert_golden_at`, `Project`, tempdir-path substitution.
+- `specify-workflow`: `crates/workflow/tests/common/mod.rs` — `MockCmd`.
+- `specify-standards`: `crates/standards/tests/common/mod.rs`; `crates/standards/tests/eval_support/mod.rs` — `make_rule` / `hint` / `NoToolRunner` rule-and-hint scaffolding (the in-memory evaluator testkit lives at `crates/standards/src/lint/eval/testkit.rs`).
 
-`copy_dir` is single-sourced once per crate (it cannot be shared across crate
-boundaries, since each crate's `tests/` is its own compilation unit). Reach for
-the existing helper rather than reintroducing a per-binary `copy_dir_recursive`.
+The `GIT_ENV` / `run_git` / `copy_dir` trio is single-sourced at
+`tests/common/fs_git.rs` and pulled into each crate's `tests/common/mod.rs`
+via a `#[path]` module declaration (each crate's `tests/` is its own
+compilation unit, so the file is included rather than imported). Reach for the
+shared helper rather than reintroducing a per-binary `copy_dir_recursive`.

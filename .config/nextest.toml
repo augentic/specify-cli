@@ -1,0 +1,24 @@
+# Nextest behavior for the workspace.
+
+[profile.default]
+# Flag hangs instead of letting a test sit forever. The period is
+# generous because a cold-cache WASI component compile is legitimate
+# work; four periods without progress terminates the test.
+slow-timeout = { period = "60s", terminate-after = 4 }
+# Tests are deterministic; a flake is a bug, never retry it away.
+retries = 0
+
+# Serialize the integration tests that JIT-compile the vectis WASI
+# component. The wasmtime disk cache only dedupes *completed* compiles,
+# so running these concurrently would make every first-wave test pay
+# the full Cranelift compile instead of exactly one.
+[test-groups]
+wasm-compile = { max-threads = 1 }
+
+[[profile.default.overrides]]
+filter = 'binary(catalog_infer) or (binary(plan) and test(end_to_end)) or (binary(tool) and test(schema_vectis))'
+test-group = 'wasm-compile'
+
+[profile.ci]
+failure-output = "immediate-final"
+fail-fast = false

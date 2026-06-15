@@ -18,7 +18,7 @@
 //! - `verify` — declared-vs-present platform shell verification
 //!   (detect mode for plan-time, verify mode for build/lint).
 //! - `infer` — deterministic component-identity clustering over the
-//!   composition baseline (name-free cluster report; RFC-40 §B2).
+//!   composition baseline (name-free cluster report).
 //! - `materialize` — canonical-to-export asset conversion (`assets`
 //!   target; RFC-46 Phase 2).
 //! - `scaffold` — render-only Crux project scaffolds (core / iOS /

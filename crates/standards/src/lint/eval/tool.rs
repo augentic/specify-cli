@@ -48,8 +48,9 @@ use crate::rules::{ResolvedRule, RuleHint};
 
 const STDERR_MAX_BYTES: usize = 8 * 1024;
 
-/// Trait the umbrella plumbs into [`super::evaluate`] so the WASI
-/// runtime stays out of the standards crate's dep graph.
+/// Trait the umbrella plumbs through [`super::EvalEnv`] into rule
+/// evaluation (see [`super::evaluate_rules`]) so the WASI runtime stays
+/// out of the standards crate's dep graph.
 ///
 /// `specify lint` (S9) supplies a `wasmtime`-backed implementation;
 /// integration tests in this crate supply a fake.
@@ -70,6 +71,64 @@ pub trait ToolRunner {
     /// `tools.yaml` (or an adapter-declared tool the project has
     /// granted `review` capability).
     fn is_declared(&self, tool_name: &str) -> bool;
+    /// Invoke the named tool and return its findings as typed
+    /// [`Diagnostic`] values.
+    ///
+    /// The default implementation runs [`Self::run`] and parses the
+    /// `DiagnosticReport` envelope (or single-`Diagnostic` body) off
+    /// stdout — the wire contract WASI tools print. In-process
+    /// runners override this to hand back typed findings directly and
+    /// skip the JSON serialise→reparse round-trip.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ToolRunError`] under the same conditions as
+    /// [`Self::run`].
+    fn run_diagnostics(
+        &self, tool_name: &str, args: &[String], project_dir: &Path,
+    ) -> Result<ToolDiagnostics, ToolRunError> {
+        let output = self.run(tool_name, args, project_dir)?;
+        Ok(ToolDiagnostics {
+            findings: parse_tool_findings(&output),
+            stderr: output.stderr,
+            exit_code: output.exit_code,
+        })
+    }
+}
+
+/// A [`ToolRunner`] that declares no WASI tools.
+///
+/// The framework surface uses it because every framework `kind: tool`
+/// rule resolves to an in-process `framework_tools` checker before the
+/// runner is consulted; the trait is required only by the project-side
+/// WASI path.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct NoopToolRunner;
+
+impl ToolRunner for NoopToolRunner {
+    fn run(
+        &self, tool_name: &str, _args: &[String], _project_dir: &Path,
+    ) -> Result<ToolOutput, ToolRunError> {
+        Err(ToolRunError::Runtime(format!("tool {tool_name} is not a declared WASI tool")))
+    }
+
+    fn is_declared(&self, _tool_name: &str) -> bool {
+        false
+    }
+}
+
+/// Typed result of one [`ToolRunner::run_diagnostics`] invocation:
+/// the parsed findings plus the stderr / exit-code pair the evaluator
+/// needs to synthesise `tool.invocation-failed`.
+#[derive(Debug, Clone)]
+pub struct ToolDiagnostics {
+    /// Findings the tool reported (empty when the tool found nothing
+    /// or its output did not parse).
+    pub findings: Vec<Diagnostic>,
+    /// Verbatim stderr bytes.
+    pub stderr: Vec<u8>,
+    /// Process exit code (0 on success).
+    pub exit_code: i32,
 }
 
 /// Captured stdout / stderr / exit code from one tool invocation.
@@ -96,6 +155,12 @@ pub(crate) fn evaluate(
     rule: &ResolvedRule, hint: &RuleHint, candidates: &[PathBuf], project_dir: &Path,
     runner: &dyn ToolRunner, next_id: &mut u64,
 ) -> Result<Vec<Diagnostic>, HintError> {
+    // First-party framework checkers resolve in-process: no
+    // `ToolRunner` hop, no JSON round-trip. The trait survives for the
+    // genuine project-side WASI path only.
+    if crate::lint::framework_tools::is_framework_checker(&hint.value) {
+        return Ok(evaluate_in_process(hint, candidates, project_dir, next_id));
+    }
     if !runner.is_declared(&hint.value) {
         let finding = build_undeclared(rule, hint, *next_id);
         *next_id += 1;
@@ -104,27 +169,50 @@ pub(crate) fn evaluate(
     let mut out: Vec<Diagnostic> = Vec::new();
     for candidate in candidates {
         let args = tool_args(candidate, hint);
-        let output = runner.run(&hint.value, &args, project_dir).map_err(|err| {
+        let result = runner.run_diagnostics(&hint.value, &args, project_dir).map_err(|err| {
             HintError::ToolInvocation {
                 rule_id: rule.rule_id.clone(),
                 tool: hint.value.clone(),
                 detail: err.to_string(),
             }
         })?;
-        let parsed = parse_tool_findings(&output);
-        if parsed.is_empty() && output.exit_code != 0 {
-            let finding = build_invocation_failed(rule, hint, *next_id, candidate, &output.stderr);
+        if result.findings.is_empty() && result.exit_code != 0 {
+            let finding = build_invocation_failed(rule, hint, *next_id, candidate, &result.stderr);
             *next_id += 1;
             out.push(finding);
             continue;
         }
-        for mut finding in parsed {
+        for mut finding in result.findings {
             restamp_finding(&mut finding, *next_id);
             *next_id += 1;
             out.push(finding);
         }
     }
     Ok(out)
+}
+
+/// Run an in-process framework checker once per candidate, folding its
+/// typed findings with `id` / `fingerprint` re-stamped monotonically
+/// from `next_id` — the same fold the WASI path applies, minus the
+/// runner hop and JSON round-trip.
+fn evaluate_in_process(
+    hint: &RuleHint, candidates: &[PathBuf], project_dir: &Path, next_id: &mut u64,
+) -> Vec<Diagnostic> {
+    let mut out: Vec<Diagnostic> = Vec::new();
+    for candidate in candidates {
+        let args = tool_args(candidate, hint);
+        let Some(findings) =
+            crate::lint::framework_tools::run_checker(&hint.value, project_dir, &args)
+        else {
+            continue;
+        };
+        for mut finding in findings {
+            restamp_finding(&mut finding, *next_id);
+            *next_id += 1;
+            out.push(finding);
+        }
+    }
+    out
 }
 
 /// Build the positional args for one tool invocation: the candidate's
@@ -214,4 +302,155 @@ fn clip_stderr(stderr: &[u8]) -> String {
     let mut out = String::from_utf8_lossy(&stderr[..STDERR_MAX_BYTES]).into_owned();
     out.push_str("…[truncated]");
     out
+}
+
+#[cfg(test)]
+mod unit {
+    use std::sync::Mutex;
+
+    use serde_json::json;
+
+    use super::*;
+    use crate::lint::eval::testkit::{candidates, hint, hint_with_config, rule};
+    use crate::rules::HintKind;
+
+    /// Canned-output runner that records the args of every invocation.
+    struct FakeRunner {
+        declared: bool,
+        stdout: Vec<u8>,
+        stderr: Vec<u8>,
+        exit_code: i32,
+        calls: Mutex<Vec<Vec<String>>>,
+    }
+
+    impl FakeRunner {
+        fn new(stdout: &str, exit_code: i32) -> Self {
+            Self {
+                declared: true,
+                stdout: stdout.as_bytes().to_vec(),
+                stderr: vec![],
+                exit_code,
+                calls: Mutex::new(vec![]),
+            }
+        }
+    }
+
+    impl ToolRunner for FakeRunner {
+        fn run(
+            &self, _tool_name: &str, args: &[String], _project_dir: &Path,
+        ) -> Result<ToolOutput, ToolRunError> {
+            self.calls.lock().expect("calls lock").push(args.to_vec());
+            Ok(ToolOutput {
+                stdout: self.stdout.clone(),
+                stderr: self.stderr.clone(),
+                exit_code: self.exit_code,
+            })
+        }
+
+        fn is_declared(&self, _tool_name: &str) -> bool {
+            self.declared
+        }
+    }
+
+    struct FailingRunner;
+
+    impl ToolRunner for FailingRunner {
+        fn run(
+            &self, _tool_name: &str, _args: &[String], _project_dir: &Path,
+        ) -> Result<ToolOutput, ToolRunError> {
+            Err(ToolRunError::Runtime("host refused".to_string()))
+        }
+
+        fn is_declared(&self, _tool_name: &str) -> bool {
+            true
+        }
+    }
+
+    fn single_finding_json() -> String {
+        serde_json::to_string(&json!({
+            "id": "FIND-9999",
+            "rule-id": "demo.rule",
+            "source": "tool",
+            "kind": "violation",
+            "severity": "important",
+            "title": "demo finding",
+            "evidence": { "type": "snippet", "value": "x" },
+            "fingerprint": "0".repeat(64),
+        }))
+        .expect("finding json")
+    }
+
+    #[test]
+    fn undeclared_tool_emits_single_finding() {
+        let runner = FakeRunner {
+            declared: false,
+            ..FakeRunner::new("", 0)
+        };
+        let hint = hint(HintKind::Tool, "ghost");
+        let out =
+            evaluate(&rule(), &hint, &candidates(&["a.md"]), Path::new("/tmp"), &runner, &mut 1)
+                .expect("evaluate");
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].rule_id.as_deref(), Some("tool.undeclared"));
+        assert!(runner.calls.lock().expect("calls lock").is_empty(), "undeclared tools never run");
+    }
+
+    #[test]
+    fn findings_folded_and_restamped() {
+        let runner = FakeRunner::new(&single_finding_json(), 1);
+        let hint = hint(HintKind::Tool, "demo");
+        let out = evaluate(
+            &rule(),
+            &hint,
+            &candidates(&["a.md", "b.md"]),
+            Path::new("/tmp"),
+            &runner,
+            &mut 7,
+        )
+        .expect("evaluate");
+        assert_eq!(out.len(), 2);
+        // Ids are re-stamped monotonically from the seed, not taken
+        // from the tool's wire payload.
+        assert_eq!(out[0].id, "FIND-0007");
+        assert_eq!(out[1].id, "FIND-0008");
+    }
+
+    #[test]
+    fn nonzero_exit_without_findings_is_invocation_failed() {
+        let runner = FakeRunner {
+            stderr: b"boom".to_vec(),
+            ..FakeRunner::new("", 3)
+        };
+        let hint = hint(HintKind::Tool, "demo");
+        let out =
+            evaluate(&rule(), &hint, &candidates(&["a.md"]), Path::new("/tmp"), &runner, &mut 1)
+                .expect("evaluate");
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].rule_id.as_deref(), Some("tool.invocation-failed"));
+    }
+
+    #[test]
+    fn runtime_failure_propagates() {
+        let hint = hint(HintKind::Tool, "demo");
+        let result = evaluate(
+            &rule(),
+            &hint,
+            &candidates(&["a.md"]),
+            Path::new("/tmp"),
+            &FailingRunner,
+            &mut 1,
+        );
+        assert!(matches!(result, Err(HintError::ToolInvocation { .. })));
+    }
+
+    #[test]
+    fn config_forwarded_as_second_arg() {
+        let runner = FakeRunner::new("", 0);
+        let hint = hint_with_config(HintKind::Tool, "demo", Some(json!({ "max": 3 })));
+        evaluate(&rule(), &hint, &candidates(&["a.md"]), Path::new("/tmp"), &runner, &mut 1)
+            .expect("evaluate");
+        let calls = runner.calls.lock().expect("calls lock").clone();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0], vec!["a.md".to_string(), r#"{"max":3}"#.to_string()]);
+    }
 }

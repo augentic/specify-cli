@@ -272,3 +272,129 @@ fn mint(rule: &ResolvedRule, path: &str, summary: &str, next_id: &mut u64) -> Di
     *next_id += 1;
     finding
 }
+
+#[cfg(test)]
+mod unit {
+    use serde_json::json;
+
+    use super::*;
+    use crate::lint::eval::testkit::{
+        candidates, empty_model, hint, hint_with_config, model_with_paths, rule,
+    };
+    use crate::lint::{Frontmatter, MarkdownSection, Skill};
+
+    fn frontmatter(path: &str, fields: serde_json::Map<String, serde_json::Value>) -> Frontmatter {
+        Frontmatter {
+            path: path.to_string(),
+            schema_id: None,
+            fields,
+        }
+    }
+
+    #[test]
+    fn missing_or_empty_frontmatter_flagged() {
+        let mut model = empty_model();
+        let mut fields = serde_json::Map::new();
+        fields.insert("name".to_string(), json!("x"));
+        model.frontmatter = vec![
+            frontmatter("docs/full.md", fields),
+            frontmatter("docs/empty.md", serde_json::Map::new()),
+        ];
+        let cands = candidates(&["docs/full.md", "docs/empty.md", "docs/none.md"]);
+        let hint = hint(HintKind::Presence, "frontmatter");
+        let out = evaluate(&rule(), &hint, &cands, &model, &mut 1).expect("evaluate");
+        let paths: Vec<&str> =
+            out.iter().filter_map(|f| f.location.as_ref().map(|l| l.path.as_str())).collect();
+        assert_eq!(paths, vec!["docs/empty.md", "docs/none.md"]);
+    }
+
+    #[test]
+    fn required_file_absence_flagged() {
+        let model = model_with_paths(&["README.md"]);
+        let cfg = json!({ "path": "AGENTS.md" });
+        let hint = hint_with_config(HintKind::Presence, "file", Some(cfg.clone()));
+        let out = evaluate(&rule(), &hint, &[], &model, &mut 1).expect("evaluate");
+        assert_eq!(out.len(), 1);
+        assert!(out[0].title.contains("'AGENTS.md'"), "{}", out[0].title);
+
+        let model = model_with_paths(&["AGENTS.md"]);
+        let hint = hint_with_config(HintKind::Presence, "file", Some(cfg));
+        let out = evaluate(&rule(), &hint, &[], &model, &mut 1).expect("evaluate");
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn section_required_above_metric_threshold() {
+        let mut model = empty_model();
+        let big = "plugins/p/skills/big/SKILL.md";
+        let small = "plugins/p/skills/small/SKILL.md";
+        model.skills = vec![
+            Skill {
+                name: "big".to_string(),
+                path: big.to_string(),
+                plugin: "p".to_string(),
+                frontmatter_ref: big.to_string(),
+                body_line_count: Some(100),
+            },
+            Skill {
+                name: "small".to_string(),
+                path: small.to_string(),
+                plugin: "p".to_string(),
+                frontmatter_ref: small.to_string(),
+                body_line_count: Some(5),
+            },
+        ];
+        model.markdown_sections = vec![MarkdownSection {
+            path: small.to_string(),
+            level: 2,
+            title: "Critical Path".to_string(),
+            line_start: 3,
+            line_end: 9,
+            body_line_count: 6,
+        }];
+        let cfg = json!({
+            "title": "Critical Path",
+            "level": 2,
+            "when": { "metric": "skill-body-line-count", "min": 50 },
+        });
+        let hint = hint_with_config(HintKind::Presence, "markdown-section", Some(cfg));
+        let out = evaluate(&rule(), &hint, &[], &model, &mut 1).expect("evaluate");
+        // Only the big skill crosses the threshold, and it lacks the section.
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].location.as_ref().map(|l| l.path.as_str()), Some(big));
+    }
+
+    #[test]
+    fn directory_missing_index_flagged() {
+        let model = model_with_paths(&[
+            "refs/corpus/a.md",
+            "refs/corpus/b.md",
+            "refs/indexed/INDEX.md",
+            "refs/indexed/a.md",
+        ]);
+        let cfg = json!({ "roots": ["refs/*"], "index": "INDEX.md", "min-files": 2 });
+        let hint = hint_with_config(HintKind::Presence, "directory-index", Some(cfg));
+        let out = evaluate(&rule(), &hint, &[], &model, &mut 1).expect("evaluate");
+        assert_eq!(out.len(), 1);
+        assert!(out[0].title.contains("'refs/corpus'"), "{}", out[0].title);
+    }
+
+    #[test]
+    fn unsupported_metric_rejected() {
+        let model = empty_model();
+        let cfg = json!({
+            "title": "T",
+            "level": 2,
+            "when": { "metric": "no-such-metric", "min": 1 },
+        });
+        let hint = hint_with_config(HintKind::Presence, "markdown-section", Some(cfg));
+        evaluate(&rule(), &hint, &[], &model, &mut 1).unwrap_err();
+    }
+
+    #[test]
+    fn unknown_selector_is_unsupported() {
+        let model = empty_model();
+        let hint = hint(HintKind::Presence, "no-such-selector");
+        evaluate(&rule(), &hint, &[], &model, &mut 1).unwrap_err();
+    }
+}

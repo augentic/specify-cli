@@ -1,11 +1,7 @@
 use std::io::Write;
 
-use jiff::Timestamp;
 use serde::Serialize;
-use specify_diagnostics::{
-    Diagnostic, DiagnosticReport, DiagnosticReportVersion, DiagnosticSummary, Severity, blocking,
-    blocking_present, renumber,
-};
+use specify_diagnostics::{Diagnostic, Severity, blocking, blocking_present};
 use specify_error::{Error, Result};
 use specify_workflow::change::{
     Lifecycle, NextActionKind, NextBody, NextReason, Plan, Status, StatusBody, drained_line,
@@ -34,7 +30,7 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
         results.push(plan_finding("registry-shape", Severity::Important, err.to_string(), None));
     }
     if let Some(reg) = &registry {
-        let workspace_base = ctx.layout().specify_dir().join("workspace");
+        let workspace_base = ctx.project_dir.join("workspace");
         results.extend(specify_workflow::registry::cache_staleness(
             reg,
             &workspace_base,
@@ -60,7 +56,7 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
 /// return it. The only writer of per-entry `in-progress` per
 /// workflow §CLI surface.
 pub(super) fn next(ctx: &Ctx) -> Result<()> {
-    // RFC-44 R2: refuse an unlocked driver before touching plan state.
+    // Plan-lock gate: refuse an unlocked driver before touching plan state.
     // A missing plan.yaml falls through to the artifact-not-found error
     // below — the lock refusal only makes sense once a plan exists.
     if ctx.layout().plan_path().exists() {
@@ -88,7 +84,7 @@ pub(super) fn next(ctx: &Ctx) -> Result<()> {
     // advance event behind.
     if let Some(advanced) = &body.next {
         let event = specify_workflow::journal::Event::new(
-            Timestamp::now(),
+            ctx.now(),
             specify_workflow::journal::EventKind::PlanEntryAdvanced {
                 plan_name,
                 slice_name: advanced.clone().into(),
@@ -159,7 +155,7 @@ pub(super) fn transition(
     match (body.kind, body.changed) {
         (TransitionKind::Plan, true) => {
             let event = specify_workflow::journal::Event::new(
-                Timestamp::now(),
+                ctx.now(),
                 specify_workflow::journal::EventKind::PlanTransitionApproved {
                     plan_name: body.name.clone().into(),
                     actor,
@@ -173,7 +169,7 @@ pub(super) fn transition(
                 detail: "undo body must carry the status pair".to_string(),
             })?;
             let event = specify_workflow::journal::Event::new(
-                Timestamp::now(),
+                ctx.now(),
                 specify_workflow::journal::EventKind::PlanTransitionUndone {
                     plan_name: body.plan.name.clone().into(),
                     slice_name: body.name.clone().into(),
@@ -202,7 +198,7 @@ fn dispatch_undo(
                 .to_string(),
         });
     }
-    // RFC-44 R2: per-entry status walks are loop-phase plan-state
+    // Per-entry status walks are loop-phase plan-state
     // writes — refuse an unlocked driver.
     specify_workflow::plan_lock::require_held(layout)?;
     let (from, to) = plan.transition_undo(name)?;
@@ -266,7 +262,7 @@ fn dispatch_transition(
     // `blocked`/`failed`/`skipped` are not v1 states.
     match target {
         "done" => {
-            // RFC-44 R2: the per-entry close is a loop-phase plan-state
+            // The per-entry close is a loop-phase plan-state
             // write — refuse an unlocked driver. The plan-level Gate 1
             // stamp above is exempt (it precedes any driver session);
             // invalid targets fail on the argument before the probe.
@@ -343,7 +339,7 @@ pub(super) fn archive(ctx: &Ctx, force: bool) -> Result<()> {
     let plan_name = Plan::load(&plan_path)?.name.into_string();
 
     let (archived, archived_plans_dir) =
-        Plan::archive(&plan_path, &brief_path, &archive_dir, force, Timestamp::now())?;
+        Plan::archive(&plan_path, &brief_path, &archive_dir, force, ctx.now())?;
     ctx.write(
         &ArchiveBody {
             archived: archived.display().to_string(),
@@ -355,30 +351,16 @@ pub(super) fn archive(ctx: &Ctx, force: bool) -> Result<()> {
     Ok(())
 }
 
-/// Render the plan-validate findings as a neutral [`DiagnosticReport`]
-/// on stdout in the active `Ctx` format. JSON serialises the wire
-/// envelope (`{ version, summary, findings }`); text renders a
-/// PASS/FAIL banner plus one `ERROR`/`WARNING` row per finding. Ids are
-/// assigned sequentially at render time.
-fn render_validate_report(ctx: &Ctx, mut results: Vec<Diagnostic>) -> Result<()> {
-    renumber(&mut results);
-    let blocking = blocking_present(&results);
-    let report = DiagnosticReport {
-        version: DiagnosticReportVersion,
-        summary: DiagnosticSummary::from_diagnostics(&results),
-        findings: results,
-    };
-    ctx.write(&report, move |w, report| {
-        if report.findings.is_empty() {
-            return writeln!(w, "Plan OK");
-        }
-        writeln!(w, "{}", if blocking { "FAIL" } else { "PASS" })?;
-        for finding in &report.findings {
-            write_validate_row_text(w, finding)?;
-        }
-        Ok(())
-    })?;
-    Ok(())
+/// Render the plan-validate findings through the shared
+/// diagnostic-report kernel with the `ERROR`/`WARNING` row format; a
+/// finding-free report renders `Plan OK` instead of the banner.
+fn render_validate_report(ctx: &Ctx, results: Vec<Diagnostic>) -> Result<()> {
+    crate::runtime::commands::render_diagnostic_report(
+        ctx,
+        results,
+        Some("Plan OK"),
+        write_validate_row_text,
+    )
 }
 
 fn write_validate_row_text(w: &mut dyn Write, finding: &Diagnostic) -> std::io::Result<()> {

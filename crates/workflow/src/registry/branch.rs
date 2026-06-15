@@ -147,23 +147,17 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<std::ffi::OsStr>,
 {
-    let output = crate::cmd::git(&crate::cmd::real_cmd, Some(cwd), args).map_err(|err| {
-        Diagnostic::new(
-            "git-command-failed",
-            project,
-            branch,
-            format!("{label}: failed to spawn git: {err}"),
-        )
-    })?;
-    if output.status.success() {
-        return Ok(());
-    }
-    Err(Diagnostic::new(
-        "git-command-failed",
-        project,
-        branch,
-        format!("{label} failed: {}", String::from_utf8_lossy(&output.stderr).trim()),
-    ))
+    crate::cmd::git_checked(&crate::cmd::real_cmd, Some(cwd), args).map(|_output| ()).map_err(
+        |failure| {
+            let detail = match failure {
+                crate::cmd::GitFailure::Spawn(err) => {
+                    format!("{label}: failed to spawn git: {err}")
+                }
+                crate::cmd::GitFailure::Exit { stderr } => format!("{label} failed: {stderr}"),
+            };
+            Diagnostic::new("git-command-failed", project, branch, detail)
+        },
+    )
 }
 
 fn git_output<I, S>(
@@ -173,26 +167,24 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<std::ffi::OsStr>,
 {
-    let output = crate::cmd::git(&crate::cmd::real_cmd, Some(cwd), args).map_err(|err| {
-        Diagnostic::new(
+    let output =
+        crate::cmd::git_checked(&crate::cmd::real_cmd, Some(cwd), args).map_err(|failure| {
+            let detail = match failure {
+                crate::cmd::GitFailure::Spawn(err) => format!("failed to spawn git: {err}"),
+                crate::cmd::GitFailure::Exit { stderr } => stderr,
+            };
+            Diagnostic::new("git-command-failed", project, branch, detail)
+        })?;
+    let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if text.is_empty() {
+        return Err(Diagnostic::new(
             "git-command-failed",
             project,
             branch,
-            format!("failed to spawn git: {err}"),
-        )
-    })?;
-    if output.status.success() {
-        let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if !text.is_empty() {
-            return Ok(text);
-        }
+            "git returned no output".to_string(),
+        ));
     }
-    Err(Diagnostic::new(
-        "git-command-failed",
-        project,
-        branch,
-        String::from_utf8_lossy(&output.stderr).trim().to_string(),
-    ))
+    Ok(text)
 }
 
 fn git_output_optional<I, S>(cwd: &Path, args: I) -> Option<String>

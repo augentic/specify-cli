@@ -199,7 +199,7 @@ fn split_ref_suffix(adapter: &str) -> (&str, Option<&str>) {
     (adapter, None)
 }
 
-pub fn ensure_adapter_dir(path: &Path, original: &str) -> Result<(), Error> {
+fn ensure_adapter_dir(path: &Path, original: &str) -> Result<(), Error> {
     if path.join(crate::adapter::ADAPTER_FILENAME).is_file() {
         return Ok(());
     }

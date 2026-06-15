@@ -1,5 +1,4 @@
-//! Post-merge coherence checks — port of Python `validate_baseline`
-//! (archived Python reference, `validate_baseline` lines 298–352).
+//! Post-merge coherence checks over a merged baseline spec.
 
 use std::collections::HashSet;
 use std::sync::OnceLock;
@@ -32,24 +31,20 @@ const RULE_ID_MATCHES_PATTERN_DESC: &str = "requirement IDs match the canonical 
 const RULE_REQ_HAS_SCENARIO: &str = "merge.requirement-has-scenario";
 const RULE_REQ_HAS_SCENARIO_DESC: &str = "every requirement declares at least one scenario";
 
-const RULE_DESIGN_REFS_EXIST: &str = "merge.design-references-exist";
-const RULE_DESIGN_REFS_EXIST_DESC: &str =
-    "requirement IDs referenced by design.md exist in the baseline";
-
 /// Post-merge coherence validation.
 ///
 /// Returns one [`Diagnostic`] `violation` per breach (always
 /// deterministic, `important`); an empty vec means the baseline passes
-/// every coherence rule. The `design` argument enables the
-/// orphan-reference rule (`merge.design-references-exist`) — see the
-/// inline parity quirk below.
+/// every coherence rule. Design-reference checking is not part of this
+/// pass — the `cross.design-references-valid` rule in
+/// `specify-model`'s `validate` registry owns it.
 ///
 /// # Panics
 ///
 /// Panics if `REQ_ID_PATTERN` is not a valid regex (compile-time
 /// constant — should never happen).
 #[must_use]
-pub fn validate_baseline(baseline: &str, design: Option<&str>) -> Vec<Diagnostic> {
+pub fn validate_baseline(baseline: &str) -> Vec<Diagnostic> {
     let parsed = parse_baseline(baseline);
     let blocks = parsed.requirements;
     let mut results: Vec<Diagnostic> = Vec::new();
@@ -85,9 +80,8 @@ pub fn validate_baseline(baseline: &str, design: Option<&str>) -> Vec<Diagnostic
 
     // (c) Heading structure — ID present, ID matches pattern, scenario present.
     let id_pattern = req_id_re();
-    // The scenario check in Python strips the trailing colon so the
-    // substring match still fires when body text contains `"#### Scenario"`
-    // without a colon; preserve that.
+    // The scenario check strips the trailing colon so the substring match
+    // still fires when body text contains `"#### Scenario"` without one.
     let scenario_needle = SCENARIO_HEADING.trim_end_matches(':');
     for block in &blocks {
         if block.id.is_empty() {
@@ -115,29 +109,6 @@ pub fn validate_baseline(baseline: &str, design: Option<&str>) -> Vec<Diagnostic
                     block.name, block.id, SCENARIO_HEADING
                 ),
             ));
-        }
-    }
-
-    // (d) Orphan design references.
-    if let Some(design_text) = design {
-        // Parity quirk: Python's regex is anchored with ^...$ but lacks
-        // re.MULTILINE, so finditer() on a multi-line design string never
-        // matches. The rule `cross.design-references-valid` in
-        // `specify-validate` covers this with a correct
-        // multi-line check. `REQ_ID_PATTERN` itself already
-        // contains ^ and $ — Rust's default `Regex` treats them as
-        // string boundaries (no MULTILINE flag), so we match Python
-        // byte-for-byte by feeding the constant straight to the engine.
-        let baseline_ids: HashSet<&str> = seen_ids.iter().copied().collect();
-        for m in req_id_re().find_iter(design_text) {
-            let ref_id = m.as_str();
-            if !baseline_ids.contains(ref_id) {
-                results.push(fail(
-                    RULE_DESIGN_REFS_EXIST,
-                    RULE_DESIGN_REFS_EXIST_DESC,
-                    format!("Design references {ref_id} which does not exist in baseline"),
-                ));
-            }
         }
     }
 

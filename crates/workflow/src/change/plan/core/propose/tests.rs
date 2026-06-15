@@ -29,30 +29,10 @@ fn project(name: &str, target: &str, description: &str) -> ProjectRef {
     }
 }
 
-#[test]
-fn build_request_n1_validates_as_request() {
-    let doc = discovery(
-        "## Lead inventory\n\n\
-             ### intent:fix-typo\n\n\
-             - lead: fix-typo\n\
-             - source: intent\n\
-             - synopsis: fix typo in user.rs\n",
-    );
-    let topology = vec![project("my-app", "omnia@v1", "Single Omnia service for this repository.")];
-
-    let request = build_request(&doc, &topology).expect("request builds");
-    assert_eq!(request.version, PROPOSAL_VERSION);
-    assert_eq!(request.kind, ProposalKind::Request);
-    assert_eq!(request.projects, topology);
-    assert_eq!(request.leads.len(), 1);
-    assert_eq!(request.leads[0].source, "intent");
-    assert_eq!(request.leads[0].lead, "fix-typo");
-
-    let json = serde_json::to_string(&request).expect("serialise request");
-    assert!(json.contains(r#""kind":"request""#), "kind must render as request: {json}");
-    validate_proposal_json(&json).expect("N=1 request validates against the schema");
-}
-
+// The N=1 `build_request` shape is pinned at the CLI level by
+// `tests/workflow/propose.rs::propose_dry_run_n1_request_golden`
+// (`propose-dry-run-n1-request.json`). The hub case below has no CLI
+// dry-run request golden, so it stays as the multi-project coverage.
 #[test]
 fn build_request_hub_validates_as_request() {
     let doc = discovery(
@@ -766,4 +746,89 @@ fn reconcile_multi_project_bootstraps() {
     let feat_b = plan.entries.iter().find(|e| e.name == "feat-b").unwrap();
     assert_eq!(feat_b.depends_on, vec!["app-two-bootstrap-android"]);
     assert!(!feat_b.depends_on.contains(&SliceName::new("app-one-bootstrap-ios")));
+}
+
+// --- shell presence detection (via specify-vectis-shell-detect) --------
+
+fn missing_platforms(project_dir: &Path, platforms: &[Platform]) -> Vec<Platform> {
+    let names: Vec<String> = platforms.iter().map(ToString::to_string).collect();
+    let refs: Vec<&str> = names.iter().map(String::as_str).collect();
+    specify_vectis_shell_detect::missing_shell_platforms(project_dir, &refs)
+        .into_iter()
+        .filter_map(|s| s.parse().ok())
+        .collect()
+}
+
+#[test]
+fn detect_missing_no_shells() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let platforms = vec![Platform::Core, Platform::Ios, Platform::Android];
+    let missing = missing_platforms(dir.path(), &platforms);
+    assert_eq!(missing, vec![Platform::Core, Platform::Ios, Platform::Android]);
+}
+
+#[test]
+fn detect_missing_core_present() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let shared = dir.path().join("shared/src");
+    std::fs::create_dir_all(&shared).expect("mkdir");
+    std::fs::write(shared.join("app.rs"), "fn main() {}").expect("write");
+
+    let platforms = vec![Platform::Core, Platform::Ios, Platform::Android];
+    let missing = missing_platforms(dir.path(), &platforms);
+    assert_eq!(missing, vec![Platform::Ios, Platform::Android]);
+}
+
+#[test]
+fn detect_missing_all_present() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let shared = dir.path().join("shared/src");
+    std::fs::create_dir_all(&shared).expect("mkdir");
+    std::fs::write(shared.join("app.rs"), "fn main() {}").expect("write");
+
+    let ios = dir.path().join("iOS");
+    std::fs::create_dir_all(&ios).expect("mkdir");
+    std::fs::write(ios.join("App.swift"), "import SwiftUI").expect("write");
+
+    let android = dir.path().join("Android");
+    std::fs::create_dir_all(&android).expect("mkdir");
+    std::fs::write(android.join("App.kt"), "package com.example").expect("write");
+
+    let platforms = vec![Platform::Core, Platform::Ios, Platform::Android];
+    let missing = missing_platforms(dir.path(), &platforms);
+    assert!(missing.is_empty());
+}
+
+#[test]
+fn detect_missing_skips_web_desktop() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let platforms = vec![Platform::Core, Platform::Web, Platform::Desktop];
+    let missing = missing_platforms(dir.path(), &platforms);
+    assert_eq!(missing, vec![Platform::Core]);
+}
+
+#[test]
+fn reconcile_never_bootstraps_web_desktop() {
+    // Guard: `web` / `desktop` are type-system placeholders with no
+    // shell interpretation, so the detect → reconcile pipeline must
+    // never insert a bootstrap slice for them — even when they are the
+    // only declared non-core platforms and no shell tree exists.
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::create_dir_all(dir.path().join("shared/src")).expect("mkdir");
+    std::fs::write(dir.path().join("shared/src/app.rs"), "// core present").expect("write");
+
+    let platforms = vec![Platform::Core, Platform::Web, Platform::Desktop];
+    let missing = missing_platforms(dir.path(), &platforms);
+    assert!(missing.is_empty(), "web/desktop must never be detected as missing");
+
+    let mut plan = plan_with_sources(Lifecycle::Pending, &["intent"]);
+    propose_single_slice(&mut plan);
+    let project_missing = vec![ProjectMissingPlatforms {
+        project: "my-app".to_string(),
+        missing,
+    }];
+    let names = plan.reconcile_platforms(&project_missing).expect("reconcile succeeds");
+    assert!(names.is_empty(), "no bootstrap slice may be inserted for web/desktop");
+    assert_eq!(plan.entries.len(), 1);
+    assert!(plan.entries[0].depends_on.is_empty());
 }

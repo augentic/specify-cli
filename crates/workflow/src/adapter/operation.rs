@@ -13,7 +13,6 @@
 //! `parse::<TargetOperation>()` call all agree on a single wire
 //! spelling.
 
-use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
 use strum::EnumString;
 
@@ -40,7 +39,6 @@ use strum::EnumString;
     Deserialize,
     EnumString,
     strum::Display,
-    ValueEnum,
 )]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
@@ -90,7 +88,6 @@ impl SourceOperation {
     Deserialize,
     EnumString,
     strum::Display,
-    ValueEnum,
 )]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]

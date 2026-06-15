@@ -1,4 +1,4 @@
-//! Provenance projection — `slice provenance` (RFC-29c).
+//! Provenance projection — `slice provenance`.
 
 use crate::support::*;
 

@@ -1,8 +1,8 @@
 //! Adapter cache management plus the on-disk
-//! `.specify/cache/manifests/manifest-meta.yaml` representation.
+//! `manifest-meta.yaml` representation inside the out-of-tree cache.
 //!
 //! `cache_adapter` copies a resolved source into the manifest cache at
-//! `.specify/cache/manifests/targets/<name>/` and stamps
+//! `<project-cache>/manifests/targets/<name>/` and stamps
 //! `manifest-meta.yaml` inside the `manifests/` tree (mirroring
 //! `codex/codex-meta.yaml` — each cache tenant is self-describing).
 //! The agent owns writes to the manifest cache; the CLI reads
@@ -12,7 +12,7 @@
 //! `cache_codex` distributes the shared codex packs that ship beside
 //! the target adapter in its source repo
 //! (`adapters/shared/rules/{universal,core}/`) into the project codex
-//! cache at `.specify/cache/codex/`, pinned to the same source/ref as
+//! cache at `<project-cache>/codex/`, pinned to the same source/ref as
 //! the adapter. The codex resolver's rules-root probe finds that tree
 //! without a co-located framework checkout or a manual `--rules-root`
 //! (RM-07). Provenance is stamped in [`CodexMeta`].
@@ -25,10 +25,11 @@ use serde::{Deserialize, Serialize};
 use specify_error::Error;
 
 use crate::adapter::{Axis, cache_dir as adapter_cache_dir, check_axis_unique_for_name};
+use crate::config::Layout;
 use crate::init::adapter_uri::AdapterUri;
 
 /// Provenance for the adapter manifest mirror under
-/// `.specify/cache/manifests/`. The structural twin of [`CodexMeta`]:
+/// `<project-cache>/manifests/`. The structural twin of [`CodexMeta`]:
 /// each cache tenant carries its own metadata inside its own tree.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct ManifestMeta {
@@ -40,11 +41,11 @@ pub struct ManifestMeta {
 }
 
 impl ManifestMeta {
-    /// Absolute path to
-    /// `<project_dir>/.specify/cache/manifests/manifest-meta.yaml`.
+    /// Absolute path to `manifest-meta.yaml` inside the out-of-tree
+    /// `<project-cache>/manifests/` tenant.
     #[must_use]
     pub fn path(project_dir: &Path) -> PathBuf {
-        project_dir.join(".specify").join("cache").join("manifests").join("manifest-meta.yaml")
+        Layout::new(project_dir).cache_dir().join("manifests").join("manifest-meta.yaml")
     }
 }
 
@@ -93,11 +94,11 @@ const SHARED_RUNTIME_REL: &str = "adapters/shared/references/runtime";
 const SPEC_RUNTIME_REL: &str = "references/spec-runtime";
 
 /// Absolute path to the project codex cache root,
-/// `<project_dir>/.specify/cache/codex/`. Shared/core packs land
+/// `<project-cache>/codex/` (out-of-tree). Shared/core packs land
 /// beneath it mirroring `adapters/shared/rules/{universal,core}/`.
 #[must_use]
 pub fn codex_cache_root(project_dir: &Path) -> PathBuf {
-    project_dir.join(".specify").join("cache").join("codex")
+    Layout::new(project_dir).cache_dir().join("codex")
 }
 
 /// Provenance for the distributed shared codex tree.
@@ -119,7 +120,8 @@ pub struct CodexMeta {
 }
 
 impl CodexMeta {
-    /// Absolute path to `<project_dir>/.specify/cache/codex/codex-meta.yaml`.
+    /// Absolute path to `codex-meta.yaml` inside the out-of-tree
+    /// `<project-cache>/codex/` tenant.
     #[must_use]
     pub fn path(project_dir: &Path) -> PathBuf {
         codex_cache_root(project_dir).join("codex-meta.yaml")
@@ -132,7 +134,7 @@ impl CodexMeta {
 /// The shared codex lives at a sibling path in the same source tree the
 /// target adapter resolves from. This walks up from the adapter's
 /// `source_dir` to the nearest ancestor that carries the shared
-/// `universal/` pack, replaces `.specify/cache/codex/` with a fresh
+/// `universal/` pack, replaces the out-of-tree `<project-cache>/codex/` with a fresh
 /// copy of that pack (and, when `include_framework`, the framework
 /// `core/` pack), and records provenance pinned to `source.adapter_value`.
 ///

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/augentic/specify-cli/schemas/lint/workspace-model.schema.json",
   "title": "Specify WorkspaceModel (v1)",
-  "description": "Deterministic, versioned snapshot of project facts produced by `specify lint` for the `WorkspaceModel` schema. Persistence and query reserve: `.specify/cache/workspace-model.v1.json` is reserved as the future v2 persistence location; `specify model query <selector>` is reserved as a future read-only CLI verb. v1 ships `--dump-model` only.",
+  "description": "Deterministic, versioned snapshot of project facts produced by `specify lint` for the `WorkspaceModel` schema. Persistence and query reserve: `workspace-model.v1.json` in the out-of-tree per-project cache is reserved as the future v2 persistence location; `specify model query <selector>` is reserved as a future read-only CLI verb. v1 ships `--dump-model` only.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -17,10 +17,7 @@
     "markdown_links",
     "symlinks",
     "skills",
-    "adapter_manifests",
-    "marketplace_entries",
-    "rule_index",
-    "text_matches"
+    "adapter_manifests"
   ],
   "properties": {
     "version": {
@@ -85,21 +82,6 @@
       "items": { "$ref": "#/$defs/adapterManifest" },
       "description": "`WorkspaceModel` entity: `adapter_manifest` facts from `adapters/{sources,targets}/**/adapter.yaml`."
     },
-    "marketplace_entries": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/marketplaceEntry" },
-      "description": "`WorkspaceModel` entity: `marketplace_entry` facts from `.cursor-plugin/marketplace.json`."
-    },
-    "rule_index": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/ruleIndexEntry" },
-      "description": "`WorkspaceModel` entity: `rule_index` facts from rules tree discovery (reuses the rule frontmatter parser)."
-    },
-    "text_matches": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/textMatch" },
-      "description": "`WorkspaceModel` entity: `text_match` facts from the optional precomputed regex index."
-    },
     "ignore_directives": {
       "type": "array",
       "items": { "$ref": "#/$defs/ignoreDirective" },
@@ -114,11 +96,6 @@
       "type": "array",
       "items": { "$ref": "#/$defs/brief" },
       "description": "`WorkspaceModel` entity: `brief` facts from `adapters/**/briefs/**/*.md` (parent briefs and phase sub-briefs) under the framework scan profile (§F1). Optional in v1 envelopes; absent under the project profile so the product wire shape is unchanged."
-    },
-    "agent_teams": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/agentTeam" },
-      "description": "`WorkspaceModel` entity: `agent_team` facts from followed `agent-teams.md` symlinks under the framework scan profile (§F1). Optional in v1 envelopes; absent under the project profile so the product wire shape is unchanged."
     },
     "scenarios": {
       "type": "array",
@@ -160,7 +137,7 @@
         },
         "sha256": {
           "$ref": "#/$defs/sha256Hex",
-          "description": "Optional content digest; populated when extractors need cross-file identity (e.g. `agent_teams` canonical SHA check)."
+          "description": "Optional content digest; populated when extractors need cross-file identity."
         }
       }
     },
@@ -331,30 +308,6 @@
         }
       }
     },
-    "agentTeam": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["path", "target-raw"],
-      "properties": {
-        "path": {
-          "$ref": "#/$defs/relativePath",
-          "description": "`WorkspaceModel` entity: project-relative path of the `agent-teams.md` symlink itself."
-        },
-        "target-raw": {
-          "type": "string",
-          "minLength": 1,
-          "description": "`WorkspaceModel` entity: symlink target as recorded by `read_link` (may be relative or absolute, possibly outside the project tree)."
-        },
-        "resolved-target": {
-          "$ref": "#/$defs/relativePath",
-          "description": "`WorkspaceModel` entity: project-relative path of the resolved canonical endpoint when it lives under `project_dir`; absent when the target resolves outside the tree or could not be canonicalised."
-        },
-        "target-sha256": {
-          "$ref": "#/$defs/sha256Hex",
-          "description": "`WorkspaceModel` entity: hex-encoded SHA-256 of the resolved target file's bytes. Absent when the target is unreadable or broken."
-        }
-      }
-    },
     "adapterManifest": {
       "type": "object",
       "additionalProperties": false,
@@ -380,7 +333,7 @@
           "type": "array",
           "uniqueItems": true,
           "items": { "type": "string", "minLength": 1 },
-          "description": "`WorkspaceModel` entity: operation slugs declared as the `briefs:` map keys in the manifest body. Empty / absent when the manifest omits the field. Consumed by the `kind: set-coverage` and `kind: set-eq` interpreters (`adapter-briefs` source discriminator)."
+          "description": "`WorkspaceModel` entity: operation slugs declared as the `briefs:` map keys in the manifest body. Empty / absent when the manifest omits the field. Consumed by the `kind: set-coverage` interpreter (`adapter-briefs` source discriminator)."
         },
         "tools": {
           "type": "array",
@@ -457,68 +410,6 @@
           "type": "string",
           "minLength": 1,
           "description": "`WorkspaceModel` entity: directory name (the final path segment, e.g. `vectis`)."
-        }
-      }
-    },
-    "marketplaceEntry": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["plugin", "path-in-manifest"],
-      "properties": {
-        "plugin": {
-          "type": "string",
-          "minLength": 1,
-          "description": "`WorkspaceModel` entity: plugin slug declared by `.cursor-plugin/marketplace.json`."
-        },
-        "path-in-manifest": {
-          "type": "string",
-          "minLength": 1,
-          "description": "`WorkspaceModel` entity: JSON-pointer-style location inside `marketplace.json` where the entry was discovered."
-        }
-      }
-    },
-    "ruleIndexEntry": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["rule-id", "path", "origin", "frontmatter-ref"],
-      "properties": {
-        "rule-id": {
-          "type": "string",
-          "minLength": 1,
-          "description": "`WorkspaceModel` entity: rule id (matches the rule schema's `id` regex)."
-        },
-        "path": { "$ref": "#/$defs/relativePath" },
-        "origin": {
-          "type": "string",
-          "enum": ["target", "source", "shared", "core", "unknown"],
-          "description": "`WorkspaceModel` entity: which rules tree contributed the rule (target adapter, source adapter, shared universal tree, core rules pack, or `unknown` for cache files whose path does not match a recognized adapter shape)."
-        },
-        "frontmatter-ref": {
-          "$ref": "#/$defs/relativePath",
-          "description": "`WorkspaceModel` entity: path back to the originating `frontmatter` fact so consumers can join through the frontmatter table."
-        }
-      }
-    },
-    "textMatch": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["path", "line", "column", "pattern-id"],
-      "properties": {
-        "path": { "$ref": "#/$defs/relativePath" },
-        "line": {
-          "type": "integer",
-          "minimum": 1,
-          "description": "1-based line of the match."
-        },
-        "column": {
-          "type": "integer",
-          "minimum": 1,
-          "description": "1-based column of the match."
-        },
-        "pattern-id": {
-          "type": "string",
-          "minLength": 1,
-          "description": "`WorkspaceModel` entity: stable identifier for the precomputed regex pattern that produced this match."
         }
       }
     },

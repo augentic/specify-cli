@@ -52,17 +52,6 @@ fn round_trips_plan_fixture() {
 }
 
 #[test]
-fn lifecycle_defaults_to_pending() {
-    let yaml = "name: foo\nslices: []\n";
-    let plan: Plan = serde_saphyr::from_str(yaml).expect("parse minimal plan");
-    assert_eq!(
-        plan.lifecycle,
-        Lifecycle::Pending,
-        "missing lifecycle field must default to pending"
-    );
-}
-
-#[test]
 fn lifecycle_round_trips() {
     let yaml = "name: foo\nlifecycle: approved\nslices: []\n";
     let plan: Plan = serde_saphyr::from_str(yaml).expect("parse approved");
@@ -110,20 +99,6 @@ fn missing_fields_default() {
     assert_eq!(plan.lifecycle, Lifecycle::Pending);
     assert!(plan.sources.is_empty(), "sources should default to empty map");
     assert!(plan.entries.is_empty(), "slices should be empty");
-}
-
-#[test]
-fn project_round_trips() {
-    let yaml = "\
-name: foo
-project: traffic
-status: pending
-";
-    let parsed: Entry = serde_saphyr::from_str(yaml).expect("parses with project");
-    assert_eq!(parsed.project.as_deref(), Some("traffic"));
-    let round_tripped = serde_saphyr::to_string(&parsed).expect("serialize");
-    let re_parsed: Entry = serde_saphyr::from_str(&round_tripped).expect("re-parse");
-    assert_eq!(re_parsed.project, parsed.project);
 }
 
 #[test]

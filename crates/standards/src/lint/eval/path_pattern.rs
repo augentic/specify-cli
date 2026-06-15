@@ -3,11 +3,13 @@
 //! Path-pattern hints are filters, not finders. They narrow the
 //! candidate file set the later hint kinds (`schema`, `regex`,
 //! `tool`) consume; they emit zero findings on their own. Glob
-//! semantics follow the [`glob::Pattern`] crate (already a workspace
-//! dependency for the codex resolver). The pattern matches a file's
-//! project-relative path verbatim — no separator translation, no
-//! per-OS munging, since [`crate::lint::File::path`] is already
-//! forward-slash relative per `WorkspaceModel` stability.
+//! semantics follow [`globset`] with `literal_separator` on — `*`
+//! never crosses `/`, `**` does, and `{a,b}` brace alternation lets
+//! one hint carry what used to take a fan-out of near-identical
+//! patterns. The pattern matches a file's project-relative path
+//! verbatim — no separator translation, no per-OS munging, since
+//! [`crate::lint::File::path`] is already forward-slash relative per
+//! `WorkspaceModel` stability.
 //!
 //! Include patterns match paths into the candidate set. Exclusion
 //! patterns use a leading `!` on `value`; the
@@ -15,7 +17,7 @@
 
 use std::path::PathBuf;
 
-use glob::Pattern;
+use globset::GlobBuilder;
 
 use super::HintError;
 use crate::lint::WorkspaceModel;
@@ -36,86 +38,33 @@ pub(crate) fn evaluate(
     rule: &ResolvedRule, hint: &RuleHint, model: &WorkspaceModel,
 ) -> Result<Vec<PathBuf>, HintError> {
     let glob = glob_text(&hint.value);
-    let pattern = Pattern::new(glob).map_err(|_silenced| HintError::Unsupported {
-        rule_id: rule.rule_id.clone(),
-        kind: HintKind::PathPattern,
-        reason: "invalid glob pattern",
-    })?;
-    let mut matches: Vec<PathBuf> = model
+    let matcher = GlobBuilder::new(glob)
+        .literal_separator(true)
+        .build()
+        .map_err(|_silenced| HintError::Unsupported {
+            rule_id: rule.rule_id.clone(),
+            kind: HintKind::PathPattern,
+            reason: "invalid glob pattern",
+        })?
+        .compile_matcher();
+    let mut hits: Vec<PathBuf> = model
         .files
         .iter()
-        .filter(|f| pattern.matches(&f.path))
+        .filter(|f| matcher.is_match(&f.path))
         .map(|f| PathBuf::from(&f.path))
         .collect();
-    matches.sort();
-    Ok(matches)
+    hits.sort();
+    Ok(hits)
 }
 
 #[cfg(test)]
 mod unit {
     use super::*;
-    use crate::lint::{File, FileKind, ScanProfile, WorkspaceModel, WorkspaceModelVersion};
-    use crate::rules::{HintKind, Origin, PathRoot, ResolvedRule, RuleHint};
-
-    fn model_with_paths(paths: &[&str]) -> WorkspaceModel {
-        WorkspaceModel {
-            version: WorkspaceModelVersion,
-            project_dir: "/tmp".to_string(),
-            scan_profile: ScanProfile::Framework,
-            artifact_paths: vec![],
-            languages: vec![],
-            files: paths
-                .iter()
-                .map(|p| File {
-                    path: (*p).to_string(),
-                    kind: FileKind::Text,
-                    language: Some("markdown".to_string()),
-                    sha256: None,
-                })
-                .collect(),
-            frontmatter: vec![],
-            markdown_sections: vec![],
-            markdown_links: vec![],
-            symlinks: vec![],
-            skills: vec![],
-            adapter_manifests: vec![],
-            marketplace_entries: vec![],
-            rule_index: vec![],
-            text_matches: vec![],
-            ignore_directives: vec![],
-            briefs: vec![],
-            agent_teams: vec![],
-            fenced_blocks: vec![],
-            scenarios: vec![],
-            adapter_dirs: vec![],
-        }
-    }
-
-    fn rule() -> ResolvedRule {
-        ResolvedRule {
-            rule_id: "TEST".to_string(),
-            title: "test".to_string(),
-            severity: specify_diagnostics::Severity::Important,
-            trigger: String::new(),
-            lint_mode: None,
-            applicability: None,
-            rule_hints: None,
-            references: None,
-            origin: Origin::Core,
-            path_root: PathRoot::RulesRoot,
-            path: "adapters/shared/rules/core/TEST.md".to_string(),
-            body: String::new(),
-            deprecated: None,
-        }
-    }
+    use crate::lint::eval::testkit::{hint, model_with_paths, rule};
+    use crate::rules::HintKind;
 
     fn path_hint(value: &str) -> RuleHint {
-        RuleHint {
-            kind: HintKind::PathPattern,
-            value: value.to_string(),
-            description: None,
-            config: None,
-        }
+        hint(HintKind::PathPattern, value)
     }
 
     #[test]
@@ -134,5 +83,35 @@ mod unit {
         let matched = evaluate(&rule(), &hint, &model).expect("evaluate");
         assert_eq!(matched.len(), 1);
         assert_eq!(matched[0].to_string_lossy(), "a.rs");
+    }
+
+    #[test]
+    fn invalid_glob_is_unsupported() {
+        let model = model_with_paths(&["a.rs"]);
+        let hint = path_hint("[");
+        evaluate(&rule(), &hint, &model).unwrap_err();
+    }
+
+    #[test]
+    fn star_does_not_cross_separators() {
+        let model = model_with_paths(&["docs/a.md", "docs/sub/b.md"]);
+        let hint = path_hint("docs/*.md");
+        let matched = evaluate(&rule(), &hint, &model).expect("evaluate");
+        assert_eq!(matched.len(), 1, "`*` must not cross `/`; got {matched:?}");
+        assert_eq!(matched[0].to_string_lossy(), "docs/a.md");
+    }
+
+    #[test]
+    fn brace_alternation_unions_patterns() {
+        let model = model_with_paths(&[
+            "docs/a.md",
+            "plugins/spec/skills/refine/SKILL.md",
+            "src/lib.rs",
+            "AGENTS.md",
+        ]);
+        let hint = path_hint("{docs/**/*.md,plugins/**/*.md,**/AGENTS.md}");
+        let matched = evaluate(&rule(), &hint, &model).expect("evaluate");
+        let paths: Vec<String> = matched.iter().map(|p| p.to_string_lossy().into_owned()).collect();
+        assert_eq!(paths, ["AGENTS.md", "docs/a.md", "plugins/spec/skills/refine/SKILL.md"]);
     }
 }

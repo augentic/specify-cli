@@ -28,8 +28,8 @@ pub enum Phase {
 pub enum SourceAction {
     /// Resolve a source-adapter manifest by kebab name.
     ///
-    /// Probe order: `.specify/cache/manifests/sources/<name>/adapter.yaml`
-    /// (agent-populated manifest cache), then
+    /// Probe order: `<project-cache>/manifests/sources/<name>/adapter.yaml`
+    /// (agent-populated out-of-tree manifest cache), then
     /// `<project-dir>/adapters/sources/<name>/adapter.yaml`
     /// (in-repo). Emits the resolved directory path plus the
     /// manifest's declared operations.

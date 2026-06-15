@@ -1,9 +1,9 @@
-//! Integration tests for `specify catalog infer` (RFC-40 Step 6).
+//! Integration tests for `specify catalog infer`.
 //!
 //! These tests assert the host **mechanism** — the report shape, and
-//! the §B6 bind guards (stability / uniqueness / no-overwrite) — and
+//! the bind guards (stability / uniqueness / no-overwrite) — and
 //! never that a specific English name like `tab-bar` emerges, because
-//! naming is the build skill's judgement (Step 8), not the CLI's. Where
+//! naming is the build skill's judgement, not the CLI's. Where
 //! a bound name is needed, the test supplies a fixed `{ fingerprint →
 //! slug }` bindings map standing in for the agent's decision.
 //!
@@ -193,7 +193,7 @@ fn report_clusters_repeated_group() {
 
 /// A single baseline screen plus one candidate-cache entry carrying a
 /// structurally identical group on a different provenance screen cluster
-/// to one shared component at the default threshold (RFC-40 §B4): the
+/// to one shared component at the default threshold: the
 /// cache supplies the second screen the baseline has not yet accumulated.
 #[test]
 fn report_clusters_with_candidate_cache() {
@@ -367,7 +367,7 @@ fn bind_rejects_non_kebab_slug() {
     assert!(!ComponentsCatalog::path_in(tmp.path()).exists(), "a rejected bind writes nothing");
 }
 
-/// End-to-end run-to-run stability (RFC §B2): bind a fingerprint, then
+/// End-to-end run-to-run stability: bind a fingerprint, then
 /// re-run `report` against the same baseline and assert the cluster now
 /// carries the bound slug. Uses the real tool, so it is skipped when the
 /// WASM artifact is absent.
@@ -509,7 +509,7 @@ fn bind_suffixes_slug_collision() {
 
 /// A pinned operator part matching one baseline group is projected into
 /// the catalog as `confirmed` below the default threshold (promotion
-/// authority, RFC-40 §C2/§C3) with the operator slug and the part's
+/// authority) with the operator slug and the part's
 /// read-time fingerprint recorded. Uses the real tool (bind runs `infer`
 /// with `--parts`), so it is skipped when the WASM artifact is absent.
 #[test]
@@ -539,7 +539,7 @@ fn bind_projects_matched_pin() {
 }
 
 /// A pinned part matching zero baseline groups is reported `part-unmatched`
-/// and never projected into the catalog (RFC-40 §C2 step 4 / §C5). The
+/// and never projected into the catalog. The
 /// report is informational and `bind` still succeeds.
 #[test]
 fn bind_reports_unmatched_pin() {
@@ -587,7 +587,7 @@ parts:
 
 /// A part slug equal to an existing `rejected` catalog entry stays
 /// suppressed: the projection's `upsert_bound` is a no-op against a
-/// rejected slug, so the part is not factored (RFC-40 §C6).
+/// rejected slug, so the part is not factored.
 #[test]
 fn bind_part_does_not_override_rejected() {
     let wasm = vectis_wasm();
@@ -623,8 +623,8 @@ fn bind_part_does_not_override_rejected() {
 
 /// The operator slug is the first-writer for its fingerprint: a skill
 /// binding handed the same bare name under a *different* fingerprint is
-/// suffixed `slug-<fp-prefix>` by the §B2 uniqueness guard, while the
-/// operator part keeps the bare slug (RFC-40 §C2 step 5 / §C6).
+/// suffixed `slug-<fp-prefix>` by the slug-uniqueness guard, while the
+/// operator part keeps the bare slug.
 #[test]
 fn bind_operator_part_wins_slug_over_skill() {
     let wasm = vectis_wasm();

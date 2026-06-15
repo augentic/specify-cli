@@ -133,7 +133,6 @@ fn full_match(re: &Regex, id: &str) -> bool {
 
 /// Parse a baseline spec into its preamble and requirement blocks.
 ///
-/// Mirrors `parse_requirement_blocks` from the archived Python reference (lines 62–126).
 /// The preamble is every line before the first `### Requirement:` heading or
 /// `## `-prefixed heading, whichever appears first. Blocks with no `ID:`
 /// line get `id == String::new()` (not `None`, not elided).
@@ -175,11 +174,9 @@ pub fn parse_baseline(text: &str) -> ParsedSpec {
 
         if in_preamble {
             // A bare `## ` heading (not `### Requirement:`) inside the
-            // preamble ends the preamble. Python's loop then begins a new
-            // pseudo-block with `current_name = None`, which flush_block
-            // later discards. We replicate that behaviour so the stray
-            // header and its trailing lines are dropped exactly the way
-            // the Python reference dropped them.
+            // preamble ends the preamble and begins a pseudo-block with
+            // `current_name = None`, which flush_block later discards —
+            // the stray header and its trailing lines are dropped.
             if stripped.starts_with("## ") && !stripped.starts_with(heading_prefix) {
                 in_preamble = false;
                 flush_block(&mut blocks, &mut current_lines, &mut current_name, &mut current_id);
@@ -203,9 +200,7 @@ pub fn parse_baseline(text: &str) -> ParsedSpec {
 
 /// Parse a delta spec into its four operation sections.
 ///
-/// Mirrors `parse_delta_sections` from the archived Python reference (lines 138–196).
-/// Section headers are matched case-insensitively on the stripped line,
-/// exactly like Python's `stripped.lower() == heading.lower()`.
+/// Section headers are matched case-insensitively on the stripped line.
 #[must_use]
 pub fn parse_delta(text: &str) -> DeltaSpec {
     #[derive(Copy, Clone)]
@@ -252,11 +247,10 @@ pub fn parse_delta(text: &str) -> DeltaSpec {
         }
     }
 
-    // Python walks the RENAMED section line-by-line, tracking the last seen
-    // `ID:` line and emitting an entry the first time a following `TO:` line
-    // shows up. The ID is cleared after a successful emission (so paired
-    // lines consume each other), but empty-string IDs don't trigger an
-    // emission because Python's `and current_id` truth-checks the string.
+    // Walk the RENAMED section line-by-line, tracking the last seen
+    // `ID:` line and emitting an entry the first time a following `TO:`
+    // line shows up. The ID is cleared after a successful emission (so
+    // paired lines consume each other); empty-string IDs never emit.
     let mut renamed: Vec<Rename> = Vec::new();
     let id_prefix = REQ_ID_PREFIX;
     let mut current_id: Option<String> = None;
@@ -288,13 +282,9 @@ pub fn parse_delta(text: &str) -> DeltaSpec {
 /// Return `true` when `text` contains any of the four `## …` delta section
 /// headings as a full stripped line, case-insensitive.
 ///
-/// This is a slightly stricter contract than the inline check in
-/// the archived Python reference lines 214–219 (which used a substring match via
-/// `h.lower() in delta_text.lower()`). Matching stripped whole lines —
-/// the same rule `parse_delta_sections` uses to dispatch on a section
-/// header — avoids false positives from prose like `"## ADDED Requirements
-/// were discussed in the meeting"` while still passing every parity fixture
-/// we ship. Noted as a judgement call in the change report.
+/// Matching stripped whole lines — the same rule [`parse_delta`] uses to
+/// dispatch on a section header — avoids false positives from prose like
+/// `"## ADDED Requirements were discussed in the meeting"`.
 #[must_use]
 pub fn has_delta_headers(text: &str) -> bool {
     let headings = [DELTA_ADDED, DELTA_MODIFIED, DELTA_REMOVED, DELTA_RENAMED];

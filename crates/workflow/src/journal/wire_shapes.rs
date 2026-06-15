@@ -177,6 +177,30 @@ pub fn check_contract_part4() {
                 r#""projects":["alpha","beta"]"#,
             ],
         ),
+        (
+            EventKind::CliUpgraded {
+                from: "1.4.0".to_string(),
+                to: "1.5.0".to_string(),
+                channel: "brew".to_string(),
+            },
+            &[
+                r#""event":"cli.upgraded""#,
+                r#""from":"1.4.0""#,
+                r#""to":"1.5.0""#,
+                r#""channel":"brew""#,
+            ],
+        ),
+        (
+            EventKind::PluginsRefreshed {
+                deleted_paths: vec![".cursor/plugins/cache/augentic/spec".to_string()],
+                marketplace: ".cursor-plugin/marketplace.json".to_string(),
+            },
+            &[
+                r#""event":"plugins.refreshed""#,
+                r#""deleted-paths":[".cursor/plugins/cache/augentic/spec"]"#,
+                r#""marketplace":".cursor-plugin/marketplace.json""#,
+            ],
+        ),
     ];
     assert_wire_rows(rows);
 }

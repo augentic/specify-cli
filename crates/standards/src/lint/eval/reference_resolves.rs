@@ -168,3 +168,95 @@ fn symlinks(
     }
     out
 }
+
+#[cfg(test)]
+mod unit {
+    use serde_json::json;
+
+    use super::*;
+    use crate::lint::eval::testkit::{candidates, empty_model, hint, hint_with_config, rule};
+    use crate::lint::{MarkdownLink, Symlink};
+
+    fn link(from: &str, to: &str, resolves: Option<bool>, image: bool) -> MarkdownLink {
+        MarkdownLink {
+            from_path: from.to_string(),
+            to_raw: to.to_string(),
+            line: 3,
+            resolves,
+            image,
+        }
+    }
+
+    fn symlink(path: &str, target: &str, broken: bool) -> Symlink {
+        Symlink {
+            path: path.to_string(),
+            target: target.to_string(),
+            broken,
+            resolved_target: None,
+        }
+    }
+
+    #[test]
+    fn only_failed_resolutions_fire() {
+        let mut model = empty_model();
+        model.markdown_links = vec![
+            link("docs/a.md", "missing.md", Some(false), false),
+            link("docs/a.md", "present.md", Some(true), false),
+            link("docs/a.md", "https://example.com", None, false),
+        ];
+        let cands = candidates(&["docs/a.md"]);
+        let hint = hint(HintKind::ReferenceResolves, "markdown-link");
+        let out = evaluate(&rule(), &hint, &cands, &model, &mut 1).expect("evaluate");
+        assert_eq!(out.len(), 1);
+        assert!(out[0].title.contains("missing.md"), "{}", out[0].title);
+    }
+
+    #[test]
+    fn image_and_target_filters_narrow() {
+        let mut model = empty_model();
+        model.markdown_links = vec![
+            link("docs/a.md", "img/missing.svg", Some(false), true),
+            link("docs/a.md", "img/missing.png", Some(false), true),
+            link("docs/a.md", "plain-missing.svg", Some(false), false),
+        ];
+        let cands = candidates(&["docs/a.md"]);
+        let cfg = json!({ "image": true, "target-suffix": ".svg", "target-prefixes": ["img/"] });
+        let hint = hint_with_config(HintKind::ReferenceResolves, "markdown-link", Some(cfg));
+        let out = evaluate(&rule(), &hint, &cands, &model, &mut 1).expect("evaluate");
+        assert_eq!(out.len(), 1);
+        assert!(out[0].title.contains("img/missing.svg"), "{}", out[0].title);
+    }
+
+    #[test]
+    fn broken_symlinks_scoped_by_prefix() {
+        let mut model = empty_model();
+        model.symlinks = vec![
+            symlink("plugins/spec/refs/x.md", "../gone.md", true),
+            symlink("plugins/spec/refs/y.md", "../there.md", false),
+            symlink("docs/z.md", "../gone-too.md", true),
+        ];
+        let cfg = json!({ "path-prefix": "plugins/" });
+        let hint = hint_with_config(HintKind::ReferenceResolves, "symlink", Some(cfg));
+        let out = evaluate(&rule(), &hint, &[], &model, &mut 1).expect("evaluate");
+        assert_eq!(out.len(), 1);
+        assert!(out[0].title.contains("../gone.md"), "{}", out[0].title);
+    }
+
+    #[test]
+    fn unknown_source_is_unsupported() {
+        let model = empty_model();
+        let hint = hint(HintKind::ReferenceResolves, "no-such-source");
+        evaluate(&rule(), &hint, &[], &model, &mut 1).unwrap_err();
+    }
+
+    #[test]
+    fn invalid_config_is_unsupported() {
+        let model = empty_model();
+        let hint = hint_with_config(
+            HintKind::ReferenceResolves,
+            "markdown-link",
+            Some(json!({ "bogus": 1 })),
+        );
+        evaluate(&rule(), &hint, &[], &model, &mut 1).unwrap_err();
+    }
+}

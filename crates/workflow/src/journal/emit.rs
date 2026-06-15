@@ -9,8 +9,8 @@ use crate::config::Layout;
 
 /// Best-effort append of a single lifecycle [`Event`] carrying `kind`.
 ///
-/// Stamped with the dispatcher-injected `now` (workflow §Time
-/// injection); library code never reads the clock. The journal is
+/// Stamped with the dispatcher-injected `now` (architecture.md §"Time
+/// injection"); library code never reads the clock. The journal is
 /// observability, not the
 /// source of truth, so a failed append is **intentionally swallowed** —
 /// it can never change the calling verb's exit code (a journaling I/O
@@ -50,7 +50,6 @@ pub fn emit_lint_completed(
         scope,
         duration_ms: u64::try_from(duration_ms).unwrap_or(u64::MAX),
         counts,
-        baseline_present: false,
         exit_code,
     };
     let event = Event::new(now, EventKind::LintCompleted(payload));

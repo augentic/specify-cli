@@ -205,6 +205,80 @@ fn mint(rule: &ResolvedRule, path: &str, summary: &str, next_id: &mut u64) -> Di
 }
 
 #[cfg(test)]
+mod unit {
+    use serde_json::json;
+
+    use super::*;
+    use crate::lint::eval::testkit::{candidates, empty_model, hint, hint_with_config, rule};
+
+    fn frontmatter(path: &str, field: &str, value: serde_json::Value) -> Frontmatter {
+        let mut fields = serde_json::Map::new();
+        fields.insert(field.to_string(), value);
+        Frontmatter {
+            path: path.to_string(),
+            schema_id: None,
+            fields,
+        }
+    }
+
+    #[test]
+    fn tokens_flag_bad_and_pass_good() {
+        let mut model = empty_model();
+        model.frontmatter = vec![
+            frontmatter("good.md", "argument-hint", json!("<slice-dir> [crate-name]")),
+            frontmatter("bad.md", "argument-hint", json!("the slice name")),
+            frontmatter("non-string.md", "argument-hint", json!(7)),
+        ];
+        let cands = candidates(&["good.md", "bad.md", "non-string.md"]);
+        let cfg =
+            json!({ "field": "argument-hint", "token-pattern": r"^[<\[][a-z][a-z0-9-]*[>\]]$" });
+        let hint = hint_with_config(HintKind::FieldGrammar, "field-tokens", Some(cfg));
+        let out = evaluate(&rule(), &hint, &cands, &model, &mut 1).expect("evaluate");
+        let paths: Vec<&str> =
+            out.iter().filter_map(|f| f.location.as_ref().map(|l| l.path.as_str())).collect();
+        assert_eq!(paths, vec!["bad.md", "non-string.md"]);
+    }
+
+    #[test]
+    fn first_word_allow_list() {
+        let mut model = empty_model();
+        model.frontmatter = vec![
+            frontmatter("good.md", "description", json!("Build the demo fixtures.")),
+            frontmatter("bad.md", "description", json!("The thing that does work.")),
+            frontmatter("no-word.md", "description", json!("123 nope")),
+        ];
+        let cands = candidates(&["good.md", "bad.md", "no-word.md"]);
+        let cfg = json!({ "field": "description", "allowed": ["build", "run"] });
+        let hint = hint_with_config(HintKind::FieldGrammar, "field-first-word", Some(cfg));
+        let out = evaluate(&rule(), &hint, &cands, &model, &mut 1).expect("evaluate");
+        let paths: Vec<&str> =
+            out.iter().filter_map(|f| f.location.as_ref().map(|l| l.path.as_str())).collect();
+        assert_eq!(paths, vec!["bad.md", "no-word.md"]);
+    }
+
+    #[test]
+    fn invalid_token_pattern_is_hard_error() {
+        let model = empty_model();
+        let cfg = json!({ "field": "x", "token-pattern": "(unclosed" });
+        let hint = hint_with_config(HintKind::FieldGrammar, "field-tokens", Some(cfg));
+        assert!(matches!(
+            evaluate(&rule(), &hint, &[], &model, &mut 1),
+            Err(HintError::RegexCompile { .. })
+        ));
+    }
+
+    #[test]
+    fn missing_config_and_unknown_mode_rejected() {
+        let model = empty_model();
+        let bare = hint(HintKind::FieldGrammar, "field-tokens");
+        evaluate(&rule(), &bare, &[], &model, &mut 1).unwrap_err();
+        let unknown =
+            hint_with_config(HintKind::FieldGrammar, "no-such-mode", Some(json!({ "field": "x" })));
+        evaluate(&rule(), &unknown, &[], &model, &mut 1).unwrap_err();
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use ::regex::Regex;
 

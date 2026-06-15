@@ -16,8 +16,9 @@ pub use cache::{CodexMeta, codex_cache_root};
 use jiff::Timestamp;
 use specify_error::Error;
 use specify_model::atomic::bytes_write;
-use specify_tool::{DEFAULT_WASM_PKG_CONFIG, WASM_PKG_CONFIG_FILENAME};
+use specify_tool_manifest::{DEFAULT_WASM_PKG_CONFIG, WASM_PKG_CONFIG_FILENAME};
 
+use crate::adapter::PlatformsViolation;
 use crate::config::Layout;
 use crate::platform::Platform;
 
@@ -32,7 +33,7 @@ pub struct InitOptions<'a> {
     /// Root of the project being initialised.
     pub project_dir: &'a Path,
     /// Adapter identifier (bare name like `omnia` or a URL) to fetch
-    /// or copy into `.specify/cache/`. Required for regular init; must
+    /// or copy into the out-of-tree per-project cache. Required for regular init; must
     /// be `None` when [`InitOptions::workspace`] is `true` (workspace
     /// roots do not resolve an adapter at init time).
     pub adapter: Option<&'a str>,
@@ -66,9 +67,9 @@ pub struct InitOptions<'a> {
     /// `registry.yaml`, `.specify/design-system/*`, the adapter cache).
     /// `AGENTS.md` is regenerated only when absent (handled at the
     /// command layer). Mutually exclusive with the `<adapter>`
-    /// positional, `--workspace`, `--name`, `--description`,
-    /// `--include-framework`, and `--check-migration` at the clap
-    /// surface. `--platforms` is legal alongside `--upgrade`.
+    /// positional, `--workspace`, `--name`, `--description`, and
+    /// `--include-framework` at the clap surface. `--platforms` is
+    /// legal alongside `--upgrade`.
     pub upgrade: bool,
 }
 
@@ -86,10 +87,10 @@ pub struct InitResult {
     /// this is the literal `"workspace"` so the JSON envelope stays stable
     /// for downstream consumers.
     pub adapter_name: String,
-    /// Whether `.specify/cache/manifests/manifest-meta.yaml` exists.
+    /// Whether `manifests/manifest-meta.yaml` exists in the per-project cache.
     pub cache_present: bool,
-    /// Whether the shared codex was distributed into
-    /// `.specify/cache/codex/` during this run. `false` when the
+    /// Whether the shared codex was distributed into the out-of-tree
+    /// `<project-cache>/codex/` during this run. `false` when the
     /// adapter source tree carries no `adapters/shared/rules/universal/`
     /// pack (the consumer then relies on `--rules-root` or a monorepo
     /// checkout) and for workspace init.
@@ -157,7 +158,7 @@ pub fn init(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, Error> 
 /// source/ref (or an operator override). Resolves the adapter source
 /// the same way `init` does (local copy or git sparse checkout), then
 /// mirrors `adapters/shared/rules/universal/` (and, when
-/// `include_framework`, `core/`) into `.specify/cache/codex/`.
+/// `include_framework`, `core/`) into the out-of-tree `<project-cache>/codex/`.
 ///
 /// This is the engine behind `specify rules sync`. `init` distributes
 /// the codex inline via the private `cache::cache_codex` path; this
@@ -200,7 +201,7 @@ pub(crate) fn upsert_gitignore(project_dir: &Path) -> Result<(), Error> {
 ///
 /// The contents are the canonical wasm-pkg namespace mapping
 /// (`specify -> augentic.io`); see
-/// [`specify_tool::DEFAULT_WASM_PKG_CONFIG`]. Operators are expected
+/// [`specify_tool_manifest::DEFAULT_WASM_PKG_CONFIG`]. Operators are expected
 /// to edit this file to add private mirrors or other namespace
 /// mappings, so a re-init must never clobber their changes.
 ///
@@ -220,54 +221,44 @@ pub(crate) fn scaffold_wasm_pkg_config(layout: &Layout<'_>) -> Result<bool, Erro
     Ok(true)
 }
 
+/// Validate the operator's `--platforms` set against the target's
+/// declared capability, mapping each [`PlatformsViolation`] onto the
+/// init-time `project-platforms-*` diagnostic family. The rules
+/// themselves live on [`crate::adapter::PlatformsCapability::check`].
 pub(crate) fn validate_platforms(
     operator: Option<&[Platform]>, capability: Option<&crate::adapter::PlatformsCapability>,
     target_name: &str,
 ) -> Result<Vec<Platform>, Error> {
+    let platforms = operator.map(<[Platform]>::to_vec).unwrap_or_default();
     let Some(cap) = capability else {
-        return Ok(operator.map(<[Platform]>::to_vec).unwrap_or_default());
+        return Ok(platforms);
     };
 
-    let platforms = match operator {
-        Some(p) if !p.is_empty() => p,
-        _ if cap.required => {
-            let defaults: Vec<String> = cap.default.iter().map(ToString::to_string).collect();
-            return Err(Error::validation_failed(
-                "project-platforms-required",
-                format!("target '{target_name}' requires --platforms"),
-                format!(
-                    "target '{target_name}' requires --platforms; default set is [{}]",
-                    defaults.join(", "),
-                ),
-            ));
-        }
-        Some(p) => p,
-        None => return Ok(Vec::new()),
-    };
-
-    if !platforms.contains(&Platform::Core) {
-        return Err(Error::validation_failed(
+    cap.check(&platforms).map_err(|violation| match violation {
+        PlatformsViolation::RequiredButMissing { defaults } => Error::validation_failed(
+            "project-platforms-required",
+            format!("target '{target_name}' requires --platforms"),
+            format!(
+                "target '{target_name}' requires --platforms; default set is [{}]",
+                defaults.join(", "),
+            ),
+        ),
+        PlatformsViolation::MissingCore => Error::validation_failed(
             "project-platforms-must-include-core",
             "platform set must include `core`",
             "the --platforms set must include `core`; every project that declares platforms requires the shared Rust core crate",
-        ));
-    }
+        ),
+        PlatformsViolation::NotAllowed { platform, allowed } => Error::validation_failed(
+            "project-platforms-not-allowed",
+            format!("platform `{platform}` is not in the target's allowed set"),
+            format!(
+                "platform `{platform}` is not allowed by target '{target_name}'; allowed: [{}]",
+                allowed.join(", "),
+            ),
+        ),
+    })?;
 
-    let allowed_display: Vec<String> = cap.allowed.iter().map(ToString::to_string).collect();
-    for p in platforms {
-        if !cap.allowed.contains(p) {
-            return Err(Error::validation_failed(
-                "project-platforms-not-allowed",
-                format!("platform `{p}` is not in the target's allowed set"),
-                format!(
-                    "platform `{p}` is not allowed by target '{target_name}'; allowed: [{}]",
-                    allowed_display.join(", "),
-                ),
-            ));
-        }
-    }
-
-    Ok(platforms.to_vec())
+    Ok(platforms)
 }
 
 #[cfg(test)]

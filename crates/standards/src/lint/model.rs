@@ -4,9 +4,9 @@
 //! The model is the deterministic, versioned snapshot of project
 //! facts the `specify lint` indexer produces once per run
 //! invocation. Per the standards-layer contract §"Persistence and query (v1 decision)" it
-//! is an internal execution artifact: **not** persisted under
-//! `.specify/` and **not** an operator-facing Specify artifact in
-//! v1. `.specify/cache/workspace-model.v1.json` and
+//! is an internal execution artifact: **not** persisted in the working
+//! tree and **not** an operator-facing Specify artifact in
+//! v1. A `workspace-model.v1.json` in the out-of-tree project cache and
 //! `specify model query <selector>` are reserved surfaces with no
 //! implementation behind them.
 //!
@@ -37,9 +37,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 mod facts;
 
 pub use facts::{
-    AdapterDir, AdapterManifest, AdapterTool, AgentTeam, Brief, BriefScope, FencedBlock, File,
-    Frontmatter, IgnoreDirective, MarkdownLink, MarkdownSection, MarketplaceEntry, RuleIndexEntry,
-    Scenario, Skill, Symlink, TextMatch,
+    AdapterDir, AdapterManifest, AdapterTool, Brief, BriefScope, FencedBlock, File, Frontmatter,
+    IgnoreDirective, MarkdownLink, MarkdownSection, Scenario, Skill, Symlink,
 };
 
 /// Type-level pin of the `WorkspaceModel` envelope version.
@@ -118,10 +117,10 @@ pub enum ScanProfile {
 /// §"Schema location".
 ///
 /// Important: per the standards-layer contract §"Persistence and query (v1 decision)" the
-/// model is **not** persisted under `.specify/` and is **not** an
+/// model is **not** persisted in the working tree and is **not** an
 /// operator-facing Specify artifact in v1. v1 ships
-/// `specify lint --dump-model` only;
-/// `.specify/cache/workspace-model.v1.json` and
+/// `specify lint --dump-model` only; a `workspace-model.v1.json` in the
+/// out-of-tree project cache and
 /// `specify model query <selector>` are reserved surfaces.
 ///
 /// Top-level keys are `snake_case` to match the schema under
@@ -160,14 +159,6 @@ pub struct WorkspaceModel {
     /// `adapter_manifest` facts from
     /// `adapters/{sources,targets}/**/adapter.yaml`.
     pub adapter_manifests: Vec<AdapterManifest>,
-    /// `marketplace_entry` facts from
-    /// `.cursor-plugin/marketplace.json`.
-    pub marketplace_entries: Vec<MarketplaceEntry>,
-    /// `rule_index` facts from rules tree discovery.
-    pub rule_index: Vec<RuleIndexEntry>,
-    /// `text_match` facts from the optional precomputed regex
-    /// index.
-    pub text_matches: Vec<TextMatch>,
     /// `ignore_directive` facts from the directive indexer.
     /// Optional in v1 envelopes per the schema; the producer always
     /// serialises the array so consumers see one consistent wire
@@ -183,12 +174,6 @@ pub struct WorkspaceModel {
     /// shape is unchanged.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub briefs: Vec<Brief>,
-    /// `agent_team` facts from followed `agent-teams.md` symlinks
-    /// under the framework scan profile. Optional in v1 envelopes;
-    /// producers omit the field when empty so the consumer
-    /// profile's wire shape is unchanged.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub agent_teams: Vec<AgentTeam>,
     /// `scenario` facts from the dedicated scenario discovery pass over
     /// the opt-in scenario roots under the framework scan profile.
     /// Optional in v1 envelopes; producers omit the field when empty so

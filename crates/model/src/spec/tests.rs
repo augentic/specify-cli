@@ -1,13 +1,13 @@
 use super::*;
 
 // ---------------------------------------------------------------------------
-// Fixture-backed parity tests. Fixtures live at the repo root under
-// `tests/fixtures/parity/` and are shared with specify-merge (Change D).
+// Fixture-backed parser tests. Fixtures live at the repo root under
+// `tests/fixtures/merge/` and are shared with the merge-engine goldens.
 // ---------------------------------------------------------------------------
 
 macro_rules! fixture {
     ($rel:literal) => {
-        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../tests/fixtures/parity/", $rel))
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../tests/fixtures/merge/", $rel))
     };
 }
 
@@ -242,9 +242,9 @@ No ID line follows. This exercises the empty-string id convention.
 
 #[test]
 fn parse_baseline_body_starts_at_heading() {
-    // The Python ReqBlock.body is the concatenation of all lines from the
-    // requirement heading through the end of the block, joined by "\n" with
-    // no trailing newline. Verify the Rust port matches that convention.
+    // `ReqBlock.body` is the concatenation of all lines from the
+    // requirement heading through the end of the block, joined by "\n"
+    // with no trailing newline.
     let text = "\
 preamble line
 

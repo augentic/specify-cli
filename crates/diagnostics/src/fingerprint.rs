@@ -38,7 +38,7 @@
 //! underlying issue.
 
 use serde_json::Value;
-use specify_digest::sha256_hex;
+use specify_schema::digest::sha256_hex;
 
 use crate::diagnostic::{Diagnostic, FindingEvidence, FindingLocation};
 
@@ -103,7 +103,7 @@ fn write_canonical(out: &mut String, value: &Value) {
         Value::Number(n) => out.push_str(&n.to_string()),
         Value::String(s) => {
             // Serialising a `String` to JSON cannot fail; `unreachable!` keeps
-            // fingerprint stability off the `expect` panic path (REVIEW.md A3).
+            // fingerprint stability off the `expect` panic path.
             out.push_str(
                 &serde_json::to_string(s)
                     .unwrap_or_else(|_| unreachable!("a JSON string is infallibly serialisable")),

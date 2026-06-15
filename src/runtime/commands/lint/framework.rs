@@ -1,6 +1,6 @@
-//! `specify lint framework` handler — composes the framework's
-//! imperative `Check` predicates with the declarative deterministic-hint
-//! interpreter into a single [`DiagnosticReport`] envelope.
+//! `specify lint framework` handler — runs the declarative
+//! deterministic-hint interpreter into a single [`DiagnosticReport`]
+//! envelope.
 //!
 //! The shared pipeline lives in [`specify_standards::lint::runner`] and
 //! the shared output/journal/exit tail in [`crate::output`]; this
@@ -8,13 +8,14 @@
 //! project `lint project` handler, differing only in the framework-surface
 //! config it assembles:
 //!
-//! 1. Resolve the framework root and load the imperative
-//!    [`AuthoringContext`] (framework-root canonicalisation only — every
-//!    `rules.*` check now runs through the `rules` WASI tool, so no
+//! 1. Resolve and canonicalise the framework root (every `rules.*`
+//!    check runs through the in-process `rules` checker, so no
 //!    imperative producer is wired in).
 //! 2. Configure the runner for the framework surface
-//!    ([`ScanProfile::Framework`], [`FrameworkToolRunner`],
-//!    [`ResolverDegradation::SkipDeclarative`], `include_core: true`).
+//!    ([`ScanProfile::Framework`], [`NoopToolRunner`] — framework
+//!    `kind: tool` rules resolve in-process, `include_core: true`).
+//!    Codex resolution is fatal: a duplicate rule id or unresolvable
+//!    rules tree aborts the run rather than silently passing.
 //! 3. Hand the config to the shared [`crate::output::run_lint`] kernel
 //!    (via [`crate::output::emit_lint_report`]), which renders the
 //!    envelope, decides the blocking exit, and owns the JSON fallback on
@@ -23,22 +24,21 @@
 //!    scoped to `specify lint project` (DECISIONS.md §"Journal event
 //!    names").
 
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use jiff::Timestamp;
 use specify_diagnostics::{DiagnosticReport, Format as DiagnosticsFormat};
 use specify_error::{Error, Result};
 use specify_standards::ResolveInputs;
-use specify_standards::framework::context::Context as AuthoringContext;
 use specify_standards::lint::ScanProfile;
-use specify_standards::lint::producer::DiagnosticProducer;
-use specify_standards::lint::runner::{PipelineConfig, ResolverDegradation};
+use specify_standards::lint::eval::NoopToolRunner;
+use specify_standards::lint::runner::PipelineConfig;
 use specify_workflow::config::Layout;
 use specify_workflow::journal::LintScope;
 
 use crate::output::{self, Format, LintRun};
 use crate::runtime::commands::lint::cli::{FrameworkArgs, LintFormat};
-use crate::runtime::commands::lint::framework_tools::FrameworkToolRunner;
 
 /// Handler entry point dispatched from `src/runtime/commands.rs`.
 ///
@@ -64,14 +64,7 @@ fn build_report(
     action: &FrameworkArgs, format: DiagnosticsFormat,
 ) -> Result<Option<DiagnosticReport>> {
     let started_at = Instant::now();
-    let authoring_ctx =
-        AuthoringContext::from_framework_root(&action.framework_root).map_err(|err| {
-            Error::Diag {
-                code: "framework-root",
-                detail: err.to_string(),
-            }
-        })?;
-    let project_dir = authoring_ctx.framework_root().to_path_buf();
+    let project_dir = canonical_framework_root(&action.framework_root)?;
 
     let inputs = ResolveInputs {
         project_dir: &project_dir,
@@ -85,22 +78,20 @@ fn build_report(
         include_core: true,
     };
 
-    // No imperative producer: every `rules.*` check (CORE-009 namespace
-    // ownership, CORE-026 duplicate id) now runs through the `rules` WASI
-    // tool via `kind: tool`, folded by the declarative pass.
-    let producers: [&dyn DiagnosticProducer; 0] = [];
+    // Every `rules.*` check (CORE-009 namespace ownership, CORE-026
+    // duplicate id) runs through the in-process `rules` checker via
+    // `kind: tool`, resolved in-process by the declarative pass — the
+    // runner is never consulted for framework checkers.
     let rule_filter_slice: Vec<&str> = action.rules.iter().map(String::as_str).collect();
-    let tool_runner = FrameworkToolRunner::new()?;
+    let tool_runner = NoopToolRunner;
     let cli_contract = crate::runtime::commands::contract::dump::build_contract();
     let config = PipelineConfig {
         profile: ScanProfile::Framework,
         dump_model: action.dump_model,
         apply_ignore_directives: true,
         rule_filter: &rule_filter_slice,
-        resolver_degradation: ResolverDegradation::SkipDeclarative,
         tool_runner: &tool_runner,
         cli_contract: Some(&cli_contract),
-        producers: &producers,
     };
 
     let scope = LintScope {
@@ -122,6 +113,22 @@ fn build_report(
         command_label: "specify lint framework",
         started_at,
         trailing_newline: false,
+    })
+}
+
+/// Canonicalise the framework root after a structural sanity check
+/// (`plugins/` + `adapters/` directories), so every downstream path in
+/// the report is anchored at a stable absolute root.
+fn canonical_framework_root(root: &Path) -> Result<PathBuf> {
+    if !(root.join("plugins").is_dir() && root.join("adapters").is_dir()) {
+        return Err(Error::Diag {
+            code: "framework-root",
+            detail: format!("not a framework root: {}", root.display()),
+        });
+    }
+    root.canonicalize().map_err(|source| Error::Diag {
+        code: "framework-root",
+        detail: format!("canonicalize path: {source}"),
     })
 }
 

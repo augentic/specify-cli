@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/augentic/specify/schemas/manifest-meta.schema.json",
   "title": "Specify manifest-meta.yaml",
-  "description": "Validates the structure of `.specify/cache/manifests/manifest-meta.yaml` — the manifest mirror's provenance stamp, the structural twin of `codex/codex-meta.yaml`. Written whenever the manifest cache is populated or refreshed; read by the CLI to decide whether the cache is populated.",
+  "description": "Validates the structure of `manifests/manifest-meta.yaml` in the out-of-tree per-project cache — the manifest mirror's provenance stamp, the structural twin of `codex/codex-meta.yaml`. Written whenever the manifest cache is populated or refreshed; read by the CLI to decide whether the cache is populated.",
   "type": "object",
   "required": ["source", "fetched_at"],
   "additionalProperties": false,

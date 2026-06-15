@@ -1,5 +1,4 @@
-//! Integration test for `specify upgrade --dry-run --format json`
-//! (RFC-30 §D1, Wave C item 2).
+//! Integration test for `specify upgrade --dry-run --format json`.
 //!
 //! Drives the command end-to-end against a forced `--channel cargo` and
 //! an injected release tag (`SPECIFY_RELEASE_TAG`) so the envelope is

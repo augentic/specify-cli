@@ -92,7 +92,7 @@ pub const COMPONENTS_JSON_SCHEMA: &str =
 
 /// Schema for `parts.yaml`, the operator-authored component parts input.
 ///
-/// RFC-40 Part C: each part declares an authoritative composition `group`
+/// Operator parts: each part declares an authoritative composition `group`
 /// fragment that seeds inference with naming and promotion authority.
 pub const PARTS_JSON_SCHEMA: &str =
     include_str!("../../../schemas/design-system/parts.schema.json");

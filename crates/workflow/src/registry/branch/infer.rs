@@ -30,7 +30,7 @@ pub(super) fn target_branch(
 }
 
 pub(super) fn project_worktree_path(project_dir: &Path, project: &RegistryProject) -> PathBuf {
-    let workspace_slot = project_dir.join(".specify").join("workspace").join(&project.name);
+    let workspace_slot = project_dir.join("workspace").join(&project.name);
     if !project.is_local() || workspace_slot.exists() {
         return workspace_slot;
     }

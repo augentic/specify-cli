@@ -53,6 +53,7 @@ pub(super) fn amend(ctx: &Ctx, args: AmendArgs) -> Result<()> {
     let override_clear_all: Vec<String> = clear_authority_overrides;
     let plan_path = ctx.layout().plan_path();
     let discovery = load_discovery(ctx.layout())?;
+    let now = ctx.now();
     let (body, journal_events) =
         with_state::<Plan, _, _>(ctx.layout(), "plan.yaml", move |plan| {
             let sources_replace = sources
@@ -82,7 +83,6 @@ pub(super) fn amend(ctx: &Ctx, args: AmendArgs) -> Result<()> {
             // `evidence/<source>.yaml` at refine time).
             reject_duplicate_source_keys(plan)?;
 
-            let now = jiff::Timestamp::now();
             let override_journal = mutate_authority_overrides(
                 plan,
                 &plan_name,

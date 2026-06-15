@@ -8,7 +8,7 @@ use std::fs;
 use std::path::PathBuf;
 
 mod common;
-use common::{Project, copy_dir, parse_stdout, repo_root, specify_cmd};
+use common::{Project, copy_dir, expected_cache_dir, parse_stdout, repo_root, specify_cmd};
 
 fn plugin_fixtures_root() -> PathBuf {
     repo_root().join("crates/workflow/tests/fixtures/plugins")
@@ -23,9 +23,9 @@ fn stage_target_fixture(project: &Project, name: &str) {
 #[test]
 fn resolve_local_returns_manifest() {
     let project = Project::init();
-    // `Project::init()` seeds `.specify/cache/manifests/targets/omnia/`; remove
-    // it so the local probe wins for this test.
-    let cached = project.root().join(".specify/cache/manifests/targets/omnia");
+    // `Project::init()` seeds the out-of-tree manifest cache with
+    // `manifests/targets/omnia/`; remove it so the local probe wins.
+    let cached = expected_cache_dir(project.root()).join("manifests/targets/omnia");
     if cached.exists() {
         fs::remove_dir_all(&cached).expect("clear cached omnia");
     }

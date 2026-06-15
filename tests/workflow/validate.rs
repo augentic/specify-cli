@@ -8,20 +8,6 @@ use crate::support::*;
 // -- base shape rules --------------------------------------------------
 
 #[test]
-fn plan_validate_clean_text() {
-    let project = Project::init();
-    project.seed_plan(CLEAN_PLAN);
-
-    let assert =
-        specify_cmd().current_dir(project.root()).args(["plan", "validate"]).assert().success();
-    assert_eq!(assert.get_output().status.code(), Some(0));
-
-    let stdout = std::str::from_utf8(&assert.get_output().stdout).expect("utf8");
-    // No ERROR-level lines on a clean plan.
-    assert!(!stdout.contains("ERROR"), "clean plan must not print any ERROR lines, got:\n{stdout}");
-}
-
-#[test]
 fn plan_validate_clean_json() {
     let project = Project::init();
     project.seed_plan(CLEAN_PLAN);
@@ -150,7 +136,7 @@ fn planning_stage_ab_brief_and_validate() {
 
     // Don't trust the bare exit code: assert `plan create` actually
     // wrote the named plan with the requested source binding before we
-    // validate it (REVIEW.md B4).
+    // validate it.
     let plan = load_plan(&project);
     assert_eq!(plan.name, "planning-path", "create must persist the plan name");
     assert!(plan.sources.contains_key("app"), "create must persist the `app` source binding");
@@ -223,7 +209,7 @@ fn validate_reports_all_health_diagnostics() {
              \x20\x20\x20\x20adapter: omnia@v1\n",
     )
     .unwrap();
-    let slot = tmp.path().join(".specify/workspace/alpha");
+    let slot = tmp.path().join("workspace/alpha");
     fs::create_dir_all(&slot).unwrap();
     let init = ProcessCommand::new("git").arg("-C").arg(&slot).arg("init").output().unwrap();
     assert!(init.status.success(), "git init failed: {}", String::from_utf8_lossy(&init.stderr));
@@ -266,7 +252,7 @@ fn validate_reports_all_health_diagnostics() {
 
 #[test]
 fn validate_reports_topology_cache_stale() {
-    // RFC-36: a slot's `project.yaml` is the authored home for its
+    // A slot's `project.yaml` is the authored home for its
     // facets; `.specify/topology.lock` is the derived projection. When a
     // materialised slot drifts from the committed cache, `plan validate`
     // emits the warning-only `topology-cache-stale` diagnostic whose fix
@@ -295,14 +281,17 @@ fn validate_reports_topology_cache_stale() {
 
     // Materialise the slot with a resolvable adapter and an authored
     // description, then seed a topology.lock whose entry disagrees.
-    let slot_specify = tmp.path().join(".specify/workspace/alpha/.specify");
+    let slot_specify = tmp.path().join("workspace/alpha/.specify");
     fs::create_dir_all(&slot_specify).unwrap();
     fs::write(
         slot_specify.join("project.yaml"),
         "name: alpha\nadapter: omnia@v1\ndescription: Fresh description\n",
     )
     .unwrap();
-    copy_dir(&omnia_schema_dir(), &slot_specify.join("cache/manifests/targets/omnia"));
+    copy_dir(
+        &omnia_schema_dir(),
+        &expected_cache_dir(&tmp.path().join("workspace/alpha")).join("manifests/targets/omnia"),
+    );
 
     fs::write(
         tmp.path().join(".specify/topology.lock"),

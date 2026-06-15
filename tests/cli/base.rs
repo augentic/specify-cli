@@ -10,16 +10,17 @@ use std::fs;
 
 use tempfile::tempdir;
 
-use crate::common::{omnia_schema_dir, specify_cmd};
+use crate::common::{contract_dump_verbs, omnia_schema_dir, specify_cmd};
 
 #[test]
 fn help_exits_zero_and_prints_usage() {
+    // No exact clap wording: assert exit 0 and that the help text lists
+    // every top-level verb the contract dump declares.
     let assert = specify_cmd().arg("--help").assert().success();
     let output = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
-    assert!(
-        output.contains("specify") && output.contains("Usage"),
-        "expected usage in stdout, got:\n{output}"
-    );
+    for verb in contract_dump_verbs(&[]) {
+        assert!(output.contains(&verb), "--help must list `{verb}`, got:\n{output}");
+    }
 }
 
 #[test]
@@ -64,14 +65,10 @@ fn version_too_old_exits_three_json() {
 }
 
 #[test]
-fn migration_required_exit_four_json() {
-    // Exit-code 4 mirror of the exit-3 test above: pin the project a
-    // full major *below* the binary. The migration gate compares majors,
-    // so while the binary is 0.x the gate is dormant and the command
-    // succeeds; from the 1.0 cut onward the same fixture must exit 4
-    // with the `project-needs-migration` envelope — no test edit needed.
-    // The wiring itself is unit-covered today via the injected-version
-    // test `config::tests::load_refuses_migration_owed_pin`.
+fn older_pin_loads_fine() {
+    // A pin older than the binary is legal: pre-1.0 majors are re-init,
+    // not migration, so config load succeeds and the command proceeds to
+    // ordinary slice validation (exit 2 on the bogus slice name).
     let tmp = tempdir().unwrap();
     specify_cmd()
         .current_dir(tmp.path())
@@ -90,33 +87,14 @@ fn migration_required_exit_four_json() {
     assert_ne!(original, edited, "fixture must repin specify_version");
     fs::write(&config_path, edited).unwrap();
 
-    let binary_major: u64 = env!("CARGO_PKG_VERSION")
-        .split('.')
-        .next()
-        .and_then(|m| m.parse().ok())
-        .expect("binary version has a numeric major");
-
     let assert = specify_cmd()
         .current_dir(tmp.path())
         .args(["--format", "json", "slice", "validate", "."])
-        .assert();
-    if binary_major == 0 {
-        // Same-major pin: the gate must NOT fire pre-1.0. The command
-        // gets past config load and fails ordinary slice validation
-        // (exit 2) — proof the refusal stayed dormant.
-        let assert = assert.failure();
-        let code = assert.get_output().status.code().expect("process exited with a code");
-        assert_eq!(code, 2, "pre-1.0 the migration gate must not fire");
-        let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8");
-        let value: serde_json::Value = serde_json::from_str(&stderr).expect("stderr is JSON");
-        assert_eq!(value["error"], "slice-validation-failed");
-    } else {
-        let assert = assert.failure();
-        let code = assert.get_output().status.code().expect("process exited with a code");
-        assert_eq!(code, 4, "expected exit code 4 (migration required)");
-        let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8");
-        let value: serde_json::Value = serde_json::from_str(&stderr).expect("stderr is JSON");
-        assert_eq!(value["error"], "project-needs-migration");
-        assert_eq!(value["exit-code"], 4);
-    }
+        .assert()
+        .failure();
+    let code = assert.get_output().status.code().expect("process exited with a code");
+    assert_eq!(code, 2, "older pin loads; the failure is ordinary validation");
+    let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8");
+    let value: serde_json::Value = serde_json::from_str(&stderr).expect("stderr is JSON");
+    assert_eq!(value["error"], "slice-validation-failed");
 }

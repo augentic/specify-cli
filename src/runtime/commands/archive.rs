@@ -3,7 +3,6 @@
 
 use std::io::Write;
 
-use jiff::Timestamp;
 use serde::Serialize;
 use specify_error::{Error, Result};
 use specify_workflow::slice::actions::{Retention, prune};
@@ -40,7 +39,7 @@ fn prune_archive(
         max_age_days: older_than,
     };
     let archive_dir = ctx.archive_dir();
-    let candidates = prune::scan(&archive_dir, retention, Timestamp::now())?;
+    let candidates = prune::scan(&archive_dir, retention, ctx.now())?;
     if !dry_run {
         prune::prune(&candidates)?;
     }

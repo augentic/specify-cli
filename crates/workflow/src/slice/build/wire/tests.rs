@@ -168,7 +168,7 @@ fn request_round_trips() {
     let req = json!({
         "version": 1,
         "slice": "identity-service",
-        "project-dir": "/w/.specify/workspace/identity-service",
+        "project-dir": "/w/workspace/identity-service",
         "inputs": {
             "root": "/w/.specify/slices/identity-service",
             "artifacts": {

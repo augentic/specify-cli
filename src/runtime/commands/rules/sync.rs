@@ -2,11 +2,10 @@
 //!
 //! Resolves the project's adapter source (the recorded `adapter:`
 //! value, or the `--source` override) and mirrors the shared codex
-//! packs into `.specify/cache/codex/`, pinned to the same source/ref.
+//! packs into the out-of-tree `<project-cache>/codex/`, pinned to the same source/ref.
 //! The codex resolver's rules-root probe then finds shared `UNI-*`
 //! rules without `--rules-root`. Writes only under the codex cache.
 
-use jiff::Timestamp;
 use serde::Serialize;
 use specify_error::{Error, Result};
 use specify_workflow::init::{CodexMeta, sync_codex};
@@ -35,7 +34,7 @@ pub fn run(ctx: &Ctx, args: &SyncArgs) -> Result<()> {
         .to_string();
 
     let distributed =
-        sync_codex(&ctx.project_dir, &adapter_value, args.include_framework, Timestamp::now())?;
+        sync_codex(&ctx.project_dir, &adapter_value, args.include_framework, ctx.now())?;
 
     let body = Body {
         distributed,
@@ -64,7 +63,7 @@ struct Body {
 
 fn write_text(w: &mut dyn std::io::Write, body: &Body) -> std::io::Result<()> {
     if body.distributed {
-        writeln!(w, "Synced shared codex into .specify/cache/codex/")?;
+        writeln!(w, "Synced shared codex into the per-project cache (codex/)")?;
         writeln!(w, "  source: {}", body.source)?;
         writeln!(w, "  framework core pack: {}", body.include_framework)?;
         if let Some(meta) = &body.codex_meta {

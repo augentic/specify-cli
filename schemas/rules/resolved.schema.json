@@ -87,9 +87,10 @@
       "type": "string",
       "enum": [
         "rules-root",
-        "project-dir"
+        "project-dir",
+        "cache"
       ],
-      "description": "Anchor for the rule `path`. Shared rules and rules-root fallback overlays anchor at `rules-root`; project-local and cached overlays anchor at `project-dir`."
+      "description": "Anchor for the rule `path`. Shared rules and rules-root fallback overlays anchor at `rules-root`; project-local overlays anchor at `project-dir`; cached adapter-rule overlays anchor at `cache` (the out-of-tree per-project cache root, with a cache-relative `manifests/...` path)."
     },
     "lintMode": {
       "type": "string",
@@ -112,8 +113,6 @@
         "set-coverage",
         "cardinality",
         "constant-eq",
-        "set-eq",
-        "content-digest-eq",
         "fenced-block",
         "presence",
         "field-grammar",
@@ -184,7 +183,7 @@
           "description": "Optional human explanation for the hint."
         },
         "config": {
-          "description": "Per-kind configuration. Phase 1: `regex` uses regexHintConfig when kind is regex.",
+          "description": "Per-kind configuration: `regex` uses regexHintConfig when kind is regex.",
           "oneOf": [
             { "$ref": "#/$defs/regexHintConfig" }
           ]

@@ -31,6 +31,16 @@ pub fn is_kebab(s: &str) -> bool {
         })
 }
 
+/// [`is_kebab`] plus a leading ASCII-lowercase-letter requirement.
+///
+/// The `^[a-z][a-z0-9]*(-[a-z0-9]+)*$` shape used by component slugs
+/// and target names, which (unlike plain kebab) may not start with a
+/// digit.
+#[must_use]
+pub fn is_kebab_leading_alpha(s: &str) -> bool {
+    s.starts_with(|c: char| c.is_ascii_lowercase()) && is_kebab(s)
+}
+
 #[cfg(test)]
 #[test]
 fn is_kebab_accepts_and_rejects() {
@@ -39,5 +49,16 @@ fn is_kebab_accepts_and_rejects() {
     }
     for bad in ["", "-a", "a-", "a--b", "A", "alpha_gateway", "alpha gateway"] {
         assert!(!is_kebab(bad), "expected `{bad}` to fail");
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn is_kebab_leading_alpha_rejects_digit_start() {
+    for ok in ["a", "tab-bar", "x-1"] {
+        assert!(is_kebab_leading_alpha(ok), "expected `{ok}` to pass");
+    }
+    for bad in ["", "1a", "9-lives", "-a", "a--b", "A"] {
+        assert!(!is_kebab_leading_alpha(bad), "expected `{bad}` to fail");
     }
 }

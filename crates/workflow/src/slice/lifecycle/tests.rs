@@ -1,10 +1,10 @@
-use clap::ValueEnum;
+use strum::VariantArray;
 
 use super::*;
 
 /// Legal directed edges, mirroring the `matches!` arm in
 /// [`LifecycleStatus::transition`]. The matrix test treats every other
-/// `(from, to)` pair over [`LifecycleStatus::value_variants`] as illegal.
+/// `(from, to)` pair over [`LifecycleStatus::VARIANTS`] as illegal.
 const LEGAL_EDGES: &[(LifecycleStatus, LifecycleStatus)] = &[
     (LifecycleStatus::Refining, LifecycleStatus::Refined),
     (LifecycleStatus::Refined, LifecycleStatus::Built),
@@ -38,7 +38,7 @@ fn transition_matrix_legal_and_illegal() {
     // Cartesian product over every state pair; self-transitions included.
     // Legality is derived from `LEGAL_EDGES`, not re-asserted per arm, so the
     // table stays the single source of truth alongside the machine itself.
-    let states = LifecycleStatus::value_variants();
+    let states = LifecycleStatus::VARIANTS;
     for &from in states {
         for &to in states {
             let legal = LEGAL_EDGES.contains(&(from, to));

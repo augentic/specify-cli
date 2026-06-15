@@ -62,7 +62,7 @@ static REGISTERED_SCHEMAS: LazyLock<HashMap<&'static str, &'static str>> = LazyL
 ///
 /// Built once per `specify lint` / `specify lint framework` invocation in
 /// [`super::evaluate_rules`] and threaded by `&mut` into every per-rule
-/// [`super::evaluate`] call, so a schema referenced by N rules compiles
+/// `evaluate_with_cache` call, so a schema referenced by N rules compiles
 /// once per run instead of once per rule. Two maps back the two results
 /// the previous code recomputed on every evaluation:
 ///
@@ -113,9 +113,9 @@ pub(crate) fn evaluate(
     let validator = compile_schema_for_hint(rule, hint, project_dir, cache)?;
 
     // The `scenario` selector validates the dedicated scenario fact
-    // family whole-tree (like `content-digest-eq`): scenario files are
-    // kept out of `model.files`, so the candidate set can never select
-    // them and the `candidates` argument is intentionally unused here.
+    // family whole-tree: scenario files are kept out of `model.files`,
+    // so the candidate set can never select them and the `candidates`
+    // argument is intentionally unused here.
     if hint.value.trim() == SCENARIO_FACT_FAMILY {
         return Ok(evaluate_scenarios(rule, &validator, model, next_id));
     }
@@ -309,5 +309,116 @@ fn read_text(project_dir: &Path, candidate: &Path) -> Result<Option<String>, Hin
             path: absolute,
             source: err,
         }),
+    }
+}
+
+#[cfg(test)]
+mod unit {
+    use std::fs;
+
+    use serde_json::json;
+
+    use super::*;
+    use crate::lint::Frontmatter;
+    use crate::lint::eval::testkit::{candidates, empty_model, hint, rule};
+    use crate::rules::HintKind;
+
+    /// A schema file requiring a string `name` property.
+    const NAME_SCHEMA: &str = r#"{
+        "type": "object",
+        "required": ["name"],
+        "properties": { "name": { "type": "string" } }
+    }"#;
+
+    fn run(
+        hint_value: &str, cands: &[PathBuf], project_dir: &Path, model: &WorkspaceModel,
+    ) -> Result<Vec<Diagnostic>, HintError> {
+        let hint = hint(HintKind::Schema, hint_value);
+        let mut cache = SchemaCache::default();
+        evaluate(&rule(), &hint, cands, project_dir, model, &mut 1, &mut cache)
+    }
+
+    #[test]
+    fn http_refs_rejected() {
+        let model = empty_model();
+        let result = run("https://example.com/schema.json", &[], Path::new("/tmp"), &model);
+        assert!(matches!(result, Err(HintError::SchemaResolve { .. })));
+    }
+
+    #[test]
+    fn unknown_registered_id_rejected() {
+        let model = empty_model();
+        let result = run("no-such-schema", &[], Path::new("/tmp"), &model);
+        assert!(matches!(result, Err(HintError::SchemaResolve { .. })));
+    }
+
+    #[test]
+    fn escaping_ref_rejected() {
+        let tmp = tempfile::tempdir().expect("tmp");
+        let model = empty_model();
+        let result = run("../outside.schema.json", &[], tmp.path(), &model);
+        assert!(matches!(result, Err(HintError::SchemaResolve { .. })));
+    }
+
+    #[test]
+    fn project_ref_validates_json_candidates() {
+        let tmp = tempfile::tempdir().expect("tmp");
+        fs::write(tmp.path().join("name.schema.json"), NAME_SCHEMA).expect("schema");
+        fs::write(tmp.path().join("good.json"), r#"{ "name": "x" }"#).expect("good");
+        fs::write(tmp.path().join("bad.json"), r#"{ "other": 1 }"#).expect("bad");
+        let model = empty_model();
+        let out =
+            run("./name.schema.json", &candidates(&["good.json", "bad.json"]), tmp.path(), &model)
+                .expect("evaluate");
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].location.as_ref().map(|l| l.path.as_str()), Some("bad.json"));
+    }
+
+    #[test]
+    fn markdown_candidates_validate_frontmatter() {
+        let tmp = tempfile::tempdir().expect("tmp");
+        fs::write(tmp.path().join("name.schema.json"), NAME_SCHEMA).expect("schema");
+        let mut model = empty_model();
+        let mut bad_fields = serde_json::Map::new();
+        bad_fields.insert("other".to_string(), json!(1));
+        let mut good_fields = serde_json::Map::new();
+        good_fields.insert("name".to_string(), json!("x"));
+        model.frontmatter = vec![
+            Frontmatter {
+                path: "good.md".to_string(),
+                schema_id: None,
+                fields: good_fields,
+            },
+            Frontmatter {
+                path: "bad.md".to_string(),
+                schema_id: None,
+                fields: bad_fields,
+            },
+        ];
+        let out =
+            run("./name.schema.json", &candidates(&["good.md", "bad.md"]), tmp.path(), &model)
+                .expect("evaluate");
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].location.as_ref().map(|l| l.path.as_str()), Some("bad.md"));
+    }
+
+    #[test]
+    fn scenario_family_validated_whole_tree() {
+        let mut model = empty_model();
+        model.scenarios = vec![crate::lint::Scenario {
+            path: "evals/scenarios/empty.md".to_string(),
+            id: None,
+            stages: vec![],
+            expected_artifacts: vec![],
+            body_id: None,
+            fields: serde_json::Map::new(),
+        }];
+        // The scenario selector ignores the candidate set entirely.
+        let out = run("scenario", &[], Path::new("/tmp"), &model).expect("evaluate");
+        assert!(!out.is_empty(), "an empty frontmatter map must fail the scenario schema");
+        assert!(
+            out.iter()
+                .all(|f| f.location.as_ref().is_some_and(|l| l.path == "evals/scenarios/empty.md"))
+        );
     }
 }

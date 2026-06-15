@@ -15,10 +15,10 @@ skip_rust_env_info = true
 # CI Checks
 # -------------------------------------
 [tasks.check]
-dependencies = ["fmt", "lint", "test", "test-docs", "doc", "wasi-tools-check"]
+dependencies = ["fmt-check", "lint", "test", "test-docs", "doc"]
 
 [tasks.ci]
-dependencies = ["fmt", "lint", "test", "test-docs", "doc", "vet", "outdated", "deny", "wasi-tools-check"]
+dependencies = ["fmt-check", "lint", "test", "test-docs", "doc", "vet", "deny"]
 
 # -------------------------------------
 # Individual Actions
@@ -47,9 +47,14 @@ cargo +nightly udeps --all-targets
 '''
 install_crate = "cargo-udeps"
 
-# Fmt
+# Fmt (mutating; local convenience)
 [tasks.fmt]
 script = "cargo +nightly fmt --all"
+
+# Fmt check (non-mutating; the gate `check` / `ci` run — a mutating
+# `fmt` inside a gate silently rewrites violations instead of failing)
+[tasks.fmt-check]
+script = "cargo +nightly fmt --all -- --check"
 
 # Lint
 [tasks.lint]
@@ -57,16 +62,17 @@ command = "cargo"
 args = ["clippy", "--locked", "--workspace", "--all-targets", "--all-features", "--", "-D", "warnings"]
 install_crate = { rustup_component_name = "clippy" }
 
-# Outdated
+# Outdated (advisory — never part of `ci`: any upstream release would
+# fail the gate for unrelated changes; run it on demand or scheduled)
 [tasks.outdated]
 script = '''
-cargo outdated --workspace --exit-code 1 --depth 1
+cargo outdated --workspace --depth 1
 '''
 install_crate = "cargo-outdated"
 
 # Test
 #
-# `clean` was dropped from the dependency list (REVIEW.md B5): the
+# `clean` is deliberately not in the dependency list: the
 # `RUSTFLAGS=-Dwarnings` override already differs from the default
 # profile, so cargo rebuilds the workspace under these flags regardless,
 # making a `cargo clean` cold rebuild redundant cost on every run. The
@@ -95,13 +101,21 @@ cargo +nightly miri setup
 cargo +nightly miri nextest run --no-tests=pass
 '''
 
-# Vet
+# Vet (check only — regeneration before checking would auto-exempt
+# anything unaudited and the gate could never fail)
 [tasks.vet]
+script = '''
+cargo vet --locked
+'''
+install_crate = "cargo-vet"
+
+# Vet regenerate (manual, on dependency add/update — refresh imports and
+# exemptions, then review the `supply-chain/` diff before committing)
+[tasks.vet-regenerate]
 script = '''
 cargo vet regenerate imports
 cargo vet regenerate exemptions
 cargo vet regenerate unpublished
-cargo vet --locked
 '''
 install_crate = "cargo-vet"
 
@@ -130,8 +144,7 @@ cargo test --workspace
 # `wasi-tools/contract/dist/` artifact (and its sha256 sidecar) that
 # `tests/tool/contract.rs` loads. Rerun after editing the contract crate
 # so the committed blob reflects the new checks; the `dist_digest_pinned`
-# drift test fails when blob and sidecar disagree. Mirrors the
-# `framework-wasm` pattern.
+# drift test fails when blob and sidecar disagree.
 [tasks.contract-wasm]
 script = '''
 set -euo pipefail
@@ -140,26 +153,6 @@ cargo build -p specify-contract --target wasm32-wasip2 --release
 cp target/wasm32-wasip2/release/specify-contract.wasm contract/dist/contract-0.2.0.wasm
 ( cd contract/dist && shasum -a 256 contract-0.2.0.wasm > contract-0.2.0.wasm.sha256 )
 echo "contract WASI component written to wasi-tools/contract/dist/contract-0.2.0.wasm"
-'''
-
-# Build the first-party framework-authoring WASI tools and refresh the
-# checked-in prebuilt components embedded by
-# `src/runtime/commands/lint/framework_tools.rs` (and read directly by
-# the Road B parity tests). With no argument, rebuilds all seven; pass one
-# or more tool names to rebuild a subset, e.g. `cargo make framework-wasm
-# prose`. Rerun after editing a `wasi-tools/<tool>/` crate so the embedded
-# artifact (and its sha256 sidecar) reflects the new checks. Mirrors the
-# `contract-wasm` pattern; the target is `wasm32-wasip2`.
-[tasks.framework-wasm]
-script = '''
-set -euo pipefail
-cd wasi-tools
-for tool in ${@:-scenarios skill-body agent-teams links-registry marketplace prose rules}; do
-  cargo build -p "specify-${tool}" --target wasm32-wasip2 --release
-  cp "target/wasm32-wasip2/release/specify-${tool}.wasm" "${tool}/dist/${tool}-0.1.0.wasm"
-  ( cd "${tool}/dist" && shasum -a 256 "${tool}-0.1.0.wasm" > "${tool}-0.1.0.wasm.sha256" )
-  echo "${tool} WASI component written to wasi-tools/${tool}/dist/${tool}-0.1.0.wasm"
-done
 '''
 
 # Build the `vectis` WASI tool locally with sha256 sidecars for

@@ -1,5 +1,5 @@
 //! Shared fixtures, seeds, and re-exports for the `workflow`
-//! integration suite (REVIEW.md A13).
+//! integration suite.
 //!
 //! The suite is split across themed submodules grouped by `plan`
 //! command family (`validate`, `next`, `mutate`, `source_binding`,
@@ -16,8 +16,8 @@ pub use specify_workflow::change::{Plan, Status};
 pub use tempfile::{TempDir, tempdir};
 
 pub use crate::common::{
-    Project, assert_golden_at, copy_dir, init_workspace, omnia_schema_dir, parse_stderr,
-    parse_stdout, repo_root, specify_cmd,
+    Project, assert_golden_at, copy_dir, expected_cache_dir, init_workspace, omnia_schema_dir,
+    parse_stderr, parse_stdout, repo_root, specify_cmd,
 };
 
 pub fn plan_fixtures() -> PathBuf {
@@ -28,7 +28,7 @@ pub fn assert_golden(name: &str, actual: Value) {
     assert_golden_at(&plan_fixtures(), name, actual);
 }
 
-// -- setup helpers (REVIEW.md B4) -------------------------------------
+// -- setup helpers -----------------------------------------------------
 
 /// Load and parse the project's `plan.yaml` into the in-memory model.
 /// Used by setup helpers (and tests) that must assert a write actually
@@ -130,20 +130,4 @@ slices:
   - name: b
     project: default
     status: done
-";
-
-/// All entries done — `next` reports `drained` post-2.0 (the
-/// previous "stuck" semantics relied on the now-removed `failed`
-/// state). Kept under the historical name for fixture continuity;
-/// the test asserts the new `drained` reason.
-pub const STUCK_PLAN: &str = "\
-name: demo
-slices:
-  - name: a
-    project: default
-    status: done
-  - name: b
-    project: default
-    status: done
-    depends-on: [a]
 ";

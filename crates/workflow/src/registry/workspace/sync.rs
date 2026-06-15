@@ -1,5 +1,6 @@
-//! Peer materialisation: turn registry entries into `.specify/workspace/<name>/`
-//! symlinks (local URLs) or shallow Git clones (remote URLs).
+//! Peer materialisation: turn registry entries into `workspace/<name>/`
+//! symlinks (local URLs) or Git worktrees of a persistent out-of-tree
+//! mirror (remote URLs).
 
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
@@ -17,7 +18,7 @@ use crate::registry::catalog::{Registry, RegistryProject};
 use crate::registry::gitignore::ensure_gitignore_entries;
 use crate::registry::topology::{TopologyLock, TopologyProject};
 
-/// Materialise `.specify/workspace/<name>/` for selected registry entries.
+/// Materialise `workspace/<name>/` for selected registry entries.
 ///
 /// Callers must pass projects returned by
 /// [`crate::registry::Registry::select`] so unknown selectors fail before
@@ -26,7 +27,7 @@ use crate::registry::topology::{TopologyLock, TopologyProject};
 /// # Errors
 ///
 /// Aggregates per-project sync failures under the `workspace-sync-failed`
-/// diagnostic; refuses materialisation when `.specify/workspace/` is itself
+/// diagnostic; refuses materialisation when `workspace/` is itself
 /// a symlink or otherwise invalid.
 pub fn sync_projects(project_dir: &Path, projects: &[&RegistryProject]) -> Result<(), Error> {
     ensure_gitignore_entries(project_dir)?;
@@ -53,10 +54,10 @@ pub fn sync_projects(project_dir: &Path, projects: &[&RegistryProject]) -> Resul
         }
     }
 
-    // RFC-45: provision each synced slot's manifest cache with the
+    // Slot adapter provisioning: provision each synced slot's manifest cache with the
     // workspace's adapter set so slot-side resolution stays
     // project-local. Local symlink slots are mirrored too — the write
-    // lands only under the peer's gitignored `.specify/cache/`.
+    // lands only under the peer's out-of-tree per-project cache.
     for project in projects {
         let Ok(slot) = workspace_slot_path(&base, &project.name) else {
             continue;
@@ -157,9 +158,9 @@ fn prepare_workspace_base(project_dir: &Path) -> Result<PathBuf, Error> {
     std::fs::create_dir_all(&specify_dir).map_err(Error::Io)?;
 
     let base = workspace_base(project_dir);
-    reject_symlinked_directory(&base, ".specify/workspace/")?;
+    reject_symlinked_directory(&base, "workspace/")?;
     std::fs::create_dir_all(&base).map_err(Error::Io)?;
-    reject_symlinked_directory(&base, ".specify/workspace/")?;
+    reject_symlinked_directory(&base, "workspace/")?;
 
     Ok(base)
 }
@@ -194,7 +195,7 @@ pub(super) fn materialise_symlink(project_dir: &Path, url: &str, dest: &Path) ->
                 return Err(Error::Diag {
                     code: "workspace-slot-symlink-target-mismatch",
                     detail: format!(
-                        ".specify/workspace/{} already exists as a symlink to {}; expected {} from registry url `{url}`",
+                        "workspace/{} already exists as a symlink to {}; expected {} from registry url `{url}`",
                         dest.file_name().and_then(|s| s.to_str()).unwrap_or("?"),
                         resolved.display(),
                         target.display()
@@ -205,7 +206,7 @@ pub(super) fn materialise_symlink(project_dir: &Path, url: &str, dest: &Path) ->
                 return Err(Error::Diag {
                     code: "workspace-slot-symlink-broken",
                     detail: format!(
-                        ".specify/workspace/{} already exists as a broken symlink; expected {} from registry url `{url}` ({err})",
+                        "workspace/{} already exists as a broken symlink; expected {} from registry url `{url}` ({err})",
                         dest.file_name().and_then(|s| s.to_str()).unwrap_or("?"),
                         target.display()
                     ),
@@ -216,7 +217,7 @@ pub(super) fn materialise_symlink(project_dir: &Path, url: &str, dest: &Path) ->
             return Err(Error::Diag {
                 code: "workspace-slot-not-symlink",
                 detail: format!(
-                    ".specify/workspace/{} already exists and is not a symlink; remove it before re-syncing",
+                    "workspace/{} already exists and is not a symlink; remove it before re-syncing",
                     dest.file_name().and_then(|s| s.to_str()).unwrap_or("?")
                 ),
             });
@@ -268,20 +269,17 @@ pub(super) fn materialise_git_remote(
                 return Err(Error::Diag {
                     code: "workspace-remote-slot-not-git-clone",
                     detail: format!(
-                        "`{}` exists but is not a git clone (no `.git/`); remove it or pick another registry name",
+                        "`{}` exists but is not a git worktree (no `.git`); remove it or pick another registry name",
                         dest.display()
                     ),
                 });
             }
             ensure_origin_matches(dest, url)?;
             if dest.join(".specify").join("project.yaml").exists() {
-                // A failed fetch leaves a stale registry clone; surface it rather
-                // than masking it with `.or(Ok(()))` (REVIEW.md A2).
-                git::run(
-                    dest,
-                    &["fetch", "--depth", "1"],
-                    &format!("git fetch in {}", dest.display()),
-                )
+                // A failed fetch leaves a stale registry worktree; surface it
+                // rather than masking it with `.or(Ok(()))`. The fetch lands
+                // in the shared mirror's `refs/remotes/origin/*`.
+                git::run(dest, &["fetch", "origin"], &format!("git fetch in {}", dest.display()))
             } else {
                 greenfield_init(dest, require_seed(adapter, dest)?, initiating_project_dir, true)
             }
@@ -298,38 +296,91 @@ pub(super) fn materialise_git_remote(
                 std::fs::create_dir_all(parent).map_err(Error::Io)?;
             }
 
-            let clone_result = cmd::git(
-                &cmd::real_cmd,
-                None,
-                [
-                    OsStr::new("clone"),
-                    OsStr::new("--depth"),
-                    OsStr::new("1"),
-                    OsStr::new(url),
-                    dest.as_os_str(),
-                ],
-            )
-            .map_err(|e| Error::Diag {
-                code: "workspace-git-clone-spawn-failed",
-                detail: format!(
-                    "failed to spawn `git clone` for registry url `{url}`: {e} (is `git` installed?)"
-                ),
-            })?;
-
-            if clone_result.status.success() {
-                ensure_origin_matches(dest, url)?;
-                Ok(())
-            } else {
-                bootstrap::bootstrap(
+            match ensure_mirror(url)? {
+                Some(mirror) => {
+                    add_worktree(&mirror, dest)?;
+                    ensure_origin_matches(dest, url)?;
+                    Ok(())
+                }
+                None => bootstrap::bootstrap(
                     url,
                     dest,
                     require_seed(adapter, dest)?,
                     initiating_project_dir,
-                )
+                ),
             }
         }
         Err(err) => Err(Error::Io(err)),
     }
+}
+
+/// Ensure a persistent bare mirror exists for `url`, fetching the latest
+/// objects when it already does.
+///
+/// The mirror lives out-of-tree (keyed by a digest of `url`) so a peer's
+/// object store is shared across changes and fresh checkouts. Returns
+/// `None` when the remote is unreachable or empty — the caller bootstraps
+/// a greenfield slot offline in that case, matching the prior
+/// clone-then-fallback behaviour.
+fn ensure_mirror(url: &str) -> Result<Option<PathBuf>, Error> {
+    let mirror = specify_schema::cache::mirror_dir(url);
+
+    if mirror.join("HEAD").exists() {
+        git::run(
+            &mirror,
+            &["fetch", "origin"],
+            &format!("git fetch in mirror {}", mirror.display()),
+        )?;
+        return Ok(Some(mirror));
+    }
+
+    if let Some(parent) = mirror.parent() {
+        std::fs::create_dir_all(parent).map_err(Error::Io)?;
+    }
+
+    let clone = cmd::git(
+        &cmd::real_cmd,
+        None,
+        [OsStr::new("clone"), OsStr::new("--bare"), OsStr::new(url), mirror.as_os_str()],
+    )
+    .map_err(|e| Error::Diag {
+        code: "workspace-git-clone-spawn-failed",
+        detail: format!(
+            "failed to spawn `git clone` for registry url `{url}`: {e} (is `git` installed?)"
+        ),
+    })?;
+
+    if !clone.status.success() {
+        // Unreachable or empty remote: drop the partial mirror so a later
+        // reachable sync re-clones, and signal greenfield bootstrap.
+        drop(std::fs::remove_dir_all(&mirror));
+        return Ok(None);
+    }
+
+    // A bare clone copies `refs/heads/*` but no remote-tracking refs.
+    // Configure the standard refspec and fetch so worktrees resolve
+    // `origin/HEAD` and `origin/<branch>` the way branch preparation expects.
+    git::run(
+        &mirror,
+        &["config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*"],
+        "git config remote.origin.fetch",
+    )?;
+    git::run(&mirror, &["fetch", "origin"], &format!("git fetch in mirror {}", mirror.display()))?;
+
+    Ok(Some(mirror))
+}
+
+/// Add a worktree at `dest` from the persistent `mirror`, first pruning
+/// any stale registration left by a previous (gitignored, since-removed)
+/// checkout of the same slot.
+fn add_worktree(mirror: &Path, dest: &Path) -> Result<(), Error> {
+    git::run(mirror, &["worktree", "prune"], "git worktree prune")?;
+    let dest_str = dest.to_string_lossy();
+    git::run(
+        mirror,
+        &["worktree", "add", "--detach", "--force", &dest_str],
+        &format!("git worktree add {}", dest.display()),
+    )
 }
 
 /// A greenfield scaffold needs an adapter; the registry `adapter` is an

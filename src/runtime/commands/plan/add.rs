@@ -59,12 +59,12 @@ pub(super) fn add(ctx: &Ctx, args: AddArgs) -> Result<()> {
         authority_override: authority_override_map,
     };
     let plan_path = ctx.layout().plan_path();
+    let now = ctx.now();
     let (body, override_events) =
         with_state::<Plan, _, _>(ctx.layout(), "plan.yaml", move |plan| {
             plan.create(entry)?;
             validate_plan(plan)?;
             let plan_name = plan.name.clone();
-            let now = jiff::Timestamp::now();
             // Route the seeded overrides through the shared writer
             // (no clears on the add path) so all three handlers emit
             // identically-shaped, identically-sorted Set events.

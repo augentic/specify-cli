@@ -1,4 +1,4 @@
-//! Read-only `specify plan status` projection (RFC-44 R2).
+//! Read-only `specify plan status` projection.
 //!
 //! [`plan_status_body`] projects `plan.yaml` entries, the candidate
 //! slice's `metadata.yaml` lifecycle, and the journal tail into a
@@ -449,13 +449,13 @@ fn resolve_entry(
 }
 
 /// Work root for an entry: the materialised workspace slot
-/// (`<plan-root>/.specify/workspace/<project>/`) when the entry is
+/// (`<plan-root>/workspace/<project>/`) when the entry is
 /// project-bound and the slot exists, else the project root. Mirrors
 /// the workspace routing under which phase work wrote the slice tree
 /// and journal.
 fn resolve_work_root(layout: Layout<'_>, entry: &Entry) -> PathBuf {
     if let Some(project) = &entry.project {
-        let slot = layout.plan_dir().join(".specify").join("workspace").join(project);
+        let slot = layout.plan_dir().join("workspace").join(project);
         if slot.is_dir() {
             return slot;
         }

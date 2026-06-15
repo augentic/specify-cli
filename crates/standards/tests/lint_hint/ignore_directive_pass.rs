@@ -1,6 +1,6 @@
 //! End-to-end acceptance goldens for the directive pass.
 //!
-//! Drives the full pipeline — `lint::index::build` → `lint::eval::evaluate`
+//! Drives the full pipeline — `lint::index::build` → `lint::eval::evaluate_rules`
 //! → `lint::ignore::apply` → JSON envelope render — against tiny Rust
 //! fixtures and pins each acceptance golden-test scenario:
 //!
@@ -56,7 +56,7 @@ use specify_diagnostics::{
     fingerprint as compute_fingerprint, render,
 };
 use specify_standards::lint::ScanProfile;
-use specify_standards::lint::eval::{ToolRunner, evaluate};
+use specify_standards::lint::eval::{EvalEnv, ToolRunner, evaluate_rules};
 use specify_standards::lint::ignore::apply as apply_directives;
 use specify_standards::lint::index::build;
 use specify_standards::rules::{HintKind, Origin, PathRoot, ResolvedRule};
@@ -168,17 +168,14 @@ fn run_scenario(scenario: &Scenario) -> (DiagnosticReport, Vec<Diagnostic>) {
 
     let url_rule = make_rule(scenario.primary_rule_id, vec![hint(HintKind::Regex, "https?://")]);
     let runner: &dyn ToolRunner = &NoToolRunner;
-    let outcome = evaluate(
-        &url_rule,
-        url_rule.rule_hints.as_deref().unwrap_or_default(),
-        &model,
-        tmp.path(),
-        runner,
-        1,
-    )
-    .expect("evaluate ok");
-
-    let mut findings: Vec<Diagnostic> = outcome.findings;
+    let env = EvalEnv {
+        model: &model,
+        project_dir: tmp.path(),
+        tool_runner: runner,
+        cli_contract: None,
+    };
+    let (mut findings, next_id_counter) =
+        evaluate_rules(std::slice::from_ref(&url_rule), env, 1, &[]).expect("evaluate ok");
 
     let mut resolved_rules = vec![url_rule];
     if scenario.resolve_uni_022 {
@@ -187,12 +184,8 @@ fn run_scenario(scenario: &Scenario) -> (DiagnosticReport, Vec<Diagnostic>) {
     if scenario.resolve_uni_023 {
         resolved_rules.push(validation_rule("UNI-023"));
     }
-    let ignore_outcome = apply_directives(
-        &mut findings,
-        &model.ignore_directives,
-        &resolved_rules,
-        outcome.next_id_counter,
-    );
+    let ignore_outcome =
+        apply_directives(&mut findings, &model.ignore_directives, &resolved_rules, next_id_counter);
     findings.extend(ignore_outcome.synthetics);
 
     let result = DiagnosticReport {
@@ -256,7 +249,7 @@ fn assert_json_golden(result: &DiagnosticReport, golden_name: &str) {
 }
 
 /// Collapse the wording-sensitive prose on `  impact:` / `  remediation:`
-/// lines to a fixed token (REVIEW.md A13). The pretty goldens then pin
+/// lines to a fixed token. The pretty goldens then pin
 /// the structural skeleton — finding order, severity tags, rule ids,
 /// location and status tokens, header, and summary — without breaking
 /// every time an `impact`/`remediation` sentence is reworded.
@@ -319,6 +312,9 @@ fn assert_pretty_golden(result: &DiagnosticReport, golden_name: &str) {
 fn with_no_color<R>(f: impl FnOnce() -> R) -> R {
     // SAFETY: nextest grants this binary a fresh process per test
     // and no other thread reads `NO_COLOR` while the closure runs.
+    // NOTE: this argument holds only under nextest's process-per-test
+    // model (the repo's `cargo make test`); a plain `cargo test` run
+    // shares one process across threads and would race this mutation.
     let () = unsafe { std::env::set_var("NO_COLOR", "1") };
     let out = f();
     // SAFETY: same single-test sequencing argument as above.

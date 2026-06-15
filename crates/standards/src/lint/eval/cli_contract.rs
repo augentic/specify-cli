@@ -760,3 +760,204 @@ fn inline_spans(text: &str) -> Vec<(u32, String)> {
     }
     out
 }
+
+#[cfg(test)]
+mod unit {
+    use std::fs;
+    use std::path::Path;
+
+    use serde_json::json;
+
+    use super::*;
+    use crate::lint::FencedBlock;
+    use crate::lint::eval::testkit::{candidates, empty_model, hint, hint_with_config, rule};
+
+    fn node(name: &str, args: &[&str], subcommands: Vec<CommandNode>) -> CommandNode {
+        CommandNode {
+            name: name.to_string(),
+            about: None,
+            args: args.iter().map(|a| (*a).to_string()).collect(),
+            subcommands,
+        }
+    }
+
+    fn contract() -> CliContract {
+        CliContract {
+            version: 1,
+            binary_version: "0.0.0".to_string(),
+            commands: node(
+                "specify",
+                &["--format"],
+                vec![node(
+                    "plan",
+                    &[],
+                    vec![
+                        node("add", &["<name>", "--target"], vec![]),
+                        node("transition", &["<name>", "<state>", "--undo"], vec![]),
+                    ],
+                )],
+            ),
+            exit_codes: vec![],
+            error_ids: vec!["adapter-not-found".to_string()],
+            journal_event_ids: vec!["plan.transition.approved".to_string()],
+            schemas: vec![],
+            tests: vec!["tests/plan/end_to_end.rs".to_string()],
+        }
+    }
+
+    fn block(path: &str, lang: &str, body: &str) -> FencedBlock {
+        FencedBlock {
+            path: path.to_string(),
+            line_start: 10,
+            line_end: 10 + u32::try_from(body.lines().count()).unwrap_or(0),
+            lang: lang.to_string(),
+            body: body.to_string(),
+        }
+    }
+
+    fn run(
+        hint_value: &str, config: serde_json::Value, model: &WorkspaceModel, cands: &[PathBuf],
+        project_dir: &Path,
+    ) -> Vec<Diagnostic> {
+        let hint = hint_with_config(HintKind::CliContract, hint_value, Some(config));
+        evaluate(&rule(), &hint, cands, project_dir, model, Some(&contract()), &mut 1)
+            .expect("evaluate")
+    }
+
+    #[test]
+    fn missing_contract_is_unsupported() {
+        let model = empty_model();
+        let hint = hint(HintKind::CliContract, "invocations");
+        let result = evaluate(&rule(), &hint, &[], Path::new("/tmp"), &model, None, &mut 1);
+        result.unwrap_err();
+    }
+
+    #[test]
+    fn unknown_verb_and_flag_flagged() {
+        let mut model = empty_model();
+        let body = "specify plan add my-slice --target omnia\n\
+                    specify plan destroy my-slice\n\
+                    specify plan add my-slice --bogus\n";
+        model.fenced_blocks = vec![block("docs/a.md", "bash", body)];
+        let out = run(
+            "invocations",
+            json!({ "langs": ["bash"] }),
+            &model,
+            &candidates(&["docs/a.md"]),
+            Path::new("/tmp"),
+        );
+        let titles: Vec<&str> = out.iter().map(|f| f.title.as_str()).collect();
+        assert_eq!(out.len(), 2, "{titles:?}");
+        assert!(titles.iter().any(|t| t.contains("`destroy`")), "{titles:?}");
+        assert!(titles.iter().any(|t| t.contains("`--bogus`")), "{titles:?}");
+    }
+
+    #[test]
+    fn comments_and_brace_expansion_end_the_walk() {
+        let mut model = empty_model();
+        let body = "specify plan add x # specify plan destroy y\n\
+                    specify plan {add, transition} whatever-junk\n";
+        model.fenced_blocks = vec![block("docs/a.md", "bash", body)];
+        let out = run(
+            "invocations",
+            json!({ "langs": ["bash"] }),
+            &model,
+            &candidates(&["docs/a.md"]),
+            Path::new("/tmp"),
+        );
+        assert!(out.is_empty(), "{:?}", out.iter().map(|f| &f.title).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn inline_spans_checked_in_markdown() {
+        let tmp = tempfile::tempdir().expect("tmp");
+        fs::write(tmp.path().join("doc.md"), "Run `specify plan destroy x` to clean up.\n")
+            .expect("doc");
+        let model = empty_model();
+        let out = run(
+            "invocations",
+            json!({ "langs": ["bash"] }),
+            &model,
+            &candidates(&["doc.md"]),
+            tmp.path(),
+        );
+        assert_eq!(out.len(), 1);
+        assert!(out[0].title.contains("`destroy`"), "{}", out[0].title);
+    }
+
+    #[test]
+    fn unknown_event_id_flagged_in_namespace_only() {
+        let mut model = empty_model();
+        let body = r#"{ "event": "plan.transition.approved" }
+{ "event": "plan.no-such-event" }
+{ "event": "users.register" }
+"#;
+        model.fenced_blocks = vec![block("docs/a.md", "json", body)];
+        let out = run(
+            "event-ids",
+            json!({ "json-fields": ["event"] }),
+            &model,
+            &candidates(&["docs/a.md"]),
+            Path::new("/tmp"),
+        );
+        // `users.register` is outside the declared family namespace.
+        assert_eq!(out.len(), 1);
+        assert!(out[0].title.contains("`plan.no-such-event`"), "{}", out[0].title);
+    }
+
+    #[test]
+    fn unknown_error_code_flagged() {
+        let mut model = empty_model();
+        let body = r#"{ "code": "adapter-not-found" }
+{ "code": "no-such-error" }
+"#;
+        model.fenced_blocks = vec![block("docs/a.md", "json", body)];
+        let out = run(
+            "error-codes",
+            json!({ "json-fields": ["code"] }),
+            &model,
+            &candidates(&["docs/a.md"]),
+            Path::new("/tmp"),
+        );
+        assert_eq!(out.len(), 1);
+        assert!(out[0].title.contains("`no-such-error`"), "{}", out[0].title);
+    }
+
+    #[test]
+    fn stale_test_citation_flagged() {
+        let tmp = tempfile::tempdir().expect("tmp");
+        fs::write(
+            tmp.path().join("doc.md"),
+            "See `tests/plan/end_to_end.rs` and `tests/gone/deleted.rs`.\n",
+        )
+        .expect("doc");
+        let model = empty_model();
+        let out = run(
+            "test-citations",
+            json!({ "link-prefixes": ["blob/main/"] }),
+            &model,
+            &candidates(&["doc.md"]),
+            tmp.path(),
+        );
+        assert_eq!(out.len(), 1);
+        assert!(out[0].title.contains("`tests/gone/deleted.rs`"), "{}", out[0].title);
+    }
+
+    #[test]
+    fn missing_config_is_unsupported() {
+        let model = empty_model();
+        let hint = hint(HintKind::CliContract, "invocations");
+        let result =
+            evaluate(&rule(), &hint, &[], Path::new("/tmp"), &model, Some(&contract()), &mut 1);
+        result.unwrap_err();
+    }
+
+    #[test]
+    fn unknown_source_is_unsupported() {
+        let model = empty_model();
+        let hint = hint_with_config(HintKind::CliContract, "no-such-source", Some(json!({})));
+        let result =
+            evaluate(&rule(), &hint, &[], Path::new("/tmp"), &model, Some(&contract()), &mut 1);
+        result.unwrap_err();
+    }
+}

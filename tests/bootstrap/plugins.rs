@@ -1,5 +1,4 @@
-//! Integration tests for `specify plugins {doctor, refresh}` (RFC-30
-//! §D2, Wave D).
+//! Integration tests for `specify plugins {doctor, refresh}`.
 //!
 //! The status kernel, cache scan, and marketplace cross-reference are
 //! unit-tested in the workflow crate; these drive the CLI surface

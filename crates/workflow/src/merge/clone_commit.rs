@@ -19,11 +19,11 @@ const WORKSPACE_MERGE_COMMIT_PATHS: [&str; 2] = [".specify/specs", ".specify/arc
 
 /// Detect whether a project directory is inside a workspace clone.
 ///
-/// The path must contain `/.specify/workspace/*/` as an ancestor via
-/// structural component walk, and `.specify/plan.yaml` must be absent
-/// — the plan file's presence indicates an in-flight change rather
-/// than a freshly merged clone. The `.specify/project.yaml` check is
-/// already enforced upstream by `Ctx::load`.
+/// The path must sit at or below a `workspace/<peer>/` slot (see
+/// [`is_slot`]), and `.specify/plan.yaml` must be absent — the plan
+/// file's presence indicates an in-flight change rather than a freshly
+/// merged clone. The `.specify/project.yaml` check is already enforced
+/// upstream by `Ctx::load`.
 #[must_use]
 pub fn is_clone_eligible(project_dir: &Path) -> bool {
     if !is_slot(project_dir) {

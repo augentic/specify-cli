@@ -9,33 +9,11 @@ use tokio::io::AsyncWriteExt;
 use wasm_pkg_client::{Client, Config, PackageRef, Registry, RegistryMapping, Version};
 
 use crate::error::ToolError;
-use crate::manifest::PackageRequest;
+use crate::manifest::{PackageRequest, WASM_PKG_CONFIG_PATH};
 
 const MAX_PACKAGE_BYTES: u64 = 64 * 1024 * 1024;
 const FIRST_PARTY_NAMESPACE: &str = "specify";
 const FIRST_PARTY_REGISTRY: &str = "augentic.io";
-/// Filename of the project-local wasm-pkg config inside `.specify/`.
-///
-/// Paired with [`Layout::specify_dir`](specify-workflow) at the init
-/// site so the helper does not have to re-derive the relative path.
-pub const WASM_PKG_CONFIG_FILENAME: &str = "wasm-pkg.toml";
-
-/// Project-rooted relative path to the project-local wasm-pkg config.
-///
-/// Merged in between the global wasm-pkg defaults and the `WKG_CONFIG`
-/// override. Operators edit this file to add namespace mappings
-/// (private mirrors, internal registries) without setting an env var.
-pub const WASM_PKG_CONFIG_PATH: &str = ".specify/wasm-pkg.toml";
-
-/// Canonical contents `specify init` writes for a fresh project.
-///
-/// Mirrors the wasm-pkg distribution model so
-/// `wkg --config .specify/wasm-pkg.toml` and `specify tool fetch`
-/// agree on namespace routing.
-pub const DEFAULT_WASM_PKG_CONFIG: &str = "default_registry = \"augentic.io\"\n\
-                                           \n\
-                                           [namespace_registries]\n\
-                                           specify = \"augentic.io\"\n";
 
 /// Informational package metadata recorded in `meta.yaml`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -136,7 +114,7 @@ async fn fetch_async(
         tokio::fs::File::from_std(temp.reopen().map_err(|err| {
             ToolError::cache_io("open package download tempfile", temp.path(), err)
         })?);
-    let mut hasher = crate::hash::Hasher::new();
+    let mut hasher = specify_schema::digest::Hasher::new();
     let mut total = 0_u64;
     while let Some(chunk) = stream
         .try_next()

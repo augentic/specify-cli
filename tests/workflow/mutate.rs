@@ -38,7 +38,7 @@ fn plan_add_appends_pending_entry_json() {
     assert_eq!(actual["plan"]["name"], "demo");
 
     // Parse the persisted plan and assert the entry's fields rather than
-    // substring-matching the raw YAML (REVIEW.md B3).
+    // substring-matching the raw YAML.
     let plan = load_plan(&project);
     let entry =
         plan.entries.iter().find(|e| e.name == "foo").expect("saved plan must contain entry `foo`");
@@ -186,7 +186,7 @@ slices:
     assert_golden("amend-replace-depends-on.json", actual);
 
     // Assert the persisted `depends-on` as a parsed list, not a pair of
-    // raw-YAML substring probes (REVIEW.md B3).
+    // raw-YAML substring probes.
     let plan = load_plan(&project);
     let entry =
         plan.entries.iter().find(|e| e.name == "foo").expect("amended entry must be present");
