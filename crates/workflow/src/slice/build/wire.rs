@@ -123,7 +123,7 @@ pub struct BuildReport {
     pub version: u32,
     /// Slice that was built; must match the request.
     pub slice: String,
-    /// Adapter that produced the report (e.g. `omnia@v1`).
+    /// Adapter that produced the report (e.g. `omnia@1.0.0`).
     pub target: String,
     /// `success` or `failure`.
     pub status: BuildStatus,

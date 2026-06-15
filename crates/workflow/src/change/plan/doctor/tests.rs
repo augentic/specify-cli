@@ -229,7 +229,7 @@ fn stale_clone_reports_missing_origin() {
     let registry = registry_with(vec![rp(
         "alpha",
         "git@github.com:org/alpha.git",
-        "omnia@v1",
+        "omnia@1.0.0",
         "alpha service",
     )]);
     let plan = plan_with_changes(vec![]);
@@ -258,7 +258,7 @@ fn stale_clone_signature_changed() {
     let registry = registry_with(vec![rp(
         "alpha",
         "git@github.com:org/alpha.git",
-        "omnia@v1",
+        "omnia@1.0.0",
         "alpha service",
     )]);
     let plan = plan_with_changes(vec![]);
@@ -280,7 +280,7 @@ fn stale_clone_signature_current() {
     let registry = registry_with(vec![rp(
         "alpha",
         "git@github.com:org/alpha.git",
-        "omnia@v1",
+        "omnia@1.0.0",
         "alpha service",
     )]);
     let plan = plan_with_changes(vec![]);
@@ -301,7 +301,7 @@ fn stale_clone_wrong_symlink_target() {
     let workspace = tmp.path().join("workspace");
     std::fs::create_dir_all(&workspace).unwrap();
     symlink_dir(&other, &workspace.join("peer"));
-    let registry = registry_with(vec![rp("peer", "./peer", "omnia@v1", "peer service")]);
+    let registry = registry_with(vec![rp("peer", "./peer", "omnia@1.0.0", "peer service")]);
     let plan = plan_with_changes(vec![]);
     let hits: Vec<_> = doctor(&plan, None, Some(&registry), Some(tmp.path()))
         .into_iter()
@@ -321,7 +321,7 @@ fn stale_clone_wrong_symlink_target() {
 #[test]
 fn stale_clone_ignores_missing_slots() {
     let tmp = tempdir().unwrap();
-    let registry = registry_with(vec![rp("self", ".", "omnia@v1", "self service")]);
+    let registry = registry_with(vec![rp("self", ".", "omnia@1.0.0", "self service")]);
     let plan = plan_with_changes(vec![]);
     let any_stale = doctor(&plan, None, Some(&registry), Some(tmp.path()))
         .into_iter()

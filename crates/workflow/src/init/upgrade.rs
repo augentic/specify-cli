@@ -13,7 +13,7 @@ use specify_error::Error;
 
 use crate::adapter::TargetAdapter;
 use crate::config::{Layout, ProjectConfig};
-use crate::init::adapter_uri::adapter_name_from_value;
+use crate::init::adapter_uri::{adapter_name_from_value, adapter_ref_from_value};
 use crate::init::cache::{CodexMeta, ManifestMeta};
 use crate::init::{InitOptions, InitResult, resolve_version, validate_platforms};
 
@@ -38,16 +38,19 @@ pub(super) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     let target = resolve_version();
 
     let platforms_changed = if let Some(incoming) = opts.platforms {
-        let adapter_name =
-            cfg.adapter.as_deref().map(adapter_name_from_value).ok_or_else(|| Error::Diag {
-                code: "upgrade-platforms-no-adapter",
-                detail: "--platforms requires a project with a bound target adapter (workspace projects \
-                         have no adapter)"
-                    .to_string(),
-            })?;
-        let resolved = TargetAdapter::resolve(adapter_name, opts.project_dir)?;
-        let validated =
-            validate_platforms(Some(incoming), resolved.manifest.platforms.as_ref(), adapter_name)?;
+        let adapter_value = cfg.adapter.as_deref().ok_or_else(|| Error::Diag {
+            code: "upgrade-platforms-no-adapter",
+            detail: "--platforms requires a project with a bound target adapter (workspace projects \
+                     have no adapter)"
+                .to_string(),
+        })?;
+        let adapter_ref = adapter_ref_from_value(adapter_value);
+        let resolved = TargetAdapter::resolve(&adapter_ref, opts.project_dir)?;
+        let validated = validate_platforms(
+            Some(incoming),
+            resolved.manifest.platforms.as_ref(),
+            &adapter_ref.name,
+        )?;
         let changed = cfg.platforms != validated;
         cfg.platforms = validated;
         changed

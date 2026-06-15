@@ -21,10 +21,10 @@ version: 1
 kind: request
 projects:
   - name: identity-contracts
-    target: contracts@v1
+    target: contracts@1.0.0
     description: "Versioned API contracts crate for the identity domain."
   - name: identity-service
-    target: omnia@v1
+    target: omnia@1.0.0
     description: "Omnia identity service implementing auth and password flows."
 leads:
   - source: docs
@@ -102,7 +102,7 @@ fn build_report_rejects_malformed() {
     let report = r#"{
             "version": 1,
             "slice": "identity-service",
-            "target": "omnia@v1",
+            "target": "omnia@1.0.0",
             "status": "partial",
             "findings": []
         }"#;

@@ -297,7 +297,7 @@ fn project_not_in_registry() {
         projects: vec![RegistryProject {
             name: "real-project".to_string(),
             url: ".".to_string(),
-            adapter: Some("omnia@v1".to_string()),
+            adapter: Some("omnia@1.0.0".to_string()),
             description: None,
             contracts: None,
             greenfield_seed: None,
@@ -318,7 +318,7 @@ fn project_matches_registry() {
             RegistryProject {
                 name: "alpha".to_string(),
                 url: ".".to_string(),
-                adapter: Some("omnia@v1".to_string()),
+                adapter: Some("omnia@1.0.0".to_string()),
                 description: Some("Alpha".to_string()),
                 contracts: None,
                 greenfield_seed: None,
@@ -326,7 +326,7 @@ fn project_matches_registry() {
             RegistryProject {
                 name: "beta".to_string(),
                 url: "git@github.com:org/beta.git".to_string(),
-                adapter: Some("omnia@v1".to_string()),
+                adapter: Some("omnia@1.0.0".to_string()),
                 description: Some("Beta".to_string()),
                 contracts: None,
                 greenfield_seed: None,
@@ -363,7 +363,7 @@ fn omitted_project_flagged_multi() {
             RegistryProject {
                 name: "alpha".to_string(),
                 url: ".".to_string(),
-                adapter: Some("omnia@v1".to_string()),
+                adapter: Some("omnia@1.0.0".to_string()),
                 description: None,
                 contracts: None,
                 greenfield_seed: None,
@@ -371,7 +371,7 @@ fn omitted_project_flagged_multi() {
             RegistryProject {
                 name: "beta".to_string(),
                 url: "git@github.com:org/beta.git".to_string(),
-                adapter: Some("contracts@v1".to_string()),
+                adapter: Some("contracts@1.0.0".to_string()),
                 description: None,
                 contracts: None,
                 greenfield_seed: None,
@@ -397,7 +397,7 @@ fn omitted_project_ok_single() {
         projects: vec![RegistryProject {
             name: "only".to_string(),
             url: ".".to_string(),
-            adapter: Some("omnia@v1".to_string()),
+            adapter: Some("omnia@1.0.0".to_string()),
             description: None,
             contracts: None,
             greenfield_seed: None,

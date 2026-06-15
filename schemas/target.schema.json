@@ -9,8 +9,8 @@
   "properties": {
     "name": { "$ref": "#/$defs/kebabName" },
     "version": {
-      "type": "integer",
-      "minimum": 1
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$"
     },
     "axis": {
       "type": "string",

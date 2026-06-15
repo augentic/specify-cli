@@ -40,7 +40,7 @@ struct BriefEntry {
 #[serde(rename_all = "kebab-case")]
 struct PreviewBody {
     adapter: String,
-    version: u32,
+    version: semver::Version,
     source: PathBuf,
     out: PathBuf,
     evidence_dir: PathBuf,
@@ -64,6 +64,7 @@ pub fn preview(
 
     let prepared = prep::prepare(&prep::PrepRequest {
         adapter: adapter_name,
+        version: None,
         project_dir,
         op: prep::SourceOp::Survey,
         source: Some(source),
@@ -105,7 +106,7 @@ pub fn preview(
 }
 
 fn write_preview_text(w: &mut dyn Write, body: &PreviewBody) -> std::io::Result<()> {
-    writeln!(w, "adapter: {} v{}", body.adapter, body.version)?;
+    writeln!(w, "adapter: {} {}", body.adapter, body.version)?;
     writeln!(w, "source: {}", body.source.display())?;
     writeln!(w, "out: {}", body.out.display())?;
     writeln!(w, "evidence: {}", body.evidence_dir.display())?;

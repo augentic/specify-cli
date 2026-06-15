@@ -6,7 +6,7 @@ fn round_trips_yaml_empties_elided() {
     let lock = TopologyLock::from_projects(vec![
         TopologyProject {
             name: "identity-contracts".to_string(),
-            target: "contracts@v1".to_string(),
+            target: "contracts@1.0.0".to_string(),
             description: Some("Contracts crate.".to_string()),
             surface: vec![Surface {
                 domain: "identity-api".to_string(),
@@ -20,7 +20,7 @@ fn round_trips_yaml_empties_elided() {
         },
         TopologyProject {
             name: "identity-service".to_string(),
-            target: "omnia@v1".to_string(),
+            target: "omnia@1.0.0".to_string(),
             description: None,
             surface: Vec::new(),
             recent: Vec::new(),
@@ -43,7 +43,7 @@ fn round_trips_yaml_empties_elided() {
 fn round_trips_with_platforms() {
     let lock = TopologyLock::from_projects(vec![TopologyProject {
         name: "mobile-app".to_string(),
-        target: "vectis@v1".to_string(),
+        target: "vectis@1.0.0".to_string(),
         description: Some("Cross-platform mobile app.".to_string()),
         surface: Vec::new(),
         recent: Vec::new(),
@@ -68,7 +68,7 @@ fn save_then_load_is_identity() {
     let path = dir.path().join("topology.lock");
     let lock = TopologyLock::from_projects(vec![TopologyProject {
         name: "svc".to_string(),
-        target: "omnia@v1".to_string(),
+        target: "omnia@1.0.0".to_string(),
         description: None,
         surface: Vec::new(),
         recent: Vec::new(),
@@ -88,7 +88,7 @@ fn save_then_load_with_platforms() {
     let path = dir.path().join("topology.lock");
     let lock = TopologyLock::from_projects(vec![TopologyProject {
         name: "mobile-app".to_string(),
-        target: "vectis@v1".to_string(),
+        target: "vectis@1.0.0".to_string(),
         description: None,
         surface: Vec::new(),
         recent: Vec::new(),

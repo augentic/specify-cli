@@ -92,7 +92,7 @@ fn registry_with_projects(names: &[&str]) -> Registry {
             .map(|name| RegistryProject {
                 name: (*name).to_string(),
                 url: format!("./{name}"),
-                adapter: Some("omnia@v1".to_string()),
+                adapter: Some("omnia@1.0.0".to_string()),
                 description: Some(format!("{name} service")),
                 contracts: None,
                 greenfield_seed: None,
@@ -113,7 +113,7 @@ fn remote_project(url: String) -> RegistryProject {
     RegistryProject {
         name: "alpha".to_string(),
         url,
-        adapter: Some("omnia@v1".to_string()),
+        adapter: Some("omnia@1.0.0".to_string()),
         description: Some("alpha service".to_string()),
         contracts: None,
         greenfield_seed: None,
@@ -298,7 +298,7 @@ fn c02_sync_refuses_escaping_name() {
     let project = RegistryProject {
         name: "../escape".to_string(),
         url: "./peer".to_string(),
-        adapter: Some("omnia@v1".to_string()),
+        adapter: Some("omnia@1.0.0".to_string()),
         description: Some("bad selector".to_string()),
         contracts: None,
         greenfield_seed: None,
@@ -377,7 +377,7 @@ fn workspace_with_specify_peer(project_dir: &Path) -> PathBuf {
     fs::create_dir_all(peer.join(".specify")).unwrap();
     fs::write(
         project_dir.join("registry.yaml"),
-        "version: 1\nprojects:\n  - name: peer\n    url: ./peer\n    adapter: omnia@v1\n",
+        "version: 1\nprojects:\n  - name: peer\n    url: ./peer\n    adapter: omnia@1.0.0\n",
     )
     .unwrap();
     peer
@@ -448,7 +448,7 @@ fn mirror_skips_non_specify_peer() {
     fs::create_dir_all(&peer).unwrap();
     fs::write(
         project_dir.join("registry.yaml"),
-        "version: 1\nprojects:\n  - name: peer\n    url: ./peer\n    adapter: omnia@v1\n",
+        "version: 1\nprojects:\n  - name: peer\n    url: ./peer\n    adapter: omnia@1.0.0\n",
     )
     .unwrap();
     stage_adapter_at(project_dir, "adapters/sources/documentation", "name: documentation\n", &[]);
@@ -733,7 +733,7 @@ fn topology_lock_projects_baseline() {
     stage_topology_slot(
         project_dir,
         "alpha",
-        "name: alpha\nadapter: omnia@v1\ndescription: Alpha core\ncapabilities:\n  - auth\n",
+        "name: alpha\nadapter: omnia@1.0.0\ndescription: Alpha core\ncapabilities:\n  - auth\n",
     );
     let alpha_specify = project_dir.join("workspace/alpha/.specify");
     let session_dir = alpha_specify.join("specs/session");
@@ -782,7 +782,7 @@ fn topology_lock_projects_baseline() {
     assert_eq!(lock.projects.len(), 1, "unmaterialised beta is skipped");
     let alpha = &lock.projects[0];
     assert_eq!(alpha.name, "alpha");
-    assert_eq!(alpha.target, "omnia@v1");
+    assert_eq!(alpha.target, "omnia@1.0.0");
     assert_eq!(alpha.description.as_deref(), Some("Alpha core"));
     assert_eq!(alpha.surface.len(), 1);
     assert_eq!(alpha.surface[0].domain, "session");
@@ -804,7 +804,7 @@ fn topology_lock_projects_decisions() {
     stage_topology_slot(
         project_dir,
         "alpha",
-        "name: alpha\nadapter: omnia@v1\ndescription: Alpha core\n",
+        "name: alpha\nadapter: omnia@1.0.0\ndescription: Alpha core\n",
     );
     let decisions_dir = project_dir.join("workspace/alpha/.specify/decisions");
     fs::create_dir_all(&decisions_dir).unwrap();

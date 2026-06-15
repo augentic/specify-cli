@@ -33,6 +33,8 @@ pub const WIRE_CODES: &[&str] = &[
     "adapter-runtime-symlink-unresolved",
     "adapter-schema-violation",
     "adapter-url-name-unresolved",
+    "adapter-version-malformed",
+    "adapter-version-required",
     "already-exists",
     "archive-prune-bad-entry",
     "argument",

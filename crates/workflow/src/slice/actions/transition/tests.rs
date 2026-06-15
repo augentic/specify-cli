@@ -21,7 +21,7 @@ fn seed(
     let slice_dir = root.join(".specify").join("slices").join(name);
     std::fs::create_dir_all(&slice_dir).expect("mkdir slice");
     let meta = SliceMetadata {
-        target: "omnia@v1".to_string(),
+        target: "omnia@1.0.0".to_string(),
         status,
         created_at: Some(ts("2026-05-01T00:00:00Z")),
         defined_at,

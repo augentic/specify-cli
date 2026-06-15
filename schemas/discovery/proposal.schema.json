@@ -44,8 +44,8 @@
     },
     "targetRef": {
       "type": "string",
-      "description": "Target adapter identifier, e.g. `omnia@v1` or `contracts@v1`. Mirrors `plan.schema.json` slice `target` pattern.",
-      "pattern": "^[a-z][a-z0-9-]*@v\\d+$"
+      "description": "Target adapter identifier, e.g. `omnia@1.0.0` or `contracts@1.0.0`. Mirrors `plan.schema.json` slice `target` pattern.",
+      "pattern": "^[a-z][a-z0-9-]*@\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$"
     },
     "decision": {
       "type": "object",

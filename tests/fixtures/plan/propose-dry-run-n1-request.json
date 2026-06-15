@@ -10,7 +10,7 @@
   "projects": [
     {
       "name": "test-proj",
-      "target": "omnia@v1"
+      "target": "omnia@1.0.0"
     }
   ],
   "version": 1

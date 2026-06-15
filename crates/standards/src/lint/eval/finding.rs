@@ -228,7 +228,7 @@ mod tests {
 
     #[test]
     fn single_adapter_strips_version_suffix() {
-        let r = rule(Some(vec!["omnia@v2".into()]));
+        let r = rule(Some(vec!["omnia@2.0.0".into()]));
         assert_eq!(single_adapter(&r).as_deref(), Some("omnia"));
     }
 

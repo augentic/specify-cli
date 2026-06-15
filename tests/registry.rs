@@ -90,7 +90,7 @@ fn add_round_trips_through_show() {
             "--url",
             "git@github.com:augentic/alpha.git",
             "--adapter",
-            "omnia@v1",
+            "omnia@1.0.0",
             "--description",
             "Alpha service",
         ])
@@ -100,7 +100,7 @@ fn add_round_trips_through_show() {
     assert!(value["error"].is_null(), "success envelope must omit error: {value}");
     assert_eq!(value["added"]["name"], "alpha");
     assert_eq!(value["added"]["url"], "git@github.com:augentic/alpha.git");
-    assert_eq!(value["added"]["adapter"], "omnia@v1");
+    assert_eq!(value["added"]["adapter"], "omnia@1.0.0");
     assert_eq!(value["added"]["description"], "Alpha service");
     assert_eq!(value["registry"]["projects"].as_array().unwrap().len(), 1);
 
@@ -155,7 +155,7 @@ fn add_rejects_dot_url_in_workspace_mode() {
             "--url",
             ".",
             "--adapter",
-            "omnia@v1",
+            "omnia@1.0.0",
         ])
         .assert()
         .failure();
@@ -184,7 +184,7 @@ fn add_rejects_non_kebab() {
             "--url",
             "git@github.com:org/bad.git",
             "--adapter",
-            "omnia@v1",
+            "omnia@1.0.0",
         ])
         .assert()
         .failure();
@@ -216,7 +216,7 @@ fn remove_succeeds_and_round_trips() {
                 "--url",
                 url,
                 "--adapter",
-                "omnia@v1",
+                "omnia@1.0.0",
                 "--description",
                 &format!("{name} service"),
             ])
@@ -260,7 +260,7 @@ fn remove_warns_on_plan_ref() {
                 "--url",
                 url,
                 "--adapter",
-                "omnia@v1",
+                "omnia@1.0.0",
                 "--description",
                 &format!("{name} service"),
             ])
@@ -352,7 +352,7 @@ fn load_from_tempdir() {
              projects:\n\
              \x20\x20- name: traffic\n\
              \x20\x20\x20\x20url: .\n\
-             \x20\x20\x20\x20adapter: omnia@v1\n",
+             \x20\x20\x20\x20adapter: omnia@1.0.0\n",
     )
     .expect("write registry.yaml");
 
@@ -362,7 +362,7 @@ fn load_from_tempdir() {
     assert_eq!(loaded.projects.len(), 1);
     assert_eq!(loaded.projects[0].name, "traffic");
     assert_eq!(loaded.projects[0].url, ".");
-    assert_eq!(loaded.projects[0].adapter.as_deref(), Some("omnia@v1"));
+    assert_eq!(loaded.projects[0].adapter.as_deref(), Some("omnia@1.0.0"));
     assert!(loaded.is_single_repo());
 }
 
@@ -377,7 +377,7 @@ version: 1
 projects:
   - name: traffic
     url: .
-    adapter: omnia@v1
+    adapter: omnia@1.0.0
 ";
 
 const REGISTRY_THREE: &str = "\
@@ -385,15 +385,15 @@ version: 1
 projects:
   - name: monolith
     url: .
-    adapter: omnia@v1
+    adapter: omnia@1.0.0
     description: Core monolith service
   - name: orders
     url: ../orders
-    adapter: omnia@v1
+    adapter: omnia@1.0.0
     description: Order management service
   - name: payments
     url: git@github.com:org/payments.git
-    adapter: omnia@v1
+    adapter: omnia@1.0.0
     description: Payment processing service
 ";
 
@@ -485,10 +485,10 @@ version: 1
 projects:
   - name: dup
     url: .
-    adapter: omnia@v1
+    adapter: omnia@1.0.0
   - name: dup
     url: ../other
-    adapter: omnia@v1
+    adapter: omnia@1.0.0
 ",
     );
 
@@ -515,7 +515,7 @@ version: 1
 projects:
   - name: NotKebab
     url: .
-    adapter: omnia@v1
+    adapter: omnia@1.0.0
 ",
     );
 

@@ -45,8 +45,8 @@
     },
     "adapterRef": {
       "type": "string",
-      "pattern": "^[a-z][a-z0-9-]*(?:@v[1-9][0-9]*)?$",
-      "description": "Kebab-case adapter token, optionally suffixed with `@v<major>`. Mirrors `rule.schema.json#/$defs/adapterRef`."
+      "pattern": "^[a-z][a-z0-9-]*(?:@\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?)?$",
+      "description": "Kebab-case adapter token, optionally suffixed with `@<semver>`. Mirrors `rule.schema.json#/$defs/adapterRef`."
     },
     "kebabToken": {
       "type": "string",

@@ -422,7 +422,7 @@ fn build_report_schema_accepts_success() {
     let instance = json!({
         "version": 1,
         "slice": "identity-service",
-        "target": "omnia@v1",
+        "target": "omnia@1.0.0",
         "status": "success",
         "findings": []
     });
@@ -437,7 +437,7 @@ fn build_report_failure_no_findings() {
     let instance = json!({
         "version": 1,
         "slice": "identity-service",
-        "target": "omnia@v1",
+        "target": "omnia@1.0.0",
         "status": "failure",
         "findings": []
     });
@@ -453,7 +453,7 @@ fn build_report_success_outputs() {
     let instance = json!({
         "version": 1,
         "slice": "identity-service",
-        "target": "vectis@v1",
+        "target": "vectis@1.0.0",
         "status": "success",
         "findings": [],
         "outputs": [
@@ -473,7 +473,7 @@ fn build_report_no_outputs() {
     let instance = json!({
         "version": 1,
         "slice": "identity-service",
-        "target": "omnia@v1",
+        "target": "omnia@1.0.0",
         "status": "success",
         "findings": []
     });
@@ -490,7 +490,7 @@ fn build_report_accepts_ui_surface() {
     let instance = json!({
         "version": 1,
         "slice": "identity-service",
-        "target": "vectis@v1",
+        "target": "vectis@1.0.0",
         "status": "success",
         "findings": [],
         "ui-surface": { "screens": 3 }
@@ -507,7 +507,7 @@ fn build_report_rejects_bad_ui_surface() {
     let missing_screens = json!({
         "version": 1,
         "slice": "identity-service",
-        "target": "vectis@v1",
+        "target": "vectis@1.0.0",
         "status": "success",
         "findings": [],
         "ui-surface": {}
@@ -519,7 +519,7 @@ fn build_report_rejects_bad_ui_surface() {
     let stray_key = json!({
         "version": 1,
         "slice": "identity-service",
-        "target": "vectis@v1",
+        "target": "vectis@1.0.0",
         "status": "success",
         "findings": [],
         "ui-surface": { "screens": 1, "stray": true }
@@ -538,7 +538,7 @@ fn build_report_failure_with_findings() {
     let instance = json!({
         "version": 1,
         "slice": "identity-contracts",
-        "target": "contracts@v1",
+        "target": "contracts@1.0.0",
         "status": "failure",
         "findings": [{
             "id": "DIAG-0001",

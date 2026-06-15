@@ -44,11 +44,11 @@ version: 1
 projects:
   - name: identity-contracts
     url: git@github.com:org/identity-contracts.git
-    adapter: contracts@v1
+    adapter: contracts@1.0.0
     description: Versioned API contracts crate for the identity domain.
   - name: identity-service
     url: git@github.com:org/identity-service.git
-    adapter: omnia@v1
+    adapter: omnia@1.0.0
     description: Omnia identity service implementing auth and password flows.
 ";
 
@@ -90,10 +90,10 @@ const PROPOSE_TOPOLOGY_WORKSPACE: &str = "\
 version: 1
 projects:
   - name: identity-contracts
-    target: contracts@v1
+    target: contracts@1.0.0
     description: Versioned API contracts crate for the identity domain.
   - name: identity-service
-    target: omnia@v1
+    target: omnia@1.0.0
     description: Omnia identity service implementing auth and password flows.
 ";
 
@@ -231,7 +231,7 @@ fn propose_from_ok(root: &Path, body: &str) -> Value {
 #[test]
 fn propose_dry_run_n1_request_golden() {
     // N=1: the sole regular project is synthesised from `project.yaml`
-    // (`test-proj` → `omnia@v1`); one `intent` lead surfaces.
+    // (`test-proj` → `omnia@1.0.0`); one `intent` lead surfaces.
     let project = Project::init();
     project.seed_plan(PROPOSE_PLAN_N1);
     seed_discovery(project.root(), PROPOSE_DISCOVERY_N1);
@@ -246,7 +246,7 @@ fn propose_dry_run_n1_request_golden() {
     assert_eq!(actual["kind"], "request");
     assert_eq!(actual["projects"].as_array().expect("projects").len(), 1);
     assert_eq!(actual["projects"][0]["name"], "test-proj");
-    assert_eq!(actual["projects"][0]["target"], "omnia@v1");
+    assert_eq!(actual["projects"][0]["target"], "omnia@1.0.0");
     assert_eq!(actual["leads"].as_array().expect("leads").len(), 1);
     assert_eq!(actual["leads"][0]["source"], "intent");
     assert_eq!(actual["leads"][0]["lead"], "fix-typo");

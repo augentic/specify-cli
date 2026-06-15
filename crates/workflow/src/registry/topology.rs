@@ -26,7 +26,7 @@ use crate::Platform;
 use crate::adapter::{PlatformsViolation, TargetAdapter};
 use crate::change::plan_finding;
 use crate::config::ProjectConfig;
-use crate::init::adapter_name_from_value;
+use crate::init::adapter_ref_from_value;
 use crate::registry::Registry;
 
 /// Current `topology.lock` schema version.
@@ -227,8 +227,9 @@ impl TopologyProject {
                 format!("workspace slot `{registry_name}` project.yaml omits the `adapter` field"),
             )
         })?;
-        let resolved = TargetAdapter::resolve(adapter_name_from_value(adapter_value), slot_dir)?;
-        let target = format!("{}@v{}", resolved.manifest.name, resolved.manifest.version);
+        let resolved =
+            TargetAdapter::resolve(&adapter_ref_from_value(adapter_value), slot_dir)?;
+        let target = format!("{}@{}", resolved.manifest.name, resolved.manifest.version);
 
         validate_topology_platforms(
             registry_name,

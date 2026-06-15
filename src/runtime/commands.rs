@@ -27,6 +27,7 @@ use specify_diagnostics::{
 };
 use specify_error::Result;
 use specify_workflow::adapter::{Axis, SourceAdapter, TargetAdapter};
+use specify_workflow::init::adapter_ref_from_value;
 
 use crate::runtime::cli::{Cli, Commands, Format};
 use crate::runtime::commands::contract::cli::ContractAction;
@@ -356,7 +357,7 @@ fn resolve_adapter(format: Format, axis: Axis, value: &str, project_dir: &Path) 
     // manifest's relative brief paths join onto (preview.rs:68).
     let (name, resolved_path, briefs_dir, location, operations, description) = match axis {
         Axis::Source => {
-            let resolved = SourceAdapter::resolve(value, project_dir)?;
+            let resolved = SourceAdapter::resolve(&adapter_ref_from_value(value), project_dir)?;
             let operations = resolved.manifest.operations().map(ToString::to_string).collect();
             let briefs_dir = resolved.location.path().join(BRIEFS_DIR);
             let resolved_path = resolved.location.path().display().to_string();
@@ -371,8 +372,7 @@ fn resolve_adapter(format: Format, axis: Axis, value: &str, project_dir: &Path) 
             )
         }
         Axis::Target => {
-            let name = value.split_once('@').map_or(value, |(n, _)| n);
-            let resolved = TargetAdapter::resolve(name, project_dir)?;
+            let resolved = TargetAdapter::resolve(&adapter_ref_from_value(value), project_dir)?;
             let operations = resolved.manifest.operations().map(ToString::to_string).collect();
             let briefs_dir = resolved.location.path().join(BRIEFS_DIR);
             let resolved_path = resolved.location.path().display().to_string();

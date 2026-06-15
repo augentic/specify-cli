@@ -321,14 +321,14 @@ fn bind_projects<'a>(
 /// - `plan-reconcile-project-binding-required` when `project` is omitted
 ///   but more than one project exists.
 /// - `plan-target-malformed` when the bound project's target does not
-///   parse as `name@vN` (an internal inconsistency — topology targets
-///   are pre-validated).
+///   parse as `name@<semver>` (an internal inconsistency — topology
+///   targets are pre-validated).
 pub fn resolve_target(entry: &Entry, topology: &[ProjectRef]) -> Result<TargetRef> {
     let project = resolve_project_binding(&entry.name, entry.project.as_deref(), topology)?;
     parse_project_target(project)
 }
 
-/// Parse a [`ProjectRef`]'s `name@vN` target into a [`TargetRef`].
+/// Parse a [`ProjectRef`]'s `name@<semver>` target into a [`TargetRef`].
 ///
 /// Topology targets are pre-validated, so a parse failure is an internal
 /// inconsistency surfaced as `plan-target-malformed`.
@@ -336,7 +336,7 @@ fn parse_project_target(project: &ProjectRef) -> Result<TargetRef> {
     TargetRef::parse(&project.target).map_err(|err| {
         Error::validation_failed(
             "plan-target-malformed",
-            "a project target must parse as name@vN",
+            "a project target must parse as name@<semver>",
             err.to_string(),
         )
     })

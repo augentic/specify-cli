@@ -18,8 +18,8 @@ use std::path::{Path, PathBuf};
 
 use specify_error::Error;
 use specify_workflow::adapter::{
-    AdapterLocation, Axis, SourceAdapter, SourceOperation, TargetAdapter, TargetOperation,
-    cache_dir, check_axis_unique_for_name,
+    AdapterLocation, AdapterRef, Axis, SourceAdapter, SourceOperation, TargetAdapter,
+    TargetOperation, cache_dir, check_axis_unique_for_name,
 };
 
 mod common;
@@ -43,7 +43,7 @@ fn local_project() -> (tempfile::TempDir, PathBuf) {
 #[test]
 fn resolves_source_from_local_dir() {
     let (_tmp, project) = local_project();
-    let resolved = SourceAdapter::resolve("typescript", &project)
+    let resolved = SourceAdapter::resolve(&AdapterRef::bare("typescript"), &project)
         .expect("resolve source adapter from adapters/sources/<name>/adapter.yaml");
     assert_eq!(resolved.manifest.name, "typescript");
     assert_eq!(resolved.manifest.axis, Axis::Source);
@@ -62,7 +62,7 @@ fn resolves_source_from_local_dir() {
 #[test]
 fn resolves_target_from_local_dir() {
     let (_tmp, project) = local_project();
-    let resolved = TargetAdapter::resolve("omnia", &project)
+    let resolved = TargetAdapter::resolve(&AdapterRef::bare("omnia"), &project)
         .expect("resolve target adapter from adapters/targets/<name>/adapter.yaml");
     assert_eq!(resolved.manifest.name, "omnia");
     assert_eq!(resolved.manifest.axis, Axis::Target);
@@ -83,9 +83,9 @@ fn axis_collision_rejected_at_resolve_time() {
     // the kebab-case `adapter-name-axis-collision` discriminant.
     let (_tmp, project) = local_project();
     for err in [
-        SourceAdapter::resolve("foo", &project)
+        SourceAdapter::resolve(&AdapterRef::bare("foo"), &project)
             .expect_err("source-axis resolve must reject the collision"),
-        TargetAdapter::resolve("foo", &project)
+        TargetAdapter::resolve(&AdapterRef::bare("foo"), &project)
             .expect_err("target-axis resolve must reject the collision"),
     ] {
         let Error::Validation { code, detail } = err else {
@@ -167,7 +167,7 @@ fn cache_wins_over_local() {
     fs::write(
         cached_root.join("adapter.yaml"),
         r"name: typescript
-version: 7
+version: 7.0.0
 axis: source
 execution: agent
 briefs:
@@ -178,8 +178,9 @@ description: Cached source adapter fixture.
     )
     .expect("stage cache manifest");
 
-    let resolved = SourceAdapter::resolve("typescript", &project).expect("resolve from cache");
-    assert_eq!(resolved.manifest.version, 7, "cache wins over local");
+    let resolved = SourceAdapter::resolve(&AdapterRef::bare("typescript"), &project)
+        .expect("resolve from cache");
+    assert_eq!(resolved.manifest.version, semver::Version::new(7, 0, 0), "cache wins over local");
     assert!(matches!(resolved.location, AdapterLocation::Cached(_)));
 }
 
@@ -187,7 +188,8 @@ description: Cached source adapter fixture.
 fn missing_adapter_reports_not_found() {
     let (_tmp, project) = local_project();
     let err =
-        SourceAdapter::resolve("nonexistent", &project).expect_err("missing adapter must fail");
+        SourceAdapter::resolve(&AdapterRef::bare("nonexistent"), &project)
+            .expect_err("missing adapter must fail");
     let detail = err.to_string();
     assert!(detail.contains("adapter-not-found"), "{detail}");
 }
@@ -203,7 +205,7 @@ fn schema_violations_reject_at_load_time() {
     fs::write(
         bad_root.join("adapter.yaml"),
         r"name: wrong-ops
-version: 1
+version: 1.0.0
 axis: source
 briefs:
   survey: briefs/survey.md
@@ -212,7 +214,7 @@ briefs:
     )
     .expect("write bad manifest");
 
-    let err = SourceAdapter::resolve("wrong-ops", &project)
+    let err = SourceAdapter::resolve(&AdapterRef::bare("wrong-ops"), &project)
         .expect_err("source-axis adapter with wrong brief keys must fail");
     let detail = err.to_string();
     assert!(
@@ -244,7 +246,7 @@ fn resolves_captures_with_tools() {
     fs::write(
         manifest_dir.join("adapter.yaml"),
         r"name: captures
-version: 1
+version: 1.0.0
 axis: source
 execution: agent
 briefs:
@@ -262,7 +264,7 @@ description: >-
     fs::write(manifest_dir.join("briefs/survey.md"), "# survey\n").expect("survey brief stub");
     fs::write(manifest_dir.join("briefs/extract.md"), "# extract\n").expect("extract brief stub");
 
-    let resolved = SourceAdapter::resolve("captures", &project)
+    let resolved = SourceAdapter::resolve(&AdapterRef::bare("captures"), &project)
         .expect("captures adapter loads via SourceAdapter::resolve");
     assert_eq!(resolved.manifest.name, "captures");
     assert_eq!(resolved.manifest.axis, Axis::Source);
@@ -298,7 +300,7 @@ fn resolves_target_adapter_with_inputs() {
     fs::write(
         manifest_dir.join("adapter.yaml"),
         r"name: with-inputs
-version: 1
+version: 1.0.0
 axis: target
 execution: tool
 briefs:
@@ -315,7 +317,7 @@ description: Target adapter declaring build inputs.
     )
     .expect("write manifest with inputs");
 
-    let resolved = TargetAdapter::resolve("with-inputs", &project)
+    let resolved = TargetAdapter::resolve(&AdapterRef::bare("with-inputs"), &project)
         .expect("target adapter declaring inputs resolves");
     assert_eq!(resolved.manifest.inputs.len(), 2, "both declared inputs survive the round-trip");
     assert_eq!(resolved.manifest.inputs[0].path, "tokens.yaml");
@@ -329,8 +331,8 @@ fn target_adapter_inputs_default_empty() {
     // The `inputs` field is optional; the in-tree `omnia` fixture omits
     // it, so a resolved manifest must default to an empty list.
     let (_tmp, project) = local_project();
-    let resolved =
-        TargetAdapter::resolve("omnia", &project).expect("resolve target adapter without inputs");
+    let resolved = TargetAdapter::resolve(&AdapterRef::bare("omnia"), &project)
+        .expect("resolve target adapter without inputs");
     assert!(
         resolved.manifest.inputs.is_empty(),
         "a manifest that omits `inputs` defaults to an empty list"
@@ -348,7 +350,7 @@ fn malformed_input_rejected_at_load() {
     fs::write(
         manifest_dir.join("adapter.yaml"),
         r"name: bad-inputs
-version: 1
+version: 1.0.0
 axis: target
 execution: tool
 briefs:
@@ -362,7 +364,7 @@ description: Target adapter with a malformed input entry.
     )
     .expect("write manifest with malformed input entry");
 
-    let err = TargetAdapter::resolve("bad-inputs", &project)
+    let err = TargetAdapter::resolve(&AdapterRef::bare("bad-inputs"), &project)
         .expect_err("input entry omitting `required` must fail");
     let detail = err.to_string();
     assert!(
@@ -383,7 +385,7 @@ fn axis_mismatch_reports_diagnostic() {
     fs::write(
         bad_root.join("adapter.yaml"),
         r"name: mislabeled
-version: 1
+version: 1.0.0
 axis: target
 briefs:
   shape: briefs/shape.md
@@ -393,7 +395,7 @@ briefs:
     )
     .expect("write manifest");
 
-    let err = SourceAdapter::resolve("mislabeled", &project)
+    let err = SourceAdapter::resolve(&AdapterRef::bare("mislabeled"), &project)
         .expect_err("axis literal must match the requested axis");
     let detail = err.to_string();
     assert!(

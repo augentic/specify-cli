@@ -2,7 +2,7 @@
 //!
 //! Mirrors the target-adapter loader exposed by
 //! `crates/workflow/src/adapter/`. The CLI verb is a thin
-//! `TargetAdapter::resolve(name, project_dir)` wrapper.
+//! `TargetAdapter::resolve(adapter_ref, project_dir)` wrapper.
 
 use std::fs;
 use std::path::PathBuf;
@@ -63,16 +63,18 @@ fn resolve_local_returns_manifest() {
 }
 
 #[test]
-fn resolve_strips_version_suffix() {
+fn resolve_accepts_version_suffix() {
     // workflow §CLI surface: `specify target resolve <value>` takes
-    // either `<name>` or `<name>@<version>`. The `@version` part is
-    // opaque metadata; the loader is keyed on the bare kebab name.
+    // either `<name>` or `<name>@<semver>` (RFC-47). The semver pin is
+    // matched against the installed identity; the omnia fixture is
+    // `1.0.0`, so the matching pin resolves and the envelope reports the
+    // bare kebab name.
     let project = Project::init();
     stage_target_fixture(&project, "omnia");
 
     let assert = specify_cmd()
         .current_dir(project.root())
-        .args(["--format", "json", "target", "resolve", "omnia@v1"])
+        .args(["--format", "json", "target", "resolve", "omnia@1.0.0"])
         .arg("--project-dir")
         .arg(project.root())
         .assert()

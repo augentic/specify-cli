@@ -136,7 +136,7 @@ fn adapter_summary(adapter: &ResolvedTargetAdapter) -> render::Adapter {
 
     render::Adapter {
         name: adapter.manifest.name.clone(),
-        version: adapter.manifest.version,
+        version: adapter.manifest.version.clone(),
         description: adapter.manifest.description.clone().unwrap_or_default(),
         briefs,
     }

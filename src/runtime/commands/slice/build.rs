@@ -44,7 +44,7 @@ use specify_error::{Error, Result};
 use specify_workflow::adapter::{
     BuildInputDeclaration, Execution, ResolvedTargetAdapter, TargetAdapter, TargetOperation,
 };
-use specify_workflow::init::adapter_name_from_value;
+use specify_workflow::init::adapter_ref_from_value;
 use specify_workflow::journal::{self, EventKind};
 use specify_workflow::schema::{validate_build_report_json, validate_build_request_json};
 use specify_workflow::slice::{
@@ -109,8 +109,8 @@ struct BuildResult {
 pub(super) fn run(ctx: &Ctx, name: &str, phase: Phase) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(name);
     let metadata = SliceMetadata::load(&slice_dir)?;
-    let target_name = adapter_name_from_value(&metadata.target);
-    let resolved = TargetAdapter::resolve(target_name, &ctx.project_dir)?;
+    let target_ref = adapter_ref_from_value(&metadata.target);
+    let resolved = TargetAdapter::resolve(&target_ref, &ctx.project_dir)?;
 
     match resolved.manifest.execution {
         Some(Execution::Tool) => run_tool(ctx, name, &slice_dir, &resolved.manifest),

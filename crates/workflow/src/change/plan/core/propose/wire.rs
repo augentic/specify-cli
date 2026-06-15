@@ -62,7 +62,7 @@ pub struct ProjectRef {
     /// `plan.yaml.slices[].project`.
     pub name: String,
     /// The project's target adapter in `name@vN` form (e.g.
-    /// `omnia@v1`). Resolved on demand by [`super::resolve_target`] for a
+    /// `omnia@1.0.0`). Resolved on demand by [`super::resolve_target`] for a
     /// slice bound to this project; it is not written to
     /// `plan.yaml` (a slice stores only its `project`).
     pub target: String,

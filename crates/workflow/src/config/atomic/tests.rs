@@ -64,7 +64,7 @@ fn with_state_require_existing_round_trips() {
         reg.projects.push(crate::registry::RegistryProject {
             name: "alpha".into(),
             url: ".".into(),
-            adapter: Some("omnia@v1".into()),
+            adapter: Some("omnia@1.0.0".into()),
             description: None,
             contracts: None,
             greenfield_seed: None,

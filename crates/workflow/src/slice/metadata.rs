@@ -20,7 +20,7 @@ pub const SLICES_DIR_NAME: &str = "slices";
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub struct SliceMetadata {
-    /// Target-adapter identifier (e.g. `omnia@v1`).
+    /// Target-adapter identifier (e.g. `omnia@1.0.0`).
     pub target: String,
     /// Current lifecycle state.
     pub status: crate::slice::LifecycleStatus,

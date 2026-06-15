@@ -63,7 +63,7 @@ fn metadata(project: &Project) -> String {
 const SUCCESS_REPORT: &str = "\
 version: 1
 slice: my-slice
-target: omnia@v1
+target: omnia@1.0.0
 status: success
 findings: []
 ";
@@ -74,7 +74,7 @@ findings: []
 const SUCCESS_WITH_BLOCKING_REPORT: &str = "\
 version: 1
 slice: my-slice
-target: omnia@v1
+target: omnia@1.0.0
 status: success
 findings:
   - id: DIAG-0001
@@ -94,7 +94,7 @@ findings:
 const SUCCESS_REPORT_NO_UI: &str = "\
 version: 1
 slice: my-slice
-target: omnia@v1
+target: omnia@1.0.0
 status: success
 findings: []
 ui-surface:
@@ -105,7 +105,7 @@ ui-surface:
 const SUCCESS_REPORT_UI: &str = "\
 version: 1
 slice: my-slice
-target: omnia@v1
+target: omnia@1.0.0
 status: success
 findings: []
 ui-surface:
@@ -207,7 +207,7 @@ fn finalize_validates_and_gates_built() {
 
     let body = parse_json(&assert.get_output().stdout);
     assert_eq!(body["slice"], "my-slice");
-    assert_eq!(body["target"], "omnia@v1");
+    assert_eq!(body["target"], "omnia@1.0.0");
     assert_eq!(body["status"], "success");
     assert_eq!(body["findings"], 0);
 

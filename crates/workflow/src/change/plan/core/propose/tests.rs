@@ -51,8 +51,8 @@ fn build_request_hub_validates_as_request() {
              - synopsis: Users can request a password reset email.\n",
     );
     let topology = vec![
-        project("identity-contracts", "contracts@v1", "Versioned API contracts crate."),
-        project("identity-service", "omnia@v1", "Omnia identity service."),
+        project("identity-contracts", "contracts@1.0.0", "Versioned API contracts crate."),
+        project("identity-service", "omnia@1.0.0", "Omnia identity service."),
     ];
 
     let request = build_request(&doc, &topology).expect("request builds");
@@ -65,7 +65,7 @@ fn build_request_hub_validates_as_request() {
 #[test]
 fn build_request_empty_catalog_errors() {
     let doc = discovery("# Discovery\n\nNo leads surveyed yet.\n\n## Lead inventory\n");
-    let topology = vec![project("my-app", "omnia@v1", "Single service.")];
+    let topology = vec![project("my-app", "omnia@1.0.0", "Single service.")];
 
     match build_request(&doc, &topology) {
         Err(Error::Validation { code, .. }) => {
@@ -181,14 +181,14 @@ fn resolve_topology_hub_reads_topology_lock() {
         "version: 1\n\
              projects:\n  \
                - name: identity-contracts\n    \
-                 target: contracts@v1\n    \
+                 target: contracts@1.0.0\n    \
                  description: Contracts crate.\n    \
                  surface:\n      \
                    - domain: identity-api\n        \
                      requirements:\n          \
                        - Authenticate user\n  \
                - name: identity-service\n    \
-                 target: omnia@v1\n",
+                 target: omnia@1.0.0\n",
     )
     .expect("write topology.lock");
 
@@ -198,7 +198,7 @@ fn resolve_topology_hub_reads_topology_lock() {
         vec![
             ProjectRef {
                 name: "identity-contracts".to_string(),
-                target: "contracts@v1".to_string(),
+                target: "contracts@1.0.0".to_string(),
                 description: Some("Contracts crate.".to_string()),
                 surface: vec![Surface {
                     domain: "identity-api".to_string(),
@@ -212,7 +212,7 @@ fn resolve_topology_hub_reads_topology_lock() {
             },
             ProjectRef {
                 name: "identity-service".to_string(),
-                target: "omnia@v1".to_string(),
+                target: "omnia@1.0.0".to_string(),
                 description: None,
                 surface: Vec::new(),
                 recent: Vec::new(),
@@ -319,7 +319,7 @@ fn assert_code(result: specify_error::Result<ProposeOutcome>, expected: &str) {
 fn propose_rejects_non_replaceable_plan() {
     let mut plan = plan_with_sources(Lifecycle::Approved, &["intent"]);
     let doc = discovery_with(&[("intent", "fix-typo")]);
-    let topo = vec![project("my-app", "omnia@v1", "Single service.")];
+    let topo = vec![project("my-app", "omnia@1.0.0", "Single service.")];
     let resp = response(vec![slice("fix-typo", vec![member("intent", "fix-typo")])]);
     assert_code(plan.propose_from(resp, &doc, &topo), "plan-reconcile-plan-not-replaceable");
 }
@@ -328,7 +328,7 @@ fn propose_rejects_non_replaceable_plan() {
 fn propose_rejects_lead_orphan() {
     let mut plan = plan_with_sources(Lifecycle::Pending, &["docs"]);
     let doc = discovery_with(&[("docs", "real")]);
-    let topo = vec![project("p", "omnia@v1", "svc")];
+    let topo = vec![project("p", "omnia@1.0.0", "svc")];
     let resp = response(vec![slice("s", vec![member("docs", "ghost")])]);
     assert_code(plan.propose_from(resp, &doc, &topo), "plan-reconcile-lead-orphan");
 }
@@ -337,7 +337,7 @@ fn propose_rejects_lead_orphan() {
 fn propose_rejects_slice_source_collision() {
     let mut plan = plan_with_sources(Lifecycle::Pending, &["docs"]);
     let doc = discovery_with(&[("docs", "a"), ("docs", "b")]);
-    let topo = vec![project("p", "omnia@v1", "svc")];
+    let topo = vec![project("p", "omnia@1.0.0", "svc")];
     let resp = response(vec![slice("s", vec![member("docs", "a"), member("docs", "b")])]);
     assert_code(plan.propose_from(resp, &doc, &topo), "plan-reconcile-slice-source-collision");
 }
@@ -353,7 +353,7 @@ fn propose_emits_topic_overlap_review() {
              - synopsis: Add a feature.\n\
              - topics: [identity, validation]\n",
     );
-    let mut proj = project("my-app", "omnia@v1", "service");
+    let mut proj = project("my-app", "omnia@1.0.0", "service");
     proj.decisions = vec![crate::registry::topology::Decision {
         id: "DEC-0001".to_string(),
         title: "Identity store is Postgres".to_string(),
@@ -383,7 +383,7 @@ fn propose_topic_overlap_empty_without_decision_topics() {
              - topics: [identity]\n",
     );
     // Decision present but carries no topics — the join degrades to empty.
-    let mut proj = project("my-app", "omnia@v1", "service");
+    let mut proj = project("my-app", "omnia@1.0.0", "service");
     proj.decisions = vec![crate::registry::topology::Decision {
         id: "DEC-0001".to_string(),
         title: "Some decision".to_string(),
@@ -400,7 +400,7 @@ fn propose_topic_overlap_empty_without_decision_topics() {
 fn propose_rejects_coverage_gap() {
     let mut plan = plan_with_sources(Lifecycle::Pending, &["docs"]);
     let doc = discovery_with(&[("docs", "a"), ("docs", "b")]);
-    let topo = vec![project("p", "omnia@v1", "svc")];
+    let topo = vec![project("p", "omnia@1.0.0", "svc")];
     // Catalog carries two leads; the response covers only one.
     let resp = response(vec![slice("s", vec![member("docs", "a")])]);
     assert_code(plan.propose_from(resp, &doc, &topo), "lead-coverage-orphan");
@@ -410,7 +410,7 @@ fn propose_rejects_coverage_gap() {
 fn propose_rejects_project_binding_required() {
     let mut plan = plan_with_sources(Lifecycle::Pending, &["docs"]);
     let doc = discovery_with(&[("docs", "a")]);
-    let topo = vec![project("p1", "omnia@v1", "first"), project("p2", "contracts@v1", "second")];
+    let topo = vec![project("p1", "omnia@1.0.0", "first"), project("p2", "contracts@1.0.0", "second")];
     // Two projects offered, slice omits `project`.
     let resp = response(vec![slice("s", vec![member("docs", "a")])]);
     assert_code(plan.propose_from(resp, &doc, &topo), "plan-reconcile-project-binding-required");
@@ -420,7 +420,7 @@ fn propose_rejects_project_binding_required() {
 fn propose_rejects_project_orphan() {
     let mut plan = plan_with_sources(Lifecycle::Pending, &["docs"]);
     let doc = discovery_with(&[("docs", "a")]);
-    let topo = vec![project("p", "omnia@v1", "svc")];
+    let topo = vec![project("p", "omnia@1.0.0", "svc")];
     let mut s = slice("s", vec![member("docs", "a")]);
     s.project = Some("ghost".to_string());
     assert_code(plan.propose_from(response(vec![s]), &doc, &topo), "plan-reconcile-project-orphan");
@@ -430,7 +430,7 @@ fn propose_rejects_project_orphan() {
 fn propose_rejects_slice_name_collision() {
     let mut plan = plan_with_sources(Lifecycle::Pending, &["docs"]);
     let doc = discovery_with(&[("docs", "a"), ("docs", "b")]);
-    let topo = vec![project("p", "omnia@v1", "svc")];
+    let topo = vec![project("p", "omnia@1.0.0", "svc")];
     let mut s1 = slice("dup", vec![member("docs", "a")]);
     s1.project = Some("p".to_string());
     let mut s2 = slice("dup", vec![member("docs", "b")]);
@@ -445,7 +445,7 @@ fn propose_rejects_slice_name_collision() {
 fn propose_rejects_slice_name_not_kebab() {
     let mut plan = plan_with_sources(Lifecycle::Pending, &["docs"]);
     let doc = discovery_with(&[("docs", "a")]);
-    let topo = vec![project("p", "omnia@v1", "svc")];
+    let topo = vec![project("p", "omnia@1.0.0", "svc")];
     let resp = response(vec![slice("Not Kebab", vec![member("docs", "a")])]);
     assert_code(plan.propose_from(resp, &doc, &topo), "plan-reconcile-slice-name-invalid");
 }
@@ -454,7 +454,7 @@ fn propose_rejects_slice_name_not_kebab() {
 fn propose_rejects_depends_on_cycle() {
     let mut plan = plan_with_sources(Lifecycle::Pending, &["docs"]);
     let doc = discovery_with(&[("docs", "a"), ("docs", "b")]);
-    let topo = vec![project("p", "omnia@v1", "svc")];
+    let topo = vec![project("p", "omnia@1.0.0", "svc")];
     let mut s1 = slice("alpha", vec![member("docs", "a")]);
     s1.project = Some("p".to_string());
     s1.depends_on = vec!["beta".to_string()];
@@ -471,7 +471,7 @@ fn propose_rejects_depends_on_cycle() {
 fn propose_n1_auto_binds_sole_project() {
     let mut plan = plan_with_sources(Lifecycle::Pending, &["intent"]);
     let doc = discovery_with(&[("intent", "fix-typo")]);
-    let topo = vec![project("my-app", "omnia@v1", "Single Omnia service.")];
+    let topo = vec![project("my-app", "omnia@1.0.0", "Single Omnia service.")];
     // Explicit name, no project (auto-bound to the sole project).
     let resp = response(vec![slice("fix-typo", vec![member("intent", "fix-typo")])]);
 
@@ -484,7 +484,7 @@ fn propose_n1_auto_binds_sole_project() {
     assert_eq!(entry.name, "fix-typo");
     assert_eq!(entry.project.as_deref(), Some("my-app"));
     // Target is not stored; it resolves from the bound project.
-    assert_eq!(resolve_target(entry, &topo).unwrap().to_string(), "omnia@v1");
+    assert_eq!(resolve_target(entry, &topo).unwrap().to_string(), "omnia@1.0.0");
     assert_eq!(entry.status, Status::Pending);
     assert!(entry.depends_on.is_empty());
     assert_eq!(entry.sources, vec![SliceSourceBinding::structured("intent", "fix-typo")]);
@@ -503,7 +503,7 @@ fn propose_multi_homes_cross_cutting_lead() {
         ("legacy", "user-registration"),
         ("legacy", "password-reset"),
     ]);
-    let topo = vec![project("identity-service", "omnia@v1", "Omnia identity service.")];
+    let topo = vec![project("identity-service", "omnia@1.0.0", "Omnia identity service.")];
 
     let resp = response(vec![
         slice(
@@ -540,8 +540,8 @@ fn propose_multi_source_fan_out() {
         ("legacy", "reset-password"),
     ]);
     let topo = vec![
-        project("identity-contracts", "contracts@v1", "Versioned API contracts crate."),
-        project("identity-service", "omnia@v1", "Omnia identity service."),
+        project("identity-contracts", "contracts@1.0.0", "Versioned API contracts crate."),
+        project("identity-service", "omnia@1.0.0", "Omnia identity service."),
     ];
     let mut plan = plan_with_sources(Lifecycle::Pending, &["docs", "legacy"]);
 
@@ -594,7 +594,7 @@ slices:
         plan.entries.iter().map(|e| resolve_target(e, &topo).unwrap().to_string()).collect();
     assert_eq!(
         targets,
-        vec!["contracts@v1".to_string(), "omnia@v1".to_string(), "omnia@v1".to_string()]
+        vec!["contracts@1.0.0".to_string(), "omnia@1.0.0".to_string(), "omnia@1.0.0".to_string()]
     );
 
     assert_eq!(
@@ -620,7 +620,7 @@ slices:
 
 fn propose_single_slice(plan: &mut Plan) -> ProposeOutcome {
     let doc = discovery_with(&[("intent", "add-feature")]);
-    let topo = vec![project("my-app", "vectis@v1", "Crux app.")];
+    let topo = vec![project("my-app", "vectis@1.0.0", "Crux app.")];
     let resp = response(vec![slice("add-feature", vec![member("intent", "add-feature")])]);
     plan.propose_from(resp, &doc, &topo).expect("propose succeeds")
 }
@@ -723,7 +723,7 @@ fn reconcile_incremental_two_missing() {
 fn reconcile_preserves_existing_depends_on() {
     let mut plan = plan_with_sources(Lifecycle::Pending, &["intent"]);
     let doc = discovery_with(&[("intent", "a"), ("intent", "b")]);
-    let topo = vec![project("my-app", "vectis@v1", "Crux app.")];
+    let topo = vec![project("my-app", "vectis@1.0.0", "Crux app.")];
     let mut s1 = slice("slice-a", vec![member("intent", "a")]);
     s1.project = Some("my-app".to_string());
     let mut s2 = slice("slice-b", vec![member("intent", "b")]);
@@ -748,7 +748,7 @@ fn reconcile_preserves_existing_depends_on() {
 fn reconcile_rejects_name_collision() {
     let mut plan = plan_with_sources(Lifecycle::Pending, &["intent"]);
     let doc = discovery_with(&[("intent", "app-foundation")]);
-    let topo = vec![project("my-app", "vectis@v1", "Crux app.")];
+    let topo = vec![project("my-app", "vectis@1.0.0", "Crux app.")];
     let resp = response(vec![slice("app-foundation", vec![member("intent", "app-foundation")])]);
     plan.propose_from(resp, &doc, &topo).expect("propose ok");
 
@@ -770,8 +770,8 @@ fn reconcile_multi_project_bootstraps() {
     let mut plan = plan_with_sources(Lifecycle::Pending, &["intent"]);
     let doc = discovery_with(&[("intent", "feat-a"), ("intent", "feat-b")]);
     let topo = vec![
-        project("app-one", "vectis@v1", "First Crux app."),
-        project("app-two", "vectis@v1", "Second Crux app."),
+        project("app-one", "vectis@1.0.0", "First Crux app."),
+        project("app-two", "vectis@1.0.0", "Second Crux app."),
     ];
     let mut s1 = slice("feat-a", vec![member("intent", "feat-a")]);
     s1.project = Some("app-one".to_string());

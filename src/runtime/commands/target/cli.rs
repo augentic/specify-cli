@@ -17,7 +17,7 @@ pub enum TargetAction {
     /// manifest's declared operations.
     Resolve {
         /// Target-adapter identifier — kebab name or `name@version`
-        /// (e.g. `omnia`, `vectis`, `contracts@v1`). The optional
+        /// (e.g. `omnia`, `vectis`, `contracts@1.0.0`). The optional
         /// `@version` suffix is treated as an opaque identifier and
         /// is stripped for the manifest lookup.
         value: String,

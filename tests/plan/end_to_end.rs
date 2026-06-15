@@ -10,7 +10,7 @@
 //! ```text
 //! documentation + typescript (sources: docs, legacy)
 //!   -> source survey            # fan-in #1: Lead sets (incl. docs:password-reset / legacy:reset-password mismatch)
-//!   -> plan propose --dry-run   # flat lead catalog + identity-contracts->contracts@v1 / identity-service->omnia@v1
+//!   -> plan propose --dry-run   # flat lead catalog + identity-contracts->contracts@1.0.0 / identity-service->omnia@1.0.0
 //!   -> plan propose --from      # agent groups leads; kernel writes single-target slices + project bindings + depends-on
 //!   -> per slice: source extract -> slice synthesize -> slice build -> slice merge
 //!   -> depends-on ordering: identity-contracts merges before identity-service starts
@@ -88,11 +88,11 @@ version: 1
 projects:
   - name: identity-contracts
     url: git@github.com:org/identity-contracts.git
-    adapter: contracts@v1
+    adapter: contracts@1.0.0
     description: Versioned API contracts crate for the identity domain.
   - name: identity-service
     url: git@github.com:org/identity-service.git
-    adapter: omnia@v1
+    adapter: omnia@1.0.0
     description: Omnia identity service implementing auth and password flows.
 ";
 
@@ -102,10 +102,10 @@ const TOPOLOGY_HUB: &str = "\
 version: 1
 projects:
   - name: identity-contracts
-    target: contracts@v1
+    target: contracts@1.0.0
     description: Versioned API contracts crate for the identity domain.
   - name: identity-service
-    target: omnia@v1
+    target: omnia@1.0.0
     description: Omnia identity service implementing auth and password flows.
 ";
 
@@ -124,7 +124,7 @@ slices: []
 
 const CONTRACTS_ADAPTER: &str = "\
 name: contracts
-version: 1
+version: 1.0.0
 axis: target
 execution: agent
 briefs:
@@ -149,7 +149,7 @@ fn stage_source_adapter(root: &Path, name: &str, description: &str) {
     fs::write(
         dir.join("adapter.yaml"),
         format!(
-            "name: {name}\nversion: 1\naxis: source\nexecution: agent\nbriefs:\n  survey: \
+            "name: {name}\nversion: 1.0.0\naxis: source\nexecution: agent\nbriefs:\n  survey: \
              briefs/survey.md\n  extract: briefs/extract.md\ndescription: {description}\n"
         ),
     )
@@ -279,9 +279,9 @@ fn prove_plan_time_fan_out(root: &Path) {
     let projects = request["projects"].as_array().expect("projects array");
     assert_eq!(projects.len(), 2);
     assert_eq!(projects[0]["name"], "identity-contracts");
-    assert_eq!(projects[0]["target"], "contracts@v1");
+    assert_eq!(projects[0]["target"], "contracts@1.0.0");
     assert_eq!(projects[1]["name"], "identity-service");
-    assert_eq!(projects[1]["target"], "omnia@v1");
+    assert_eq!(projects[1]["target"], "omnia@1.0.0");
     let leads = request["leads"].as_array().expect("leads array");
     assert_eq!(leads.len(), 4, "one row per (source, lead): {leads:#?}");
     assert_eq!(read_plan(root), plan_before, "--dry-run must not touch plan.yaml");

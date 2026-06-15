@@ -14,7 +14,7 @@ use specify_error::{Error, Result};
 use super::wire::ProjectRef;
 use crate::adapter::TargetAdapter;
 use crate::config::{Layout, ProjectConfig};
-use crate::init::adapter_name_from_value;
+use crate::init::adapter_ref_from_value;
 use crate::registry::catalog::Registry;
 use crate::registry::topology::{Surface, TopologyLock};
 
@@ -173,8 +173,8 @@ fn regular_topology(config: &ProjectConfig, project_dir: &Path) -> Result<Projec
             "non-workspace project.yaml omits the `adapter` field",
         )
     })?;
-    let resolved = TargetAdapter::resolve(adapter_name_from_value(adapter_value), project_dir)?;
-    let target = format!("{}@v{}", resolved.manifest.name, resolved.manifest.version);
+    let resolved = TargetAdapter::resolve(&adapter_ref_from_value(adapter_value), project_dir)?;
+    let target = format!("{}@{}", resolved.manifest.name, resolved.manifest.version);
     let projection = crate::registry::identity::project_baseline(project_dir)?;
     Ok(ProjectRef {
         name: config.name.clone(),
@@ -196,7 +196,7 @@ mod tests {
     fn project_ref(name: &str, surface: Vec<Surface>) -> ProjectRef {
         ProjectRef {
             name: name.to_string(),
-            target: "omnia@v1".to_string(),
+            target: "omnia@1.0.0".to_string(),
             description: None,
             surface,
             recent: Vec::new(),
@@ -212,7 +212,7 @@ mod tests {
             projects: vec![RegistryProject {
                 name: name.to_string(),
                 url: ".".to_string(),
-                adapter: Some("omnia@v1".to_string()),
+                adapter: Some("omnia@1.0.0".to_string()),
                 description: None,
                 contracts: None,
                 greenfield_seed: Some(GreenfieldSeed {

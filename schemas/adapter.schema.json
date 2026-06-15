@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/augentic/specify-cli/schemas/adapter.schema.json",
   "title": "Specify adapter manifest",
-  "description": "Shared shape for source and target adapter manifests (`adapter.yaml`) per workflow §Adapter implementation shape. Carries the kebab-case `name`, integer `version`, the `axis` discriminator (`source` or `target`), the `briefs.<operation>` map of relative brief paths, and an optional `tools[]` declaration. The set of operations is closed by the per-axis `briefs` constraints in `source.schema.json` and `target.schema.json` — `briefs.keys()` is the canonical operation iterator.",
+  "description": "Shared shape for source and target adapter manifests (`adapter.yaml`) per workflow §Adapter implementation shape. Carries the kebab-case `name`, semver `version`, the `axis` discriminator (`source` or `target`), the `briefs.<operation>` map of relative brief paths, and an optional `tools[]` declaration. The set of operations is closed by the per-axis `briefs` constraints in `source.schema.json` and `target.schema.json` — `briefs.keys()` is the canonical operation iterator.",
   "type": "object",
   "additionalProperties": false,
   "required": ["name", "version", "axis", "description", "briefs"],
@@ -12,9 +12,9 @@
       "description": "Adapter identifier in kebab-case. Must match the directory name under sources/ or targets/."
     },
     "version": {
-      "type": "integer",
-      "minimum": 1,
-      "description": "Major adapter version. Increments when the adapter ships breaking operation or contract changes."
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$",
+      "description": "Semver adapter version (`x.y.z` with optional `-prerelease` / `+build`). Resolution keys on this string as the adapter's identity."
     },
     "axis": {
       "type": "string",

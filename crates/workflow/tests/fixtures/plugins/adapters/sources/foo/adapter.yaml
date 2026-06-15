@@ -1,5 +1,5 @@
 name: foo
-version: 1
+version: "1.0.0"
 axis: source
 briefs:
   survey: briefs/survey.md

@@ -86,12 +86,12 @@ fn init_github_directory_uri_succeeds() {
 #[test]
 #[ignore = "networked GitHub fetch smoke test"]
 fn init_shorthand_resolves_via_github() {
-    // `specify init omnia@v1` resolves the first-party shorthand to the
+    // `specify init omnia@1.0.0` resolves the first-party shorthand to the
     // published adapter on GitHub (sparse checkout). Networked.
     let tmp = tempdir().unwrap();
     specify_cmd()
         .current_dir(tmp.path())
-        .args(["init", "omnia@v1", "--name", "demo"])
+        .args(["init", "omnia@1.0.0", "--name", "demo"])
         .assert()
         .success();
 }
@@ -178,7 +178,7 @@ fn init_platforms_not_allowed_errors() {
     fs::create_dir_all(adapter.join("briefs")).unwrap();
     fs::write(
         adapter.join("adapter.yaml"),
-        "name: adapter-limited\nversion: 1\naxis: target\nexecution: agent\nbriefs:\n  shape: briefs/shape.md\n  build: briefs/build.md\n  merge: briefs/merge.md\ndescription: Stub adapter that only allows core + ios\nplatforms:\n  required: true\n  allowed: [core, ios]\n  default: [core, ios]\n",
+        "name: adapter-limited\nversion: 1.0.0\naxis: target\nexecution: agent\nbriefs:\n  shape: briefs/shape.md\n  build: briefs/build.md\n  merge: briefs/merge.md\ndescription: Stub adapter that only allows core + ios\nplatforms:\n  required: true\n  allowed: [core, ios]\n  default: [core, ios]\n",
     )
     .unwrap();
     for brief in ["shape.md", "build.md", "merge.md"] {

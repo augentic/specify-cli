@@ -290,6 +290,12 @@ pub struct SourceBinding {
     /// Kebab-case source-adapter name (e.g. `intent`, `documentation`,
     /// `typescript`, `screenshots`).
     pub adapter: String,
+    /// Optional exact semver pin for the bound source adapter (RFC-47
+    /// D2). Additive: an omitted `version` keeps the `None`-means-the
+    /// -single-installed-identity semantics, so existing `plan.yaml`
+    /// source binds parse unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<semver::Version>,
     /// Filesystem path or repo location the adapter binds against.
     /// Mutually exclusive with `value`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -307,6 +313,7 @@ impl SourceBinding {
     pub fn path(adapter: impl Into<String>, path: impl Into<String>) -> Self {
         Self {
             adapter: adapter.into(),
+            version: None,
             path: Some(path.into()),
             value: None,
         }
@@ -317,13 +324,14 @@ impl SourceBinding {
     pub fn value(adapter: impl Into<String>, value: impl Into<String>) -> Self {
         Self {
             adapter: adapter.into(),
+            version: None,
             path: None,
             value: Some(value.into()),
         }
     }
 }
 
-/// Parsed `<name>@v<version>` target-adapter identifier (workflow §Adapter
+/// Parsed `<name>@<semver>` target-adapter identifier (workflow §Adapter
 /// vocabulary).
 ///
 /// This is the *resolved* target form, produced by
@@ -333,36 +341,35 @@ impl SourceBinding {
 /// `plan.yaml` field — a slice binds only a `project`, and the target
 /// adapter is resolved on demand.
 ///
-/// Wire form is the single kebab string `name@vN` (e.g. `omnia@v1`),
-/// with `name` matching `^[a-z][a-z0-9-]*$` and `N` a non-negative
-/// integer. Deserialisation goes through [`TargetRef::parse`] so any
-/// payload that survives serde already has the `@vN` suffix in valid
-/// form. Components are private so every `TargetRef` value satisfies
-/// the wire regex by construction.
+/// Wire form is the single kebab string `name@<semver>` (e.g.
+/// `omnia@1.0.0`), with `name` matching `^[a-z][a-z0-9-]*$` and the
+/// version an exact semver (RFC-47 identity). Deserialisation goes
+/// through [`TargetRef::parse`] so any payload that survives serde
+/// already has the `@<semver>` suffix in valid form. Components are
+/// private so every `TargetRef` value satisfies the wire regex by
+/// construction.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TargetRef {
     name: String,
-    version: u32,
+    version: semver::Version,
 }
 
 impl TargetRef {
-    /// Parse a wire-form `<name>@v<version>` string.
+    /// Parse a wire-form `<name>@<semver>` string.
     ///
     /// # Errors
     ///
     /// Returns [`TargetRefParseError`] when the string does not match
-    /// the wire regex `^[a-z][a-z0-9-]*@v\d+$` — wrong shape, empty
-    /// segment, mixed case, missing `@v`, non-digit version, etc.
+    /// the wire regex `^[a-z][a-z0-9-]*@<semver>$` — wrong shape, empty
+    /// segment, mixed case, missing `@`, non-semver version, etc.
     pub fn parse(input: &str) -> Result<Self, TargetRefParseError> {
         let (name, version_part) =
-            input.split_once("@v").ok_or_else(|| TargetRefParseError::new(input))?;
+            input.split_once('@').ok_or_else(|| TargetRefParseError::new(input))?;
         if !specify_error::is_kebab_leading_alpha(name) {
             return Err(TargetRefParseError::new(input));
         }
-        if version_part.is_empty() || !version_part.bytes().all(|b| b.is_ascii_digit()) {
-            return Err(TargetRefParseError::new(input));
-        }
-        let version: u32 = version_part.parse().map_err(|_err| TargetRefParseError::new(input))?;
+        let version =
+            semver::Version::parse(version_part).map_err(|_err| TargetRefParseError::new(input))?;
         Ok(Self {
             name: name.to_string(),
             version,
@@ -372,7 +379,7 @@ impl TargetRef {
 
 impl fmt::Display for TargetRef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}@v{}", self.name, self.version)
+        write!(f, "{}@{}", self.name, self.version)
     }
 }
 
@@ -390,7 +397,7 @@ impl<'de> Deserialize<'de> for TargetRef {
 }
 
 /// Error returned by [`TargetRef::parse`] when the input does not
-/// match the `name@vN` wire form.
+/// match the `name@<semver>` wire form.
 ///
 /// Carries the offending input verbatim so callers can surface it in
 /// diagnostics without re-formatting; the [`fmt::Display`] body is
@@ -414,7 +421,7 @@ impl fmt::Display for TargetRefParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "target `{}` is not of the form `<name>@v<version>` (kebab name, lowercase `v`, integer version)",
+            "target `{}` is not of the form `<name>@<semver>` (kebab name, exact semver version)",
             self.input,
         )
     }

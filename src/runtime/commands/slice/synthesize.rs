@@ -38,7 +38,7 @@ use specify_model::evidence::{AuthorityClass, ClaimKind};
 use specify_workflow::adapter::{TargetAdapter, TargetOperation};
 use specify_workflow::change::{Entry, Plan, resolve_topology};
 use specify_workflow::config::ProjectConfig;
-use specify_workflow::init::adapter_name_from_value;
+use specify_workflow::init::adapter_ref_from_value;
 use specify_workflow::journal::{self, EventKind};
 use specify_workflow::registry::Surface;
 use specify_workflow::schema::validate_synthesis_json;
@@ -337,13 +337,13 @@ fn parse_enum<T: serde::de::DeserializeOwned>(value: &str) -> Option<T> {
 /// keeps target resolution a CLI responsibility.
 fn resolve_shape_brief(ctx: &Ctx, slice_dir: &Path) -> Result<String> {
     let metadata = SliceMetadata::load(slice_dir)?;
-    let adapter_name = adapter_name_from_value(&metadata.target);
-    let resolved = TargetAdapter::resolve(adapter_name, &ctx.project_dir)?;
+    let adapter_ref = adapter_ref_from_value(&metadata.target);
+    let resolved = TargetAdapter::resolve(&adapter_ref, &ctx.project_dir)?;
     let brief_rel = resolved.manifest.briefs.get(&TargetOperation::Shape).ok_or_else(|| {
         Error::validation_failed(
             "slice-synthesize-shape-brief-missing",
             "the bound target adapter declares a shape brief",
-            format!("target adapter `{adapter_name}` declares no `shape` brief"),
+            format!("target adapter `{}` declares no `shape` brief", adapter_ref.name),
         )
     })?;
     let brief_path = resolved.location.path().join(brief_rel);

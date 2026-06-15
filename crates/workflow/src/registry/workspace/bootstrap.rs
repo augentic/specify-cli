@@ -8,7 +8,7 @@ use specify_error::Error;
 use super::git::{self, git_output_ok, git_porcelain_non_empty};
 use crate::adapter::TargetAdapter;
 use crate::config::Layout;
-use crate::init::adapter_name_from_value;
+use crate::init::adapter_ref_from_value;
 use crate::registry::gitignore::ensure_gitignore_entries;
 
 pub(super) fn bootstrap(
@@ -88,7 +88,7 @@ fn scaffold_greenfield(dest: &Path, adapter: &str) -> Result<(), Error> {
 /// adapter cache not yet populated) or when the target does not require
 /// platforms.
 fn resolve_default_platforms(adapter: &str, dest: &Path) -> Option<String> {
-    let resolved = TargetAdapter::resolve(adapter_name_from_value(adapter), dest).ok()?;
+    let resolved = TargetAdapter::resolve(&adapter_ref_from_value(adapter), dest).ok()?;
     let cap = resolved.manifest.platforms.as_ref()?;
     if !cap.required || cap.default.is_empty() {
         return None;
