@@ -27,9 +27,9 @@ use std::io::Write;
 use std::path::Path;
 
 use serde::Serialize;
+use specify_diagnostics::Diagnostic;
 use specify_error::{Error, Result};
 use specify_model::discovery::Discovery;
-use specify_diagnostics::Diagnostic;
 use specify_workflow::change::{
     Plan, ProjectMissingPlatforms, ProjectRef, ProposalRequest, ProposalResponse, ProposeOutcome,
     apply_greenfield_seed, build_request, detect_missing_platforms, resolve_topology,

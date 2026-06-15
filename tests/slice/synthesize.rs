@@ -113,8 +113,7 @@ fn synthesize_dry_run_projects_baseline() {
     let baseline = value["baseline"].as_array().expect("baseline array");
     assert_eq!(baseline.len(), 1, "one baseline domain projected: {value}");
     assert_eq!(baseline[0]["domain"], "identity");
-    let requirements =
-        baseline[0]["requirements"].as_array().expect("requirements array");
+    let requirements = baseline[0]["requirements"].as_array().expect("requirements array");
     assert_eq!(requirements.len(), 1);
     assert_eq!(requirements[0], "User registration");
 

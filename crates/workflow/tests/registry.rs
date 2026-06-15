@@ -145,16 +145,18 @@ fn project_url_materialises_as_symlink() {
 #[test]
 fn greenfield_seed_accepts_kebab_domains() {
     let mut registry = registry_with_one_url(".");
-    registry.projects[0].greenfield_seed =
-        Some(GreenfieldSeed { domains: vec!["identity".into(), "account-creation".into()] });
+    registry.projects[0].greenfield_seed = Some(GreenfieldSeed {
+        domains: vec!["identity".into(), "account-creation".into()],
+    });
     registry.validate_shape().expect("kebab seed domains validate");
 }
 
 #[test]
 fn greenfield_seed_rejects_non_kebab_domain() {
     let mut registry = registry_with_one_url(".");
-    registry.projects[0].greenfield_seed =
-        Some(GreenfieldSeed { domains: vec!["Identity_Domain".into()] });
+    registry.projects[0].greenfield_seed = Some(GreenfieldSeed {
+        domains: vec!["Identity_Domain".into()],
+    });
     let err = registry.validate_shape().expect_err("non-kebab seed domain is rejected");
     match err {
         Error::Diag { code, .. } => {

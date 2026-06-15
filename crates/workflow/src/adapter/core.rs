@@ -343,13 +343,19 @@ impl AdapterRef {
     /// A bare-name reference with no version pin.
     #[must_use]
     pub fn bare(name: impl Into<String>) -> Self {
-        Self { name: name.into(), version: None }
+        Self {
+            name: name.into(),
+            version: None,
+        }
     }
 
     /// A reference pinned to an exact semver version.
     #[must_use]
     pub fn pinned(name: impl Into<String>, version: semver::Version) -> Self {
-        Self { name: name.into(), version: Some(version) }
+        Self {
+            name: name.into(),
+            version: Some(version),
+        }
     }
 }
 

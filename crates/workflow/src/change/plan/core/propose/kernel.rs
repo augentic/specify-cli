@@ -145,8 +145,7 @@ fn topic_overlaps(
             continue;
         }
         for member in &slice.sources {
-            let topics =
-                lead_topics.get(&(member.source.as_str(), member.lead.as_str())).copied();
+            let topics = lead_topics.get(&(member.source.as_str(), member.lead.as_str())).copied();
             let Some(topics) = topics else { continue };
             for topic in topics {
                 for decision in &project.decisions {

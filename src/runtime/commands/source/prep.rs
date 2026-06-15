@@ -205,8 +205,10 @@ pub struct SourcePrep {
 /// `adapter-schema-violation`, …) and I/O failures from the `evidence/`
 /// directory create.
 pub fn prepare(request: &PrepRequest<'_>) -> Result<SourcePrep> {
-    let adapter_ref =
-        AdapterRef { name: request.adapter.to_string(), version: request.version.clone() };
+    let adapter_ref = AdapterRef {
+        name: request.adapter.to_string(),
+        version: request.version.clone(),
+    };
     let resolved = SourceAdapter::resolve(&adapter_ref, request.project_dir)?;
     let adapter_dir = resolved.location.path().clone();
     let briefs_dir = adapter_dir.join(BRIEFS_DIR);

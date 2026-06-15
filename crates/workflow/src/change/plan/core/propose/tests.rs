@@ -410,7 +410,8 @@ fn propose_rejects_coverage_gap() {
 fn propose_rejects_project_binding_required() {
     let mut plan = plan_with_sources(Lifecycle::Pending, &["docs"]);
     let doc = discovery_with(&[("docs", "a")]);
-    let topo = vec![project("p1", "omnia@1.0.0", "first"), project("p2", "contracts@1.0.0", "second")];
+    let topo =
+        vec![project("p1", "omnia@1.0.0", "first"), project("p2", "contracts@1.0.0", "second")];
     // Two projects offered, slice omits `project`.
     let resp = response(vec![slice("s", vec![member("docs", "a")])]);
     assert_code(plan.propose_from(resp, &doc, &topo), "plan-reconcile-project-binding-required");

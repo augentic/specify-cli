@@ -40,9 +40,10 @@ pub(super) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     let platforms_changed = if let Some(incoming) = opts.platforms {
         let adapter_value = cfg.adapter.as_deref().ok_or_else(|| Error::Diag {
             code: "upgrade-platforms-no-adapter",
-            detail: "--platforms requires a project with a bound target adapter (workspace projects \
+            detail:
+                "--platforms requires a project with a bound target adapter (workspace projects \
                      have no adapter)"
-                .to_string(),
+                    .to_string(),
         })?;
         let adapter_ref = adapter_ref_from_value(adapter_value);
         let resolved = TargetAdapter::resolve(&adapter_ref, opts.project_dir)?;

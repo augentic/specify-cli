@@ -187,9 +187,8 @@ description: Cached source adapter fixture.
 #[test]
 fn missing_adapter_reports_not_found() {
     let (_tmp, project) = local_project();
-    let err =
-        SourceAdapter::resolve(&AdapterRef::bare("nonexistent"), &project)
-            .expect_err("missing adapter must fail");
+    let err = SourceAdapter::resolve(&AdapterRef::bare("nonexistent"), &project)
+        .expect_err("missing adapter must fail");
     let detail = err.to_string();
     assert!(detail.contains("adapter-not-found"), "{detail}");
 }

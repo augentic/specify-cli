@@ -66,10 +66,10 @@ fn duplicate_fails() {
 #[test]
 fn continue_reuses_dir() {
     let tmp = tempfile::tempdir().expect("tempdir");
-    let _first =
-        create(tmp.path(), "keep", "omnia@1.0.0", CreateIfExists::Fail, ts()).expect("first create");
-    let reused =
-        create(tmp.path(), "keep", "omnia@1.0.0", CreateIfExists::Continue, ts()).expect("continue");
+    let _first = create(tmp.path(), "keep", "omnia@1.0.0", CreateIfExists::Fail, ts())
+        .expect("first create");
+    let reused = create(tmp.path(), "keep", "omnia@1.0.0", CreateIfExists::Continue, ts())
+        .expect("continue");
     assert!(!reused.created, "continue reuses, does not create");
     assert!(!reused.restarted);
 }
@@ -77,8 +77,8 @@ fn continue_reuses_dir() {
 #[test]
 fn restart_recreates_dir() {
     let tmp = tempfile::tempdir().expect("tempdir");
-    let first =
-        create(tmp.path(), "redo", "omnia@1.0.0", CreateIfExists::Fail, ts()).expect("first create");
+    let first = create(tmp.path(), "redo", "omnia@1.0.0", CreateIfExists::Fail, ts())
+        .expect("first create");
     let marker = first.dir.join("specs").join("scratch.txt");
     std::fs::write(&marker, b"stale").expect("write marker");
 

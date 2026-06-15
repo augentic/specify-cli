@@ -113,8 +113,12 @@ fn build_inputs_carries_lead_and_claims() {
         requirements: vec!["User registration".to_string()],
         more: None,
     }];
-    let inputs =
-        build_synthesis_inputs("identity-service", &[docs, legacy], "# Shape brief\nbody", &baseline);
+    let inputs = build_synthesis_inputs(
+        "identity-service",
+        &[docs, legacy],
+        "# Shape brief\nbody",
+        &baseline,
+    );
 
     assert_eq!(inputs.version, SYNTHESIS_VERSION);
     assert_eq!(inputs.kind, SynthesisInputsKind::Inputs);

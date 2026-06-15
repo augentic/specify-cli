@@ -112,8 +112,11 @@ pub fn apply_greenfield_seed(
 /// dir itself for a regular project, `workspace/<name>/` for a workspace
 /// member.
 fn project_specs_dir(project_dir: &Path, name: &str, workspace: bool) -> PathBuf {
-    let root =
-        if workspace { project_dir.join("workspace").join(name) } else { project_dir.to_path_buf() };
+    let root = if workspace {
+        project_dir.join("workspace").join(name)
+    } else {
+        project_dir.to_path_buf()
+    };
     Layout::new(&root).specify_dir().join("specs")
 }
 
@@ -231,8 +234,7 @@ mod tests {
         let findings = apply_greenfield_seed(&mut topology, &registry, dir.path(), false);
 
         assert!(findings.is_empty(), "no baseline means no shadow finding");
-        let domains: Vec<&str> =
-            topology[0].surface.iter().map(|s| s.domain.as_str()).collect();
+        let domains: Vec<&str> = topology[0].surface.iter().map(|s| s.domain.as_str()).collect();
         assert_eq!(domains, ["identity", "billing"]);
         assert!(
             topology[0].surface.iter().all(|s| s.requirements.is_empty()),

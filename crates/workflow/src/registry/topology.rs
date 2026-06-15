@@ -227,8 +227,7 @@ impl TopologyProject {
                 format!("workspace slot `{registry_name}` project.yaml omits the `adapter` field"),
             )
         })?;
-        let resolved =
-            TargetAdapter::resolve(&adapter_ref_from_value(adapter_value), slot_dir)?;
+        let resolved = TargetAdapter::resolve(&adapter_ref_from_value(adapter_value), slot_dir)?;
         let target = format!("{}@{}", resolved.manifest.name, resolved.manifest.version);
 
         validate_topology_platforms(
