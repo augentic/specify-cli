@@ -10,6 +10,7 @@ pub mod paths;
 mod raster_copy;
 mod render;
 mod svg;
+mod yaml_pins;
 
 use std::path::{Path, PathBuf};
 
@@ -24,6 +25,7 @@ use app_icon::materialize_app_icons;
 use icons::materialize_icon_vectors;
 use illustrations::materialize_illustration_vectors;
 use raster_copy::materialize_photo_rasters;
+use yaml_pins::{apply_auto_pins, atomic_yaml_write, collect_auto_pins, serialise_yaml};
 
 /// Nested targets under `vectis materialize`.
 #[derive(Subcommand, Debug, Clone, PartialEq, Eq)]
@@ -99,7 +101,7 @@ fn run_assets(args: &AssetsArgs) -> Result<Value, VectisError> {
     let mut skipped_pins = Vec::new();
     let mut errors = Vec::new();
 
-    let instance = match serde_saphyr::from_str::<Value>(&source) {
+    let mut instance = match serde_saphyr::from_str::<Value>(&source) {
         Ok(value) => value,
         Err(err) => {
             errors.push(json!({
@@ -154,6 +156,17 @@ fn run_assets(args: &AssetsArgs) -> Result<Value, VectisError> {
             &mut skipped_pins,
             &mut errors,
         );
+    }
+
+    if !args.dry_run
+        && let Some(assets) = instance.get("assets").and_then(Value::as_object)
+    {
+        let pins = collect_auto_pins(&materialized, assets);
+        if !pins.is_empty() {
+            apply_auto_pins(&mut instance, &pins);
+            let yaml = serialise_yaml(&instance)?;
+            atomic_yaml_write(&path, &yaml)?;
+        }
     }
 
     Ok(build_summary(

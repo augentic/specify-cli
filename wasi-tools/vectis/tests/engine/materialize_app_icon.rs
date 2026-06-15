@@ -59,6 +59,10 @@ assets:
     let img = ImageReader::open(&png).unwrap().decode().unwrap();
     assert_eq!(img.width(), 1024);
     assert_eq!(img.height(), 1024);
+
+    let updated = fs::read_to_string(&assets_path).unwrap();
+    assert!(updated.contains("sources:"));
+    assert!(updated.contains("ios: assets/exports/ios/app-icon/AppIcon.appiconset"));
 }
 
 #[test]

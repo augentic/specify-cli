@@ -78,9 +78,7 @@ pub(crate) mod core {
         },
         TemplateEntry {
             target: "supply-chain/imports.lock",
-            contents: include_str!(
-                "../../../../../templates/vectis/core/supply-chain-imports.lock"
-            ),
+            contents: include_str!("../../../../../templates/vectis/core/supply-chain-imports.lock"),
             path_mode: PathMode::ContentOnly,
             include_when: IncludeWhen::Always,
         },
@@ -191,9 +189,7 @@ pub(crate) mod android {
         },
         TemplateEntry {
             target: "Android/shared/build.gradle.kts",
-            contents: include_str!(
-                "../../../../../templates/vectis/android/shared-build.gradle.kts"
-            ),
+            contents: include_str!("../../../../../templates/vectis/android/shared-build.gradle.kts"),
             path_mode: PathMode::AndroidPackage,
             include_when: IncludeWhen::Always,
         },
@@ -211,9 +207,7 @@ pub(crate) mod android {
         },
         TemplateEntry {
             target: "Android/app/src/main/res/xml/network_security_config.xml",
-            contents: include_str!(
-                "../../../../../templates/vectis/android/network-security-config.xml"
-            ),
+            contents: include_str!("../../../../../templates/vectis/android/network-security-config.xml"),
             path_mode: PathMode::AndroidPackage,
             include_when: IncludeWhen::AnyOf(&[Capability::Http, Capability::Sse]),
         },
@@ -279,19 +273,16 @@ pub(crate) mod android {
         },
         TemplateEntry {
             target: "Android/app/src/main/res/drawable/ic_launcher_foreground.xml",
-            contents: include_str!(
-                "../../../../../templates/vectis/android/ic_launcher_foreground.xml"
-            ),
+            contents: include_str!("../../../../../templates/vectis/android/ic_launcher_foreground.xml"),
             path_mode: PathMode::AndroidPackage,
             include_when: IncludeWhen::Always,
         },
         TemplateEntry {
             target: "Android/app/src/main/res/values/ic_launcher_background.xml",
-            contents: include_str!(
-                "../../../../../templates/vectis/android/ic_launcher_background.xml"
-            ),
+            contents: include_str!("../../../../../templates/vectis/android/ic_launcher_background.xml"),
             path_mode: PathMode::AndroidPackage,
             include_when: IncludeWhen::Always,
         },
     ];
 }
+
