@@ -12,6 +12,8 @@ mod composition;
 mod infer;
 #[path = "engine/layout.rs"]
 mod layout;
+#[path = "engine/materialize.rs"]
+mod materialize;
 #[path = "engine/paths.rs"]
 mod paths;
 #[path = "engine/tokens.rs"]

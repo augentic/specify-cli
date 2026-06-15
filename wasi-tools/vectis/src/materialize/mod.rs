@@ -1,11 +1,11 @@
 //! `vectis materialize` subcommand — canonical-to-export asset conversion.
 //!
 //! Phase 2 (RFC-46) converts designer-owned `source:` files into per-platform
-//! exports under `design-system/assets/exports/<platform>/`. The conversion
-//! pipeline lands in R46-S17+; this module owns the CLI surface, report
-//! envelope (R46-S15), and export path conventions (R46-S16).
+//! exports under `design-system/assets/exports/<platform>/`.
 
+pub mod icons;
 pub mod paths;
+mod svg;
 
 use std::path::{Path, PathBuf};
 
@@ -15,6 +15,8 @@ use serde_json::{Value, json};
 use crate::validate::engine::resolve_default_path_with_root;
 use crate::validate::{ValidateMode, find_project_root};
 use crate::{VectisError, render_json as render_value};
+
+use icons::materialize_icon_vectors;
 
 /// Nested targets under `vectis materialize`.
 #[derive(Subcommand, Debug, Clone, PartialEq, Eq)]
@@ -84,13 +86,51 @@ fn run_assets(args: &AssetsArgs) -> Result<Value, VectisError> {
     }
 
     let platforms = resolve_platform_filter(args.platform.as_deref())?;
-    std::fs::read_to_string(&path).map_err(VectisError::from)?;
+    let source = std::fs::read_to_string(&path).map_err(VectisError::from)?;
 
-    // Conversion pipeline (R46-S17+). Skeleton returns an empty summary.
-    let _ = platforms;
-    let _ = args.dry_run;
+    let mut materialized = Vec::new();
+    let mut skipped_pins = Vec::new();
+    let mut errors = Vec::new();
 
-    Ok(build_summary(&path, args.dry_run, &platforms, &[], &[], &[]))
+    let instance = match serde_saphyr::from_str::<Value>(&source) {
+        Ok(value) => value,
+        Err(err) => {
+            errors.push(json!({
+                "path": "",
+                "message": format!("invalid YAML: {err}"),
+            }));
+            return Ok(build_summary(
+                &path,
+                args.dry_run,
+                &platforms,
+                &materialized,
+                &skipped_pins,
+                &errors,
+            ));
+        }
+    };
+
+    if let Some(assets) = instance.get("assets").and_then(Value::as_object) {
+        let assets_dir = path.parent().unwrap_or_else(|| Path::new("."));
+        materialize_icon_vectors(
+            assets_dir,
+            assets,
+            &platforms,
+            args.dry_run,
+            &mut materialized,
+            &mut skipped_pins,
+            &mut errors,
+        );
+    }
+
+    Ok(build_summary(
+        &path,
+        args.dry_run,
+        &platforms,
+        &materialized,
+        &skipped_pins,
+        &errors,
+    ))
 }
 
 fn resolve_assets_path(path: Option<&Path>) -> PathBuf {

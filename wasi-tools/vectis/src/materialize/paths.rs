@@ -26,6 +26,15 @@ impl Platform {
             Self::Android => "android",
         }
     }
+
+    #[must_use]
+    pub fn parse(token: &str) -> Option<Self> {
+        match token {
+            "ios" => Some(Self::Ios),
+            "android" => Some(Self::Android),
+            _ => None,
+        }
+    }
 }
 
 /// Resolved export layout for one asset platform slot.
