@@ -36,9 +36,11 @@ use serde_json::Value as JsonValue;
 use specify_error::{Error, Result};
 use specify_model::evidence::{AuthorityClass, ClaimKind};
 use specify_workflow::adapter::{TargetAdapter, TargetOperation};
-use specify_workflow::change::{Entry, Plan};
+use specify_workflow::change::{Entry, Plan, resolve_topology};
+use specify_workflow::config::ProjectConfig;
 use specify_workflow::init::adapter_name_from_value;
 use specify_workflow::journal::{self, EventKind};
+use specify_workflow::registry::Surface;
 use specify_workflow::schema::validate_synthesis_json;
 use specify_workflow::slice::{
     ProjectionHeader, SliceMetadata, SliceModel, SynthesisInputs, SynthesisResponse,
@@ -78,7 +80,8 @@ fn dry_run_inputs(ctx: &Ctx, name: &str) -> Result<()> {
     let entry = load_entry(ctx, name)?;
     let sources = read_source_inputs(&slice_dir, &entry)?;
     let shape_brief = resolve_shape_brief(ctx, &slice_dir)?;
-    let inputs = build_synthesis_inputs(name, &sources, &shape_brief);
+    let baseline = baseline_surface(ctx, &entry)?;
+    let inputs = build_synthesis_inputs(name, &sources, &shape_brief, &baseline);
 
     // Synthesis is always agent-dispatched — record the handoff.
     emit(
@@ -245,6 +248,27 @@ fn load_entry(ctx: &Ctx, name: &str) -> Result<Entry> {
     })
 }
 
+/// RFC-46 D5 — project the slice's bound-project baseline surface for
+/// the synthesis inputs envelope.
+///
+/// Resolves the project topology and returns the bound project's
+/// `surface` (one entry per `.specify/specs/<domain>/spec.md`). Binding
+/// mirrors the kernel: an explicit `entry.project` selects by name, an
+/// omitted project auto-binds the sole topology project. Baseline is
+/// advisory context, so any resolution miss (multi-project plan with no
+/// explicit binding, unknown project) degrades to an empty surface
+/// rather than failing the dry-run.
+fn baseline_surface(ctx: &Ctx, entry: &Entry) -> Result<Vec<Surface>> {
+    let config = ProjectConfig::load(&ctx.project_dir)?;
+    let topology = resolve_topology(&config, &ctx.project_dir)?;
+    let bound = match entry.project.as_deref() {
+        Some(name) => topology.iter().find(|p| p.name == name),
+        None if topology.len() == 1 => topology.first(),
+        None => None,
+    };
+    Ok(bound.map(|p| p.surface.clone()).unwrap_or_default())
+}
+
 /// Read each bound source's `evidence/<source>.yaml` into a
 /// [`SynthesisSourceInput`] for the agent inputs envelope.
 fn read_source_inputs(slice_dir: &Path, entry: &Entry) -> Result<Vec<SynthesisSourceInput>> {
@@ -366,6 +390,9 @@ fn write_inputs_text(w: &mut dyn Write, inputs: &SynthesisInputs) -> std::io::Re
     writeln!(w, "sources:")?;
     for source in &inputs.sources {
         writeln!(w, "  - {} ({}): {} claim(s)", source.source, source.lead, source.claims.len())?;
+    }
+    if !inputs.baseline.is_empty() {
+        writeln!(w, "baseline: {} domain(s)", inputs.baseline.len())?;
     }
     writeln!(w, "shape-brief: {} bytes", inputs.shape_brief.len())
 }

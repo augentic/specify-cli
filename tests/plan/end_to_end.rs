@@ -36,7 +36,7 @@
 //! ## Coverage delegated to existing tests (not re-implemented here)
 //!
 //! The exhaustive malformed-`--from` reconcile codes
-//! (`plan-reconcile-partition`, `-lead-orphan`,
+//! (`lead-coverage-orphan`, `plan-reconcile-lead-orphan`,
 //! `-slice-source-collision`, `-slice-name-collision`,
 //! `-depends-on-cycle`, `-project-binding-required`, `-project-orphan`,
 //! `-plan-not-replaceable`) are covered over this exact identity fan-out

@@ -69,6 +69,7 @@ impl Registry {
             }
 
             validate_project_contracts(project, &mut producers)?;
+            validate_greenfield_seed(project, idx)?;
         }
 
         // The registry does not author a project's adapter or
@@ -163,6 +164,29 @@ fn validate_project_contracts<'a>(
             });
         }
         producers.insert(path, &project.name);
+    }
+    Ok(())
+}
+
+/// RFC-46 D6 — enforce that every `greenfield_seed.domains[]` entry is a
+/// non-empty kebab-case slug. Domains project into `surface[]` domain
+/// directory slugs, so they share the surface's kebab grammar.
+fn validate_greenfield_seed(project: &RegistryProject, idx: usize) -> Result<(), Error> {
+    let Some(seed) = &project.greenfield_seed else {
+        return Ok(());
+    };
+    for domain in &seed.domains {
+        if !is_kebab(domain) {
+            return Err(Error::Diag {
+                code: "registry-greenfield-seed-domain-not-kebab",
+                detail: format!(
+                    "registry.yaml: projects[{idx}] (`{}`).greenfield_seed.domains entry `{domain}` \
+                     must be kebab-case (lowercase ascii, digits, single hyphens; \
+                     no leading/trailing/doubled hyphens)",
+                    project.name
+                ),
+            });
+        }
     }
     Ok(())
 }

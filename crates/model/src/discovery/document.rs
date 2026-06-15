@@ -262,6 +262,11 @@ fn render_lead(out: &mut String, lead: &Lead) {
     out.push_str("- synopsis: ");
     out.push_str(&lead.synopsis);
     out.push('\n');
+    if !lead.topics.is_empty() {
+        out.push_str("- topics: [");
+        out.push_str(&lead.topics.join(", "));
+        out.push_str("]\n");
+    }
 }
 
 /// Outcome of [`Discovery::resolve_lead`] when the supplied token does

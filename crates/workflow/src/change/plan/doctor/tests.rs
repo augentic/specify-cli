@@ -184,6 +184,7 @@ fn rp(name: &str, url: &str, schema: &str, description: &str) -> RegistryProject
         adapter: Some(schema.into()),
         description: Some(description.into()),
         contracts: None,
+        greenfield_seed: None,
     }
 }
 

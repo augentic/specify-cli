@@ -90,6 +90,7 @@ fn project_decisions(project_dir: &Path) -> Result<(Vec<Decision>, Option<u64>),
         .map(|b| Decision {
             id: b.id().to_string(),
             title: b.title.unwrap_or_default(),
+            topics: b.record.topics.clone(),
         })
         .collect();
 

@@ -27,7 +27,8 @@ pub use next::{NextBody, NextReason, plan_next_body};
 pub use propose::{
     LeadCatalog, LeadCatalogEntry, ProjectMissingPlatforms, ProjectRef, ProposalKind,
     ProposalRequest, ProposalResponse, ProposeOutcome, ResponseMember, ResponseSlice,
-    build_catalog, build_request, detect_missing_platforms, resolve_target, resolve_topology,
+    apply_greenfield_seed, build_catalog, build_request, detect_missing_platforms, resolve_target,
+    resolve_topology,
 };
 pub use status::{
     NextActionKind, StatusBody, StatusCounts, StopBody, StopReason, drained_line, plan_status_body,
@@ -134,6 +135,7 @@ slices:
             context: vec![],
             description: None,
             divergence: None,
+            disagreements: Vec::new(),
             authority_override: SliceAuthorityOverride::default(),
         }
     }

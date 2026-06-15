@@ -10,7 +10,7 @@
 //! contract-roles invariants (no binary test exercises `contracts:`).
 
 use specify_error::Error;
-use specify_workflow::registry::{ContractRoles, Registry, RegistryProject};
+use specify_workflow::registry::{ContractRoles, GreenfieldSeed, Registry, RegistryProject};
 use tempfile::TempDir;
 
 /// Scaffold `registry.yaml` (at the repo root) with `contents` and
@@ -110,6 +110,7 @@ fn registry_with_one_url(url: &str) -> Registry {
             adapter: Some("omnia@v1".into()),
             description: None,
             contracts: None,
+            greenfield_seed: None,
         }],
     }
 }
@@ -135,8 +136,31 @@ fn project_url_materialises_as_symlink() {
             adapter: Some("omnia@v1".into()),
             description: None,
             contracts: None,
+            greenfield_seed: None,
         };
         assert_eq!(p.is_local(), symlink, "url={url:?}");
+    }
+}
+
+#[test]
+fn greenfield_seed_accepts_kebab_domains() {
+    let mut registry = registry_with_one_url(".");
+    registry.projects[0].greenfield_seed =
+        Some(GreenfieldSeed { domains: vec!["identity".into(), "account-creation".into()] });
+    registry.validate_shape().expect("kebab seed domains validate");
+}
+
+#[test]
+fn greenfield_seed_rejects_non_kebab_domain() {
+    let mut registry = registry_with_one_url(".");
+    registry.projects[0].greenfield_seed =
+        Some(GreenfieldSeed { domains: vec!["Identity_Domain".into()] });
+    let err = registry.validate_shape().expect_err("non-kebab seed domain is rejected");
+    match err {
+        Error::Diag { code, .. } => {
+            assert_eq!(code, "registry-greenfield-seed-domain-not-kebab");
+        }
+        other => panic!("expected a Diag error, got: {other}"),
     }
 }
 
@@ -263,6 +287,7 @@ fn contract_roles_round_trip_omits_empty() {
                 produces: vec!["http/traffic-api.yaml".into()],
                 consumes: vec![],
             }),
+            greenfield_seed: None,
         }],
     };
     let yaml = serde_saphyr::to_string(&original).expect("serialize");

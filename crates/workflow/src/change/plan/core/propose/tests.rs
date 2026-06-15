@@ -269,6 +269,8 @@ fn slice(name: &str, sources: Vec<ResponseMember>) -> ResponseSlice {
         rationale: None,
         depends_on: Vec::new(),
         project: None,
+        divergence: None,
+        disagreements: Vec::new(),
     }
 }
 
@@ -341,13 +343,67 @@ fn propose_rejects_slice_source_collision() {
 }
 
 #[test]
-fn propose_rejects_partition_gap() {
+fn propose_emits_topic_overlap_review() {
+    let mut plan = plan_with_sources(Lifecycle::Pending, &["intent"]);
+    let doc = discovery(
+        "## Lead inventory\n\n\
+             ### intent:add-feature\n\n\
+             - lead: add-feature\n\
+             - source: intent\n\
+             - synopsis: Add a feature.\n\
+             - topics: [identity, validation]\n",
+    );
+    let mut proj = project("my-app", "omnia@v1", "service");
+    proj.decisions = vec![crate::registry::topology::Decision {
+        id: "DEC-0001".to_string(),
+        title: "Identity store is Postgres".to_string(),
+        topics: vec!["identity".to_string()],
+    }];
+    let topo = vec![proj];
+    let resp = response(vec![slice("s", vec![member("intent", "add-feature")])]);
+
+    let out = plan.propose_from(resp, &doc, &topo).expect("projects");
+    assert_eq!(out.topic_overlaps.len(), 1, "got {:#?}", out.topic_overlaps);
+    let finding = &out.topic_overlaps[0];
+    assert_eq!(finding.rule_id.as_deref(), Some("lead-decision-topic-overlap"));
+    assert_eq!(finding.kind, specify_diagnostics::DiagnosticKind::Review);
+    assert!(!specify_diagnostics::blocking(finding), "topic overlap is advisory");
+    assert!(finding.impact.contains("DEC-0001"), "{}", finding.impact);
+}
+
+#[test]
+fn propose_topic_overlap_empty_without_decision_topics() {
+    let mut plan = plan_with_sources(Lifecycle::Pending, &["intent"]);
+    let doc = discovery(
+        "## Lead inventory\n\n\
+             ### intent:add-feature\n\n\
+             - lead: add-feature\n\
+             - source: intent\n\
+             - synopsis: Add a feature.\n\
+             - topics: [identity]\n",
+    );
+    // Decision present but carries no topics — the join degrades to empty.
+    let mut proj = project("my-app", "omnia@v1", "service");
+    proj.decisions = vec![crate::registry::topology::Decision {
+        id: "DEC-0001".to_string(),
+        title: "Some decision".to_string(),
+        topics: Vec::new(),
+    }];
+    let topo = vec![proj];
+    let resp = response(vec![slice("s", vec![member("intent", "add-feature")])]);
+
+    let out = plan.propose_from(resp, &doc, &topo).expect("projects");
+    assert!(out.topic_overlaps.is_empty(), "got {:#?}", out.topic_overlaps);
+}
+
+#[test]
+fn propose_rejects_coverage_gap() {
     let mut plan = plan_with_sources(Lifecycle::Pending, &["docs"]);
     let doc = discovery_with(&[("docs", "a"), ("docs", "b")]);
     let topo = vec![project("p", "omnia@v1", "svc")];
     // Catalog carries two leads; the response covers only one.
     let resp = response(vec![slice("s", vec![member("docs", "a")])]);
-    assert_code(plan.propose_from(resp, &doc, &topo), "plan-reconcile-partition");
+    assert_code(plan.propose_from(resp, &doc, &topo), "lead-coverage-orphan");
 }
 
 #[test]

@@ -33,6 +33,7 @@ fn amend_description_three_way() {
         context: vec![],
         description: Some("original".into()),
         divergence: None,
+        disagreements: Vec::new(),
         authority_override: SliceAuthorityOverride::default(),
     }]);
 
@@ -91,6 +92,7 @@ fn amend_leaves_unchanged() {
                 context: vec![],
                 description: Some("d".into()),
                 divergence: None,
+                disagreements: Vec::new(),
                 authority_override: SliceAuthorityOverride::default(),
             },
             change("b", Status::Pending),
@@ -175,6 +177,7 @@ fn amend_project_three_way() {
         context: vec![],
         description: None,
         divergence: None,
+        disagreements: Vec::new(),
         authority_override: SliceAuthorityOverride::default(),
     }]);
 

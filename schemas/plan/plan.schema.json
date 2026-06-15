@@ -46,6 +46,35 @@
       "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
       "description": "Kebab-case identifier: lowercase letters and digits grouped by single internal hyphens; no leading, trailing, or consecutive hyphens. Matches `specify_slice::actions::validate_name`."
     },
+    "disagreement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "field",
+        "values"
+      ],
+      "properties": {
+        "field": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The aspect the matched leads disagree on (a free-form label, e.g. `password-min-length`)."
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["source", "value"],
+            "properties": {
+              "source": { "$ref": "#/$defs/kebabName" },
+              "value": { "type": "string" }
+            }
+          },
+          "description": "The per-source disagreeing values. A genuine disagreement records \u22652 distinct source values; the CLI checks this structurally but never decides materiality."
+        }
+      },
+      "description": "RFC-46 D4 \u2014 one field on which a slice's matched leads materially disagree, recorded by the propose agent alongside a `divergence` flag."
+    },
     "claimKind": {
       "type": "string",
       "enum": [
@@ -158,6 +187,11 @@
             "rejected"
           ],
           "description": "workflow \u00a7Plan-time reconciliation \u2014 closed enum for slice-level divergence state. Absent \u2261 `none` (the default). `likely` is set by `/spec:plan`'s `propose` sub-step on materially-disagreeing lead synopses; `accepted` / `rejected` are set by the operator at Gate 1 via `specify plan amend --divergence`. Advisory metadata in v1. workflow \u00a7D5: every value (including `likely`) is CLI-written \u2014 the `/spec:plan` agent stages `likely` via `specify plan amend <plan> <slice> --divergence likely` (after `propose --from`), and `plan create` scaffolds an empty plan that never carries divergence."
+        },
+        "disagreements": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/disagreement" },
+          "description": "RFC-46 D4 \u2014 the per-field disagreeing values backing a `divergence` flag. The `/spec:plan` propose agent records them when it flags `divergence: likely`; the CLI checks structural consistency only (a flagged slice records them with \u22652 distinct source values each; a recorded set without a flag is an orphan) and never decides materiality. Absent stays off disk."
         },
         "authority-override": {
           "type": "object",

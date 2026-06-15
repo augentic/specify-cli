@@ -29,12 +29,14 @@ use std::path::Path;
 use serde::Serialize;
 use specify_error::{Error, Result};
 use specify_model::discovery::Discovery;
+use specify_diagnostics::Diagnostic;
 use specify_workflow::change::{
     Plan, ProjectMissingPlatforms, ProjectRef, ProposalRequest, ProposalResponse, ProposeOutcome,
-    build_request, detect_missing_platforms, resolve_topology,
+    apply_greenfield_seed, build_request, detect_missing_platforms, resolve_topology,
 };
 use specify_workflow::config::{ProjectConfig, with_state};
 use specify_workflow::journal::{self, Event, EventKind};
+use specify_workflow::registry::Registry;
 use specify_workflow::schema::validate_proposal_json;
 
 use super::{Ref, cli, plan_ref, require_file};
@@ -71,7 +73,9 @@ pub(super) fn propose(ctx: &Ctx, args: cli::ProposeArgs) -> Result<()> {
 fn dry_run(ctx: &Ctx) -> Result<()> {
     require_file(ctx)?;
     let discovery = load_discovery(ctx)?;
-    let topology = load_topology(ctx)?;
+    // Greenfield-seed projection feeds the request the agent groups; the
+    // shadow finding is operator-facing and surfaces at `--from` instead.
+    let (topology, _seed_shadowed) = load_topology(ctx)?;
     let request = build_request(&discovery, &topology)?;
     reset_plan_scratch(ctx)?;
     ctx.write(&request, write_request_text)
@@ -110,7 +114,7 @@ fn from(ctx: &Ctx, response_path: &Path, reconcile_platforms: bool) -> Result<()
     // Re-read the catalog and topology every invocation — `--from`
     // never trusts a prior dry-run snapshot.
     let discovery = load_discovery(ctx)?;
-    let topology = load_topology(ctx)?;
+    let (topology, seed_shadowed) = load_topology(ctx)?;
 
     // Detect missing platforms before entering the write loop so
     // filesystem probes happen outside the atomic transaction.
@@ -141,7 +145,7 @@ fn from(ctx: &Ctx, response_path: &Path, reconcile_platforms: bool) -> Result<()
     // Only after the write commits: emit the reconcile event.
     emit_reconcile_event(ctx, &projected)?;
 
-    ctx.write(&summary(projected), write_summary_text)
+    ctx.write(&summary(projected, seed_shadowed), write_summary_text)
 }
 
 /// Detect missing platforms for each project in the topology.
@@ -181,6 +185,15 @@ struct ProposeSummary {
     plan: Ref,
     slice_names: Vec<String>,
     slice_count: usize,
+    /// RFC-46 D3 advisory `lead-decision-topic-overlap` review findings.
+    /// Empty stays off the JSON wire.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    topic_overlaps: Vec<Diagnostic>,
+    /// RFC-46 D6 advisory `greenfield-seed-shadowed` info findings — a
+    /// bound project still declares a `greenfield_seed` after acquiring a
+    /// baseline. Empty stays off the JSON wire.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    seed_shadowed: Vec<Diagnostic>,
 }
 
 /// Emit the single `plan.reconcile.completed` event — reached only after
@@ -203,10 +216,12 @@ fn emit_reconcile_event(ctx: &Ctx, projected: &Projected) -> Result<()> {
 }
 
 /// Build the `--from` response summary from a committed projection.
-fn summary(projected: Projected) -> ProposeSummary {
+fn summary(projected: Projected, seed_shadowed: Vec<Diagnostic>) -> ProposeSummary {
     ProposeSummary {
         slice_count: projected.outcome.slice_names.len(),
         slice_names: projected.outcome.slice_names,
+        topic_overlaps: projected.outcome.topic_overlaps,
+        seed_shadowed,
         plan: projected.plan,
     }
 }
@@ -221,10 +236,23 @@ fn load_discovery(ctx: &Ctx) -> Result<Discovery> {
 
 /// Resolve the project topology the request embeds and the response binds
 /// to — the committed `.specify/topology.lock` projection for a workspace,
-/// or the sole project synthesised from `project.yaml`.
-fn load_topology(ctx: &Ctx) -> Result<Vec<ProjectRef>> {
+/// or the sole project synthesised from `project.yaml` — then apply the
+/// RFC-46 D6 greenfield-seed projection.
+///
+/// Returns the topology (with any greenfield seed projected into an empty
+/// `surface[]`) alongside the advisory `greenfield-seed-shadowed` findings
+/// for seeds a baseline already supersedes. A missing `registry.yaml` is a
+/// no-op (no seed, no findings).
+fn load_topology(ctx: &Ctx) -> Result<(Vec<ProjectRef>, Vec<Diagnostic>)> {
     let config = ProjectConfig::load(&ctx.project_dir)?;
-    resolve_topology(&config, &ctx.project_dir)
+    let mut topology = resolve_topology(&config, &ctx.project_dir)?;
+    let shadowed = match Registry::load(&ctx.project_dir)? {
+        Some(registry) => {
+            apply_greenfield_seed(&mut topology, &registry, &ctx.project_dir, config.workspace)
+        }
+        None => Vec::new(),
+    };
+    Ok((topology, shadowed))
 }
 
 /// Read the `--from` response file, mapping a missing file to an exit-2
@@ -263,6 +291,12 @@ fn write_summary_text(w: &mut dyn Write, body: &ProposeSummary) -> std::io::Resu
         writeln!(w, "slices: (none)")?;
     } else {
         writeln!(w, "slices: {}", body.slice_names.join(", "))?;
+    }
+    for finding in &body.topic_overlaps {
+        writeln!(w, "advisory[lead-decision-topic-overlap]: {}", finding.impact)?;
+    }
+    for finding in &body.seed_shadowed {
+        writeln!(w, "advisory[greenfield-seed-shadowed]: {}", finding.impact)?;
     }
     Ok(())
 }

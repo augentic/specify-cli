@@ -188,6 +188,7 @@ fn bootstrap_entry(name: &str, project: &str, platforms: &[Platform]) -> Entry {
         context: Vec::new(),
         description: Some(format!("Bootstrap shell trees for: {}", platform_list.join(", "))),
         divergence: None,
+        disagreements: Vec::new(),
         authority_override: SliceAuthorityOverride::default(),
     }
 }

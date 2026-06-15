@@ -67,6 +67,7 @@ fn with_state_require_existing_round_trips() {
             adapter: Some("omnia@v1".into()),
             description: None,
             contracts: None,
+            greenfield_seed: None,
         });
         Ok(())
     })

@@ -79,6 +79,7 @@ fn serializes_kebab_case() {
             context: vec![],
             description: None,
             divergence: None,
+            disagreements: Vec::new(),
             authority_override: SliceAuthorityOverride::default(),
         }],
     };
@@ -243,6 +244,7 @@ fn is_drained_only_when_all_done() {
                 context: vec![],
                 description: None,
                 divergence: None,
+                disagreements: Vec::new(),
                 authority_override: SliceAuthorityOverride::default(),
             },
             Entry {
@@ -254,6 +256,7 @@ fn is_drained_only_when_all_done() {
                 context: vec![],
                 description: None,
                 divergence: None,
+                disagreements: Vec::new(),
                 authority_override: SliceAuthorityOverride::default(),
             },
         ],
@@ -278,6 +281,7 @@ fn is_executing_when_any_in_progress() {
                 context: vec![],
                 description: None,
                 divergence: None,
+                disagreements: Vec::new(),
                 authority_override: SliceAuthorityOverride::default(),
             },
             Entry {
@@ -289,6 +293,7 @@ fn is_executing_when_any_in_progress() {
                 context: vec![],
                 description: None,
                 divergence: None,
+                disagreements: Vec::new(),
                 authority_override: SliceAuthorityOverride::default(),
             },
         ],

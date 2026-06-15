@@ -106,6 +106,44 @@ fn round_trips_byte_stable_when_unchanged() {
 }
 
 #[test]
+fn parses_optional_topics_bullet() {
+    let doc = Discovery::parse(
+        "\
+## Lead inventory
+
+### legacy:user-registration
+
+- lead: user-registration
+- source: legacy
+- synopsis: Registration endpoint.
+- topics: [identity, account-creation, validation]
+",
+    )
+    .expect("parse ok");
+    assert_eq!(doc.leads[0].topics, ["identity", "account-creation", "validation"]);
+}
+
+#[test]
+fn topics_round_trip_byte_stable() {
+    let doc = Discovery::parse(
+        "\
+## Lead inventory
+
+### legacy:user-registration
+
+- lead: user-registration
+- source: legacy
+- synopsis: Registration endpoint.
+- topics: [identity, validation]
+",
+    )
+    .expect("parse ok");
+    let reparsed = Discovery::parse(&doc.render()).expect("reparse ok");
+    assert_eq!(doc.leads, reparsed.leads);
+    assert_eq!(reparsed.leads[0].topics, ["identity", "validation"]);
+}
+
+#[test]
 fn resolve_lead_matches_id() {
     let doc = Discovery::parse(SAMPLE).expect("parse ok");
     let hit = doc.resolve_lead("user-registration").expect("resolves");
@@ -126,6 +164,7 @@ fn lead(lead: &str, source: &str, synopsis: &str) -> Lead {
         lead: lead.to_string(),
         source: source.to_string(),
         synopsis: synopsis.to_string(),
+        topics: Vec::new(),
     }
 }
 

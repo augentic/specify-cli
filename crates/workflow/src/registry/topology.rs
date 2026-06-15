@@ -96,6 +96,11 @@ pub struct Decision {
     pub id: String,
     /// The record's H1 heading text.
     pub title: String,
+    /// Topic slugs this decision governs (RFC-46 D3), projected from the
+    /// record's `topics:` front-matter. The plan-time join key against
+    /// surveyed lead `topics[]`. Empty stays off the wire.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub topics: Vec<String>,
 }
 
 /// One baseline domain's projected surface.

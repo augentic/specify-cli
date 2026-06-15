@@ -77,11 +77,46 @@ fn synthesize_dry_run_emits_inputs_envelope() {
         "the resolved target shape brief must be embedded"
     );
 
+    // RFC-46 D5 — a greenfield project has no baseline surface, so the
+    // optional `baseline` axis stays off the wire.
+    assert!(value.get("baseline").is_none(), "greenfield baseline must be absent: {value}");
+
     // Dry-run writes nothing.
     assert!(
         !project.slices_dir().join("my-slice/model.yaml").exists(),
         "dry-run must not write model.yaml"
     );
+}
+
+/// RFC-46 D5 — when the bound project carries a merged baseline, the
+/// dry-run inputs envelope projects the per-domain `surface` so the
+/// agent synthesizes against existing requirements rather than in a
+/// vacuum.
+#[test]
+fn synthesize_dry_run_projects_baseline() {
+    let project = stage_synthesizable_slice();
+    let domain_dir = project.specs_dir().join("identity");
+    fs::create_dir_all(&domain_dir).expect("create baseline domain");
+    fs::write(
+        domain_dir.join("spec.md"),
+        "### Requirement: User registration\n\nID: REQ-001\nSources: [legacy-monolith]\nStatus: agreed\n",
+    )
+    .expect("write baseline spec");
+
+    let assert = specify_cmd()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "synthesize", "my-slice", "--dry-run"])
+        .assert()
+        .success();
+
+    let value = parse_json(&assert.get_output().stdout);
+    let baseline = value["baseline"].as_array().expect("baseline array");
+    assert_eq!(baseline.len(), 1, "one baseline domain projected: {value}");
+    assert_eq!(baseline[0]["domain"], "identity");
+    let requirements =
+        baseline[0]["requirements"].as_array().expect("requirements array");
+    assert_eq!(requirements.len(), 1);
+    assert_eq!(requirements[0], "User registration");
 
     // The always-agent handoff signal fires on the dry-run.
     let journal =

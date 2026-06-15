@@ -104,6 +104,7 @@ fn baseline_form_round_trips_through_serde() {
         date: Some("2026-06-02".to_string()),
         supersedes: vec!["DEC-0003".to_string()],
         related: vec!["REQ-001".to_string()],
+        topics: vec!["identity".to_string()],
         superseded_by: None,
     };
     let yaml = serde_saphyr::to_string(&record).expect("serialise");

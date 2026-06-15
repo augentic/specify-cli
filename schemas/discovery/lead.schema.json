@@ -19,6 +19,12 @@
       "type": "string",
       "minLength": 1,
       "description": "Reconciliation-grade per-source headline of the lead as this source surfaced it. SHOULD name the operation/surface and its salient constraint distinctly enough that a same-slug lead from another source can be matched or distinguished on content, not just the slug. MAY span more than one line when one is too thin. Plan-time headline material only — never a back-door for slice-time `Evidence`, which remains the job of `extract`."
+    },
+    "topics": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/kebabName" },
+      "description": "Optional agent-authored per-lead topic slugs (kebab-case). Survey populates them as additional context; absent means unclassified. The CLI computes no grouping from `topics` — it is agent context plus the join key for the propose-time decision-contradiction warning. A missing `topics` never blocks reconciliation."
     }
   },
   "$defs": {

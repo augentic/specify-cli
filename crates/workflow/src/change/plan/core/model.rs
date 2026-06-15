@@ -164,6 +164,15 @@ pub struct Entry {
     /// `specify plan amend --divergence`. Advisory metadata in v1.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub divergence: Option<Divergence>,
+    /// workflow §Plan-time reconciliation — the per-field disagreeing
+    /// values backing a `divergence` flag. The `/spec:plan` propose agent
+    /// records them when it flags `divergence: likely`; the CLI never
+    /// decides materiality, only that a flagged slice records them and a
+    /// recorded set carries a flag (`slice-divergence-unrecorded` /
+    /// `slice-divergence-orphan-values`). Empty (the default) stays off
+    /// disk.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub disagreements: Vec<Disagreement>,
     /// per-slice authority override — optional per-slice authority override map keyed
     /// by claim kind, valued by source key. Keys are the closed
     /// [`ClaimKind`] enum; values MUST be source keys present in
@@ -200,6 +209,43 @@ pub enum Divergence {
     /// Operator-stamped at Gate 1 — divergence rejected; the plan
     /// must be re-proposed before Gate 1 review.
     Rejected,
+}
+
+impl Divergence {
+    /// Whether a slice carrying this flag must record its disagreeing
+    /// values. `Likely` / `Accepted` are live divergences the agent or
+    /// operator has affirmed; `None` / `Rejected` carry no obligation.
+    #[must_use]
+    pub const fn requires_values(self) -> bool {
+        matches!(self, Self::Likely | Self::Accepted)
+    }
+}
+
+/// One field on which a slice's matched leads materially disagree.
+///
+/// Recorded by the `/spec:plan` propose agent alongside a `divergence`
+/// flag. The CLI never decides materiality — it only checks structural
+/// consistency: a flagged slice records at least one disagreement, and
+/// each disagreement names at least two distinct source values.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct Disagreement {
+    /// The aspect the sources disagree on (a free-form label, e.g.
+    /// `password-min-length`).
+    pub field: String,
+    /// The per-source values that disagree on `field`. A genuine
+    /// disagreement records at least two distinct source values.
+    pub values: Vec<DisagreementValue>,
+}
+
+/// One source's value for a [`Disagreement`] field.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct DisagreementValue {
+    /// Source key contributing this value (a `plan.yaml.sources.<key>`).
+    pub source: String,
+    /// The value this source surfaced for the disagreeing field.
+    pub value: String,
 }
 
 /// per-slice authority override — per-slice authority override map keyed by claim

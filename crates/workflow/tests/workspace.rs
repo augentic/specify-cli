@@ -95,6 +95,7 @@ fn registry_with_projects(names: &[&str]) -> Registry {
                 adapter: Some("omnia@v1".to_string()),
                 description: Some(format!("{name} service")),
                 contracts: None,
+                greenfield_seed: None,
             })
             .collect(),
     }
@@ -115,6 +116,7 @@ fn remote_project(url: String) -> RegistryProject {
         adapter: Some("omnia@v1".to_string()),
         description: Some("alpha service".to_string()),
         contracts: None,
+        greenfield_seed: None,
     }
 }
 
@@ -222,6 +224,7 @@ fn c02_remote_slot_refuses_existing_symlink() {
         adapter: Some("https://example.invalid/adapter".to_string()),
         description: Some("remote service".to_string()),
         contracts: None,
+        greenfield_seed: None,
     };
     let err = workspace_sync_projects(project_dir, &[&project])
         .expect_err("remote-backed symlink slot should fail");
@@ -275,6 +278,7 @@ fn c10_slot_problem_wrong_origin() {
         adapter: Some("https://example.invalid/adapter".to_string()),
         description: Some("remote service".to_string()),
         contracts: None,
+        greenfield_seed: None,
     };
     let problem = slot_problem(project_dir, &project).expect("wrong origin problem");
     assert_eq!(problem.reason, SlotProblemReason::RemoteOriginMismatch);
@@ -297,6 +301,7 @@ fn c02_sync_refuses_escaping_name() {
         adapter: Some("omnia@v1".to_string()),
         description: Some("bad selector".to_string()),
         contracts: None,
+        greenfield_seed: None,
     };
 
     let err = workspace_sync_projects(project_dir, &[&project])
@@ -756,6 +761,7 @@ fn topology_lock_projects_baseline() {
                 adapter: None,
                 description: None,
                 contracts: None,
+                greenfield_seed: None,
             },
             RegistryProject {
                 name: "beta".to_string(),
@@ -763,6 +769,7 @@ fn topology_lock_projects_baseline() {
                 adapter: None,
                 description: None,
                 contracts: None,
+                greenfield_seed: None,
             },
         ],
     };
@@ -826,6 +833,7 @@ fn topology_lock_projects_decisions() {
             adapter: None,
             description: None,
             contracts: None,
+            greenfield_seed: None,
         }],
     };
 
