@@ -120,19 +120,20 @@ Per workflow §"Note to the implementing agent", touching any of these symbols r
 
 ### First-party `<adapter>` shorthand at init
 
-`specify init <adapter>` accepts a first-party **shorthand** — `^[a-z][a-z0-9-]*(@v\d+)?$` (`omnia`, `omnia@v1`; ref defaults to `v1`) — alongside the local-path and GitHub-URL forms. `AdapterUri::parse` (`crates/workflow/src/init/adapter_uri.rs`) expands it to the canonical published adapter `https://github.com/augentic/specify/adapters/targets/<name>@<ref>` (a networked sparse checkout). `init` is target-only, so the shorthand resolves under `adapters/targets/`; anything carrying `:` or `/` is not shorthand and continues through `from_local` / `from_github` unchanged.
+`specify init <adapter>` accepts a first-party **shorthand** — `^[a-z][a-z0-9-]*(@<semver>)?$` (`omnia`, `omnia@1.0.0`) — alongside the local-path and GitHub-URL forms. A bare name carries no version pin (resolves the single installed identity); a `name@<semver>` pin records the full `name@<semver>` identity on `project.yaml.adapter` (RFC-47). `AdapterUri::parse` (`crates/workflow/src/init/adapter_uri.rs`) expands the shorthand to the canonical published adapter `https://github.com/augentic/specify/adapters/targets/<name>@<git-ref>`, deriving the **git checkout ref `v<major>`** from the pinned semver (transport stays repo-ref until RFC-48). `init` is target-only, so the shorthand resolves under `adapters/targets/`; anything carrying `:` or `/` (including a `@v<major>` git-ref form) is not semver shorthand and continues through `from_local` / `from_github` unchanged.
 
-### Per-adapter versioning — forward position only
+### Adapter identity: semver version + `AdapterRef` (RFC-47)
 
-Recorded position for RM-21 (third-party adapter ecosystem); **no pre-1.0 commitment**. Today `omnia@v1` pins a *repo ref* of `augentic/specify` — the adapter's content is whatever that ref's tree carries, and `adapter.yaml.version` is a schema field, not a resolution key. Per-adapter semver would change, relative to that status quo:
+`adapter.yaml.version` is a **required semver string** (`x.y.z` with optional `-prerelease` / `+build`), enforced by the per-axis JSON Schema and parsed into `SourceAdapter.version` / `TargetAdapter.version` as a typed `semver::Version`. It is the adapter's **identity**, not a descriptive field: synthesized target refs (`topology.lock`, proposal, slice metadata, build-report) render `name@<semver>`, and `TargetRef::parse` requires the `name@<semver>` form (the legacy `name@v<major>` is no longer a valid target).
 
-- **Resolution key** — the shorthand grammar becomes `<name>@<semver-req>` resolved against a per-adapter release index, not a repo branch/tag; `adapter.yaml.version` graduates from descriptive field to resolution authority (and must become full semver).
-- **Cache identity** — the manifest cache keys on `(name, adapter-version)` instead of `(name, repo-ref)`; two adapters published from one repo ref stop sharing an identity.
-- **Compatibility contract** — an adapter release declares the CLI floor it needs (a `requires-cli` field validated at resolve time), replacing today's implicit "the ref tree matches the binary that documented it".
-- **Migration surface** — if a migration story is ever introduced post-1.0, adapter majors would be candidates alongside CLI majors, so a project pinned to `omnia@^1` crossing to `@2` gets a deliberate upgrade path rather than a silent re-vendor.
-- **Namespacing** — third-party adapters need an owner segment (`org/name@req`) and a publish channel outside `augentic/specify`; name-axis uniqueness (§"Adapter name uniqueness") then applies per-namespace.
+The loader threads identity through a value type — `AdapterRef { name: String, version: Option<semver::Version> }` (`crates/workflow/src/adapter/core.rs`). `SourceAdapter::resolve` / `TargetAdapter::resolve` take `&AdapterRef`; `locate_axis` stays name-only for the probe (project-local single-identity world). Two gates back the identity:
 
-Until RM-21 activates, repo-ref pinning stays: it is one mechanism, already exercised, and the ecosystem is N=1 publisher. Revisit when the first third-party adapter exists or RM-21 is scheduled, whichever lands first.
+- **`adapter-version-malformed`** — the post-schema load gate (`check_version`) rejects a manifest whose raw `version` is absent or not exact semver, before typed deserialization, so the diagnostic names the field rather than surfacing a generic parse error.
+- **`adapter-version-required`** — `check_requested_version` rejects a pin (`AdapterRef.version = Some(_)`) that does not match the installed manifest identity. Latent in the single-identity world (a `None` pin always picks the installed identity); wired now so RFC-48's multi-identity store widens the same seam.
+
+A `sources.<key>.version` optional pin on `SourceBinding` (and `sourceBinding` in `plan.schema.json`) carries the same `Option<semver::Version>` — additive, so existing `plan.yaml` binds parse unchanged.
+
+**Transport is unchanged.** Distribution stays a git sparse checkout of `augentic/specify`; the shorthand derives the git checkout ref `v<major>` from the pinned semver. A per-adapter release index, `(name, adapter-version)` cache identity, a `requires-cli` floor, and third-party namespacing (`org/name@req`) remain **RFC-48 / RM-21 forward position with no pre-1.0 commitment** — RFC-47 lands only the identity and resolve-signature, not the packaging/transport change.
 
 ## Plan lifecycle: two stored states
 

@@ -132,7 +132,7 @@ briefs:
 fn check_version_rejects_non_semver() {
     // RFC-47 D1 belt-and-suspenders: a non-semver `version` surfaces as
     // the specific `adapter-version-malformed` finding.
-    let value: serde_json::Value = serde_json::json!({ "version": "1" });
+    let value = serde_json::json!({ "version": "1" });
     let err = check_version(&value, Path::new("adapter.yaml"))
         .expect_err("integer-shaped version must be rejected");
     let Error::Validation { code, .. } = err else {
@@ -143,12 +143,12 @@ fn check_version_rejects_non_semver() {
 
 #[test]
 fn check_version_accepts_semver() {
-    let value: serde_json::Value = serde_json::json!({ "version": "1.2.3" });
+    let value = serde_json::json!({ "version": "1.2.3" });
     check_version(&value, Path::new("adapter.yaml")).expect("exact semver passes");
 }
 
 #[test]
-fn check_requested_version_matches_single_identity() {
+fn requested_version_matches_identity() {
     // RFC-47 D2: a `None` pin always picks the installed identity; a
     // matching `Some(_)` pin passes; a mismatched pin cannot resolve a
     // single installed identity (`adapter-version-required`).

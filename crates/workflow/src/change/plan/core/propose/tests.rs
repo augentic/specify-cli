@@ -372,7 +372,7 @@ fn propose_emits_topic_overlap_review() {
 }
 
 #[test]
-fn propose_topic_overlap_empty_without_decision_topics() {
+fn topic_overlap_empty_without_topics() {
     let mut plan = plan_with_sources(Lifecycle::Pending, &["intent"]);
     let doc = discovery(
         "## Lead inventory\n\n\

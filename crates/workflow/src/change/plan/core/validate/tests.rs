@@ -51,7 +51,7 @@ fn disagreement(field: &str, values: &[(&str, &str)]) -> Disagreement {
 }
 
 #[test]
-fn divergence_flag_without_values_is_advisory() {
+fn divergence_flag_no_values_advisory() {
     let mut a = change("a", Status::Pending);
     a.divergence = Some(Divergence::Likely);
     let plan = plan_with_changes(vec![a]);
@@ -64,7 +64,7 @@ fn divergence_flag_without_values_is_advisory() {
 }
 
 #[test]
-fn divergence_with_single_source_value_is_flagged() {
+fn divergence_single_source_flagged() {
     let mut a = change("a", Status::Pending);
     a.divergence = Some(Divergence::Likely);
     a.disagreements = vec![disagreement("min-length", &[("docs", "8")])];
@@ -77,7 +77,7 @@ fn divergence_with_single_source_value_is_flagged() {
 }
 
 #[test]
-fn divergence_with_two_distinct_sources_is_clean() {
+fn divergence_two_sources_clean() {
     let mut a = change("a", Status::Pending);
     a.divergence = Some(Divergence::Likely);
     a.disagreements = vec![disagreement("min-length", &[("docs", "8"), ("legacy", "12")])];
