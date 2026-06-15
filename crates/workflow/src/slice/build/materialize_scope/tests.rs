@@ -9,6 +9,8 @@ use super::{
 use crate::Platform;
 use crate::platform::bootstrap_context_from_missing;
 
+mod needs_materialize;
+
 fn write_assets_yaml(dir: &std::path::Path, yaml: &str) {
     fs::write(dir.join("assets.yaml"), yaml).expect("write assets.yaml");
 }

@@ -21,7 +21,7 @@ const ASSETS_REL: &str = "design-system/assets.yaml";
 
 /// Emit `plan-bootstrap-app-icon-missing` when §6.1 triggers and any
 /// missing UI platform fails §6.2.
-pub(super) fn detect(project_dir: &Path) -> Vec<Diagnostic> {
+pub fn detect(project_dir: &Path) -> Vec<Diagnostic> {
     let Ok(ctx) = bootstrap_context(project_dir) else {
         return Vec::new();
     };

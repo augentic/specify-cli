@@ -57,6 +57,39 @@ pub fn resolve_effective_assets(slice_dir: &Path, project_dir: &Path) -> Option<
     None
 }
 
+/// Whether any in-scope asset lacks on-disk exports for a declared shell
+/// platform (RFC §2.1 prepare trigger).
+#[must_use]
+pub fn scope_needs_materialize(
+    scope: &MaterializeScope, effective: &EffectiveAssets, shell_platforms: &[Platform],
+) -> bool {
+    if scope.asset_ids.is_empty() {
+        return false;
+    }
+    let Ok(raw) = fs::read_to_string(&effective.path) else {
+        return false;
+    };
+    let Ok(doc) = serde_saphyr::from_str::<Value>(&raw) else {
+        return false;
+    };
+    let Some(assets) = doc.get("assets").and_then(Value::as_object) else {
+        return false;
+    };
+    let assets_dir = effective.path.parent().unwrap_or_else(|| Path::new("."));
+
+    scope.asset_ids.iter().any(|id| {
+        assets
+            .get(id)
+            .is_some_and(|entry| asset_needs_materialize(entry, id, assets_dir, shell_platforms))
+    })
+}
+
+/// Comma-separated `--platform` tokens for declared UI shell platforms.
+#[must_use]
+pub fn materialize_platform_csv(shell_platforms: &[Platform]) -> String {
+    shell_platforms.iter().map(ToString::to_string).collect::<Vec<_>>().join(",")
+}
+
 /// Derive the RFC §2.1 materialization reference set for a slice build.
 ///
 /// Returns an empty scope when the effective inventory is absent or
@@ -294,4 +327,98 @@ fn bootstrap_source_materializable(assets_dir: &Path, entry: &Value, source: &st
         (kind, ext.as_deref()),
         (Some("vector"), Some("svg")) | (Some("raster"), Some("png" | "jpg" | "jpeg" | "webp"))
     )
+}
+
+fn asset_needs_materialize(
+    entry: &Value, id: &str, assets_dir: &Path, shell_platforms: &[Platform],
+) -> bool {
+    if entry.get("role").and_then(Value::as_str) == Some("app-icon") {
+        return shell_platforms.iter().any(|platform| {
+            let plat = platform.to_string();
+            !platform_pin_active(entry, &plat, assets_dir)
+                && !app_icon_export_exists(assets_dir, &plat)
+        });
+    }
+    let Some(kind) = entry.get("kind").and_then(Value::as_str) else {
+        return false;
+    };
+    shell_platforms.iter().any(|platform| {
+        let plat = platform.to_string();
+        if platform_pin_active(entry, &plat, assets_dir) {
+            return false;
+        }
+        if conventional_export_exists(assets_dir, id, kind, &plat) {
+            return false;
+        }
+        entry.get("source").and_then(Value::as_str).is_some()
+    })
+}
+
+fn conventional_export_exists(assets_dir: &Path, id: &str, kind: &str, platform: &str) -> bool {
+    let exports_root = assets_dir.join("assets/exports").join(platform);
+    if !exports_root.is_dir() {
+        return false;
+    }
+    match (platform, kind) {
+        ("ios", "vector" | "raster") => {
+            let imageset = exports_root.join(format!("{id}.imageset"));
+            imageset.is_dir() && directory_has_regular_file(&imageset)
+        }
+        ("android", "vector") => {
+            exports_root.join("drawable").join(format!("{}.xml", kebab_to_snake(id))).is_file()
+        }
+        ("android", "raster") => android_raster_export_exists(&exports_root, id),
+        _ => false,
+    }
+}
+
+fn android_raster_export_exists(exports_root: &Path, id: &str) -> bool {
+    let snake = kebab_to_snake(id);
+    for density in ["mdpi", "hdpi", "xhdpi", "xxhdpi", "xxxhdpi"] {
+        if exports_root.join(format!("drawable-{density}")).join(format!("{snake}.png")).is_file() {
+            return true;
+        }
+        if exports_root.join(format!("mipmap-{density}")).join(format!("{snake}.png")).is_file() {
+            return true;
+        }
+    }
+    false
+}
+
+fn app_icon_export_exists(assets_dir: &Path, platform: &str) -> bool {
+    let root = assets_dir.join(format!("assets/exports/{platform}/app-icon"));
+    match platform {
+        "ios" => {
+            let appiconset = root.join("AppIcon.appiconset");
+            appiconset.is_dir()
+                && appiconset.join("Contents.json").is_file()
+                && directory_has_extension(&appiconset, "png")
+        }
+        "android" => root.join("mipmap-anydpi-v26/ic_launcher.xml").is_file(),
+        _ => false,
+    }
+}
+
+fn kebab_to_snake(id: &str) -> String {
+    id.replace('-', "_")
+}
+
+fn directory_has_regular_file(dir: &Path) -> bool {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return false;
+    };
+    entries.filter_map(Result::ok).any(|entry| entry.path().is_file())
+}
+
+fn directory_has_extension(dir: &Path, ext: &str) -> bool {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return false;
+    };
+    entries.filter_map(Result::ok).any(|entry| {
+        entry
+            .path()
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| e.eq_ignore_ascii_case(ext))
+    })
 }

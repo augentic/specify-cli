@@ -16,5 +16,5 @@ pub use plan::core::{
 };
 pub use plan::doctor::{
     BOOTSTRAP_APP_ICON_MISSING, CYCLE, CloneSignature, ORPHAN_SOURCE, STALE_CLONE, StaleReason,
-    detect, doctor as plan_doctor,
+    bootstrap_app_icon_findings, detect, doctor as plan_doctor,
 };

@@ -101,3 +101,9 @@ pub fn doctor(
 
     out
 }
+
+/// Bootstrap `app-icon` gate findings for slice-build prepare (RFC §6.2).
+#[must_use]
+pub fn bootstrap_app_icon_findings(project_dir: &Path) -> Vec<Diagnostic> {
+    bootstrap_app_icon::detect(project_dir)
+}
