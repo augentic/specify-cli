@@ -375,7 +375,7 @@ pub struct SourceAdapter {
     pub name: String,
     /// Semver adapter version. Resolution keys on this as identity
     /// (see [`super::AdapterRef`]); the per-axis JSON Schema enforces
-    /// the semver `pattern` and [`check_version`] is the typed
+    /// the semver `pattern` and `check_version` is the typed
     /// belt-and-suspenders gate (`adapter-version-malformed`).
     pub version: semver::Version,
     /// Axis discriminator on the wire. Always [`Axis::Source`] after a
@@ -419,7 +419,7 @@ pub struct TargetAdapter {
     pub name: String,
     /// Semver adapter version. Resolution keys on this as identity
     /// (see [`super::AdapterRef`]); the per-axis JSON Schema enforces
-    /// the semver `pattern` and [`check_version`] is the typed
+    /// the semver `pattern` and `check_version` is the typed
     /// belt-and-suspenders gate (`adapter-version-malformed`).
     pub version: semver::Version,
     /// Axis discriminator on the wire. Always [`Axis::Target`] after
