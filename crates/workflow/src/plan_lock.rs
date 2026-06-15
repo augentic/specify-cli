@@ -1,17 +1,20 @@
-//! Plan-lock probe: runtime enforcement of the skill-acquired driver lock.
+//! Plan-lock acquisition and runtime enforcement.
 //!
 //! The `/spec:execute` driver lock is the OS advisory lock on
-//! `<plan-root>/.specify/plan.lock`, **acquired skill-side** by the
-//! `flock`-based snippet in the framework's `plan-lock.md` — it is
-//! deliberately not a CLI verb. This module is the read side: the
+//! `<plan-root>/.specify/plan.lock`. [`acquire`] takes it for the
+//! lifetime of the returned [`PlanLockGuard`] — the holder behind the
+//! `specify plan lock -- <cmd>` command-wrapper verb, which spawns
+//! `<cmd>` under the lock and releases on the child's exit. The
 //! plan-state-writing verbs (`plan next`, per-entry `plan transition`,
-//! `slice merge run`) probe the lock and refuse an unlocked driver
-//! with `plan-lock-not-held` (exit 2), so dual-driving refusal is a
-//! runtime property instead of a per-skill snippet discipline.
+//! `slice merge run`) call [`require_held`] and refuse an unlocked
+//! driver with `plan-lock-not-held` (exit 2), so dual-driving refusal
+//! is a runtime property rather than a per-skill snippet discipline.
 
 use std::fs::File;
+use std::io::Write;
 use std::path::Path;
 
+use jiff::Timestamp;
 use specify_error::Error;
 
 use crate::config::Layout;
@@ -47,20 +50,103 @@ pub fn require_held(layout: Layout<'_>) -> Result<(), Error> {
     }
 }
 
+/// Exclusive hold on `<plan-root>/.specify/plan.lock` for the guard's
+/// lifetime.
+///
+/// Dropping the guard closes the descriptor, which releases the OS
+/// advisory lock — so the lock lives exactly as long as the
+/// `specify plan lock -- <cmd>` child process the handler spawns.
+#[derive(Debug)]
+pub struct PlanLockGuard {
+    _file: File,
+}
+
+/// Acquire the exclusive advisory lock at `layout.plan_lock_path()`.
+///
+/// Creates `.specify/` and the lockfile as needed, and stamps the
+/// holder pid / hostname / acquisition time into the file body as
+/// diagnostic noise (the body is never the lock identity — the OS file
+/// lock is).
+///
+/// Non-blocking: a second driver that finds the lock held fails fast
+/// rather than waiting.
+///
+/// `now` is injected so this module never reads the clock itself.
+///
+/// # Errors
+///
+/// [`Error::Validation`] `plan-lock-busy` (exit 2) when another process
+/// already holds the lock — the message carries the holder pid read
+/// from the lockfile body. I/O failures from opening, locking, or
+/// writing the lockfile surface as [`Error::Io`].
+pub fn acquire(layout: Layout<'_>, now: Timestamp) -> Result<PlanLockGuard, Error> {
+    let path = layout.plan_lock_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(Error::Io)?;
+    }
+    let mut file = File::options()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(&path)
+        .map_err(Error::Io)?;
+    match file.try_lock() {
+        Ok(()) => {}
+        Err(std::fs::TryLockError::WouldBlock) => {
+            let holder = holder_pid(&path);
+            return Err(Error::validation_failed(
+                "plan-lock-busy",
+                "another driver session holds the plan lock",
+                format!("holder-pid={holder}"),
+            ));
+        }
+        Err(std::fs::TryLockError::Error(err)) => return Err(Error::Io(err)),
+    }
+    write_body(&mut file, now).map_err(Error::Io)?;
+    Ok(PlanLockGuard { _file: file })
+}
+
+/// Diagnostic lock-body writer: truncate then write the holder pid,
+/// hostname, and acquisition timestamp. Best-effort metadata; the OS
+/// advisory lock — not these bytes — is the lock identity.
+fn write_body(file: &mut File, now: Timestamp) -> std::io::Result<()> {
+    file.set_len(0)?;
+    let host = std::env::var("HOSTNAME")
+        .or_else(|_| std::env::var("HOST"))
+        .unwrap_or_else(|_| "unknown".to_string());
+    write!(file, "pid={}\nhostname={host}\nacquired-at={now}\n", std::process::id())?;
+    file.flush()
+}
+
+/// Read the `pid=` line from a held lockfile body for the busy
+/// diagnostic. Returns `unknown` when the body is missing or carries no
+/// `pid=` line (a holder that died mid-write, or a hand-truncated file).
+fn holder_pid(path: &Path) -> String {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|body| {
+            body.lines()
+                .find_map(|line| line.strip_prefix("pid=").map(|pid| pid.trim().to_string()))
+        })
+        .filter(|pid| !pid.is_empty())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
 /// Probe whether any process holds an exclusive advisory lock on
 /// `path`. A missing lockfile is [`LockProbe::Unheld`] — no driver
 /// session ever created it.
 ///
-/// Both advisory-lock families are covered, because the blessed
-/// snippets differ per platform and on Linux the two families do not
-/// interact: an `fcntl(2)` record-lock query (`F_GETLK` — read-only,
-/// acquires nothing) first, then a `flock(2)` try-acquire on a fresh
-/// descriptor (`LOCK_EX | LOCK_NB`, released immediately on success).
+/// A single `flock(2)`-family try-acquire suffices: [`acquire`] is the
+/// only writer of this lock, and it takes the same flock-family lock
+/// (std's `File::try_lock`). A non-blocking acquire that succeeds is
+/// released immediately and reports [`LockProbe::Unheld`]; a would-block
+/// means a driver holds it.
 ///
 /// # Errors
 ///
-/// Propagates I/O failures other than a missing file; a `flock` /
-/// `fcntl` failure other than "would block" surfaces as [`Error::Io`].
+/// Propagates I/O failures other than a missing file; a `flock` failure
+/// other than "would block" surfaces as [`Error::Io`].
 pub fn probe(path: &Path) -> Result<LockProbe, Error> {
     let file = match File::options().read(true).write(true).open(path) {
         Ok(file) => file,
@@ -73,69 +159,16 @@ pub fn probe(path: &Path) -> Result<LockProbe, Error> {
 #[cfg(unix)]
 mod imp {
     use std::fs::File;
-    use std::io;
-    use std::os::unix::io::AsRawFd;
 
     use specify_error::Error;
 
     use super::LockProbe;
 
-    /// Probe an open lockfile descriptor: `F_GETLK` query, then
-    /// `flock` try-acquire.
-    pub(super) fn probe_open(file: &File) -> Result<LockProbe, Error> {
-        if fcntl_lock_present(file)? {
-            return Ok(LockProbe::Held);
-        }
-        flock_try_acquire(file)
-    }
-
-    /// `fcntl(F_GETLK)` with a whole-file write-lock probe. Reports
-    /// whether a conflicting record lock exists without acquiring
-    /// anything. Covers fcntl-family snippets (e.g. zsh
-    /// `zsystem flock`), which `flock(2)` cannot see on Linux.
-    #[expect(
-        unsafe_code,
-        reason = "fcntl(F_GETLK) has no std wrapper; std's File locking is flock-family only"
-    )]
-    fn fcntl_lock_present(file: &File) -> Result<bool, Error> {
-        let mut probe = libc::flock {
-            l_start: 0,
-            l_len: 0,
-            l_pid: 0,
-            l_type: wrlck_l_type(),
-            // SEEK_SET; spelled as the literal to keep the i32 const
-            // out of the platform-varying c_short field.
-            l_whence: 0,
-            #[cfg(target_os = "freebsd")]
-            l_sysid: 0,
-        };
-        // SAFETY: `file` owns a valid open descriptor for the duration
-        // of the call and `probe` is a properly initialised flock
-        // struct the kernel only writes back into.
-        let rc = unsafe { libc::fcntl(file.as_raw_fd(), libc::F_GETLK, &raw mut probe) };
-        if rc == -1 {
-            return Err(Error::Io(io::Error::last_os_error()));
-        }
-        Ok(i64::from(probe.l_type) != i64::from(libc::F_UNLCK))
-    }
-
-    /// `F_WRLCK` with the `c_short` type of `flock.l_type`: libc
-    /// declares the constant `c_int` on Linux but `c_short` on macOS,
-    /// so a direct field initialiser cannot type-check on both. The
-    /// widen-then-narrow keeps the cast deterministic per platform.
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "F_WRLCK is a small ABI constant (single-digit) on every supported platform"
-    )]
-    fn wrlck_l_type() -> libc::c_short {
-        i64::from(libc::F_WRLCK) as libc::c_short
-    }
-
     /// `flock`-family try-acquire (std's `File::try_lock`) on the
     /// caller's fresh descriptor: success means nobody held it (the
     /// probe lock is released immediately); would-block means a driver
     /// holds it.
-    fn flock_try_acquire(file: &File) -> Result<LockProbe, Error> {
+    pub(super) fn probe_open(file: &File) -> Result<LockProbe, Error> {
         match file.try_lock() {
             Ok(()) => {
                 file.unlock().map_err(Error::Io)?;

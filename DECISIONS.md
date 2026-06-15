@@ -27,7 +27,7 @@ A pin **newer** than the binary is exit `3` (`Error::CliTooOld` — the binary m
 
 ## Atomic writes
 
-Use `yaml_write` (in `crates/model/src/atomic.rs`) for any file a concurrent reader may observe mid-write: `plan.yaml`, `metadata.yaml`, `plan.lock`, and the registry. It serialises to `NamedTempFile::new_in(parent)` and `persist`-renames over the target so readers either see the prior bytes or the new bytes. Plain `fs::write` is reserved for files no other process reads concurrently with the writer (one-shot scratch output, fixtures inside a tempdir test).
+Use `yaml_write` (in `crates/model/src/atomic.rs`) for any file a concurrent reader may observe mid-write: `plan.yaml`, `metadata.yaml`, and the registry. It serialises to `NamedTempFile::new_in(parent)` and `persist`-renames over the target so readers either see the prior bytes or the new bytes. Plain `fs::write` is reserved for files no other process reads concurrently with the writer (one-shot scratch output, fixtures inside a tempdir test). `plan.lock` is the deliberate exception: `specify plan lock` writes its diagnostic body in place (`set_len(0)` + write on the locked fd), never via a rename — an atomic `persist`-rename would replace the inode and sever the OS advisory lock the open descriptor holds. The body is diagnostic noise (the lock identity is the file lock itself), so a reader that races the in-place write simply falls back to `holder-pid=unknown`.
 
 ## YAML library
 
@@ -450,7 +450,7 @@ Derived state is projected on demand from the journal plus committed artifacts �
 
 ## Architecture seam hardening
 
-One hardening move per seam, each carried by its own standing decision: the machine-checked cross-repo contract is `specify contract dump` plus the `cli-contract` lint kind (R1); control flow keeps migrating into CLI verbs — the `specify plan status` next-action projection and the read-side plan-lock probe in `crates/workflow/src/plan_lock.rs` (R2); status surfaces are projections per [§"Projection over persistence"](#projection-over-persistence), with `specify journal show` as the read verb (R3); vocabulary restatements became links or lint-pinned homes (R5). The explicit anti-recommendation stands: `specify-workflow` is not split.
+One hardening move per seam, each carried by its own standing decision: the machine-checked cross-repo contract is `specify contract dump` plus the `cli-contract` lint kind (R1); control flow keeps migrating into CLI verbs — the `specify plan status` next-action projection, and both the acquisition and the read-side probe of the driver lock in `crates/workflow/src/plan_lock.rs` (R2): `specify plan lock -- <cmd>` is the `flock(1)`-style command-wrapper that takes the lock for the spawned child's lifetime (so lock handling is cross-platform and Python/`flock(1)`/`zsystem`-free), and the plan-state-writing verbs `require_held`; status surfaces are projections per [§"Projection over persistence"](#projection-over-persistence), with `specify journal show` as the read verb (R3); vocabulary restatements became links or lint-pinned homes (R5). The explicit anti-recommendation stands: `specify-workflow` is not split.
 
 ## Composition accumulation and component inference
 

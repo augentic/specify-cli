@@ -175,6 +175,25 @@ pub enum PlanAction {
         #[arg(long)]
         force: bool,
     },
+    /// Acquire the exclusive plan lock, run `<cmd>` under it, and
+    /// release on the child's exit (the `flock(1)` command form).
+    ///
+    /// The OS advisory lock on `<plan-root>/.specify/plan.lock` is held
+    /// for the spawned child's lifetime; the plan-state-writing verbs
+    /// (`plan next`, per-entry `plan transition`, `slice merge run`)
+    /// run as children and pass their own lock probe. A second driver
+    /// that finds the lock held fails fast with `plan-lock-busy`
+    /// (exit 2). Re-entrant invocations — a breakout under a parent
+    /// `/spec:execute` — skip re-acquisition when `SPECIFY_PLAN_LOCK_HELD=1`
+    /// is already set, which the wrapper exports for the child. The
+    /// child's exit code is passed through unchanged. Pass any global
+    /// flags (e.g. `--plan-dir`) before the `--`.
+    Lock {
+        /// Command (and its arguments) to run under the plan lock.
+        /// Everything after `--` is forwarded verbatim to the child.
+        #[arg(last = true, required = true)]
+        command: Vec<String>,
+    },
 }
 
 /// Flag surface for `specify plan propose`. The two flags are mutually

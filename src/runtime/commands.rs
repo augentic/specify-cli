@@ -96,7 +96,15 @@ pub fn run(cli: Cli) -> Exit {
         Commands::Slice { action } => scoped(format, plan_dir, |ctx| slice::run(ctx, action)),
         Commands::Catalog { action } => scoped(format, plan_dir, |ctx| catalog::run(ctx, action)),
         Commands::Archive { action } => scoped(format, plan_dir, |ctx| archive::run(ctx, &action)),
-        Commands::Plan { action } => scoped(format, plan_dir, |ctx| plan::run(ctx, action)),
+        Commands::Plan { action } => match action {
+            // `plan lock` passes the wrapped child's exit code through
+            // `Exit::Code`, so it bypasses the `Result<()>`-collapsing
+            // `scoped` path the rest of the plan verbs share.
+            plan::cli::PlanAction::Lock { command } => {
+                run_plan_lock_with(format, plan_dir, &command)
+            }
+            action => scoped(format, plan_dir, |ctx| plan::run(ctx, action)),
+        },
         Commands::Registry { action } => scoped(format, plan_dir, |ctx| registry::run(ctx, action)),
         Commands::Completions { shell } => {
             let mut cmd = Cli::command();
@@ -242,6 +250,22 @@ fn run_tool_with(format: Format, name: &str, args: Vec<String>) -> Exit {
         Err(err) => return report(format, &err),
     };
     match tool::run(&ctx, name, args) {
+        Ok(0) => Exit::Success,
+        Ok(code) => Exit::Code(code),
+        Err(err) => report(format, &err),
+    }
+}
+
+/// `specify plan lock -- <cmd>` runs a child under the plan lock and
+/// passes its exit code through. Like [`run_tool_with`] it sits outside
+/// the `Result<()>` channel so the success branch can carry the child's
+/// own exit code rather than collapsing to `Success`.
+fn run_plan_lock_with(format: Format, plan_dir: Option<PathBuf>, command: &[String]) -> Exit {
+    let ctx = match Ctx::load(format, plan_dir) {
+        Ok(ctx) => ctx,
+        Err(err) => return report(format, &err),
+    };
+    match plan::lock::run(&ctx, command) {
         Ok(0) => Exit::Success,
         Ok(code) => Exit::Code(code),
         Err(err) => report(format, &err),

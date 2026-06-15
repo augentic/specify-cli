@@ -113,6 +113,7 @@ pub const WIRE_CODES: &[&str] = &[
     "plan-entry-not-found",
     "plan-has-outstanding-work",
     "plan-lifecycle-transition",
+    "plan-lock-busy",
     "plan-lock-not-held",
     "plan-project-no-registry",
     "plan-project-unknown",

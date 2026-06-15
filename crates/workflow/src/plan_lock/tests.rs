@@ -28,20 +28,23 @@ fn unlocked_file_is_unheld() {
 #[cfg(unix)]
 mod unix {
     use std::fs::File;
-    use std::io::{BufRead, BufReader};
     use std::path::Path;
-    use std::process::{Child, Command, Stdio};
 
+    use jiff::Timestamp;
     use specify_error::Error;
 
     use super::*;
     use crate::config::Layout;
-    use crate::plan_lock::require_held;
+    use crate::plan_lock::{acquire, require_held};
+
+    fn now() -> Timestamp {
+        "2026-05-21T20:00:00Z".parse().expect("fixed timestamp")
+    }
 
     /// Hold a `flock`-family exclusive lock for the guard's lifetime —
-    /// the same lock family as both blessed plan-lock.md snippets
-    /// (`flock(1)` and Python's `fcntl.flock`). Dropping the guard
-    /// closes the descriptor, which releases the lock.
+    /// the same lock family `specify plan lock` (and the probe) use.
+    /// Dropping the guard closes the descriptor, which releases the
+    /// lock.
     struct FlockGuard {
         _file: File,
     }
@@ -89,77 +92,44 @@ mod unix {
         require_held(Layout::new(dir.path())).expect("held lock must pass");
     }
 
-    /// Spawned python3 holding an `fcntl(2)` record lock (`lockf`) —
-    /// the lock family zsh's `zsystem flock` uses. On Linux this is
-    /// invisible to `flock(2)`, so it exercises the `F_GETLK` arm of
-    /// the probe; the holder must be a separate process because a
-    /// process's own record locks never conflict with its `F_GETLK`.
-    struct PythonFcntlHolder {
-        child: Child,
-    }
-
-    impl PythonFcntlHolder {
-        /// `None` when python3 is unavailable on this machine.
-        fn spawn(path: &Path) -> Option<Self> {
-            let script = "\
-import fcntl, sys
-fd = open(sys.argv[1], 'a+')
-fcntl.lockf(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-print('locked', flush=True)
-sys.stdin.readline()
-";
-            let mut child = Command::new("python3")
-                .arg("-c")
-                .arg(script)
-                .arg(path)
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::null())
-                .spawn()
-                .ok()?;
-            // Handshake: the lock is held once the child prints.
-            let stdout = child.stdout.take().expect("piped stdout");
-            let mut line = String::new();
-            BufReader::new(stdout).read_line(&mut line).ok()?;
-            if line.trim() != "locked" {
-                drop(child.kill());
-                return None;
-            }
-            Some(Self { child })
-        }
-    }
-
-    impl Drop for PythonFcntlHolder {
-        fn drop(&mut self) {
-            if let Some(stdin) = self.child.stdin.take() {
-                drop(stdin);
-            }
-            drop(self.child.kill());
-            drop(self.child.wait());
-        }
-    }
-
+    /// `acquire` creates the lockfile, takes the lock (the probe sees
+    /// it held and `require_held` passes), and writes the diagnostic
+    /// pid body; dropping the guard releases it.
     #[test]
-    fn fcntl_holder_is_held() {
+    fn acquire_holds_then_releases() {
         let dir = TempDir::new().expect("tempdir");
-        let path = lock_path(&dir);
-        std::fs::write(&path, "").expect("seed lockfile");
-        let Some(holder) = PythonFcntlHolder::spawn(&path) else {
-            eprintln!("skipping: python3 unavailable");
-            return;
-        };
-        assert_eq!(
-            probe(&path).expect("probe"),
-            LockProbe::Held,
-            "F_GETLK must see the cross-process record lock"
-        );
-        drop(holder);
-        assert_eq!(probe(&path).expect("probe"), LockProbe::Unheld, "exit must unlock");
+        let guard = acquire(Layout::new(dir.path()), now()).expect("acquire");
+        let path = dir.path().join(".specify").join("plan.lock");
+        assert_eq!(probe(&path).expect("probe"), LockProbe::Held);
+        require_held(Layout::new(dir.path())).expect("held lock must pass require_held");
+        let body = std::fs::read_to_string(&path).expect("read body");
+        assert!(body.contains(&format!("pid={}", std::process::id())), "pid body: {body}");
+        drop(guard);
+        assert_eq!(probe(&path).expect("probe"), LockProbe::Unheld, "drop must release");
+    }
+
+    /// A second `acquire` while the first guard is alive fails fast with
+    /// `plan-lock-busy`, surfacing the holder pid from the body.
+    #[test]
+    fn acquire_busy_when_held() {
+        let dir = TempDir::new().expect("tempdir");
+        let _guard = acquire(Layout::new(dir.path()), now()).expect("first acquire");
+        let err = acquire(Layout::new(dir.path()), now()).expect_err("second acquire must refuse");
+        match err {
+            Error::Validation { code, detail, .. } => {
+                assert_eq!(code, "plan-lock-busy");
+                assert!(
+                    detail.contains(&format!("holder-pid={}", std::process::id())),
+                    "busy detail must carry holder pid: {detail}"
+                );
+            }
+            other => panic!("expected Error::Validation, got {other:?}"),
+        }
     }
 
     /// The probe itself must not leave the lock held (the try-acquire
     /// arm releases on success): two probes in a row both say unheld,
-    /// and a snippet-style acquire still succeeds afterwards.
+    /// and an acquire still succeeds afterwards.
     #[test]
     fn probe_leaves_lock_free() {
         let dir = TempDir::new().expect("tempdir");
