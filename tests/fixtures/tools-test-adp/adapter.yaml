@@ -7,4 +7,6 @@ briefs:
   shape: briefs/shape.md
   build: briefs/build.md
   merge: briefs/merge.md
-description: Fixture adapter for declared-tool sidecar acceptance tests
+description: Fixture adapter for installed-tree extension acceptance tests
+extension:
+  name: exit-seven
