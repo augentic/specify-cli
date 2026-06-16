@@ -805,13 +805,22 @@ fn reconcile_multi_project_bootstraps() {
     assert!(!feat_b.depends_on.contains(&SliceName::new("app-one-bootstrap-ios")));
 }
 
-// --- detect_missing_platforms tests --------------------------------
+// --- shell presence detection (via specify-vectis-shell-detect) --------
+
+fn missing_platforms(project_dir: &Path, platforms: &[Platform]) -> Vec<Platform> {
+    let names: Vec<String> = platforms.iter().map(ToString::to_string).collect();
+    let refs: Vec<&str> = names.iter().map(String::as_str).collect();
+    specify_vectis_shell_detect::missing_shell_platforms(project_dir, &refs)
+        .into_iter()
+        .filter_map(|s| s.parse().ok())
+        .collect()
+}
 
 #[test]
 fn detect_missing_no_shells() {
     let dir = tempfile::tempdir().expect("tempdir");
     let platforms = vec![Platform::Core, Platform::Ios, Platform::Android];
-    let missing = detect_missing_platforms(dir.path(), &platforms);
+    let missing = missing_platforms(dir.path(), &platforms);
     assert_eq!(missing, vec![Platform::Core, Platform::Ios, Platform::Android]);
 }
 
@@ -823,7 +832,7 @@ fn detect_missing_core_present() {
     std::fs::write(shared.join("app.rs"), "fn main() {}").expect("write");
 
     let platforms = vec![Platform::Core, Platform::Ios, Platform::Android];
-    let missing = detect_missing_platforms(dir.path(), &platforms);
+    let missing = missing_platforms(dir.path(), &platforms);
     assert_eq!(missing, vec![Platform::Ios, Platform::Android]);
 }
 
@@ -843,7 +852,7 @@ fn detect_missing_all_present() {
     std::fs::write(android.join("App.kt"), "package com.example").expect("write");
 
     let platforms = vec![Platform::Core, Platform::Ios, Platform::Android];
-    let missing = detect_missing_platforms(dir.path(), &platforms);
+    let missing = missing_platforms(dir.path(), &platforms);
     assert!(missing.is_empty());
 }
 
@@ -851,7 +860,7 @@ fn detect_missing_all_present() {
 fn detect_missing_skips_web_desktop() {
     let dir = tempfile::tempdir().expect("tempdir");
     let platforms = vec![Platform::Core, Platform::Web, Platform::Desktop];
-    let missing = detect_missing_platforms(dir.path(), &platforms);
+    let missing = missing_platforms(dir.path(), &platforms);
     assert_eq!(missing, vec![Platform::Core]);
 }
 
@@ -866,7 +875,7 @@ fn reconcile_never_bootstraps_web_desktop() {
     std::fs::write(dir.path().join("shared/src/app.rs"), "// core present").expect("write");
 
     let platforms = vec![Platform::Core, Platform::Web, Platform::Desktop];
-    let missing = detect_missing_platforms(dir.path(), &platforms);
+    let missing = missing_platforms(dir.path(), &platforms);
     assert!(missing.is_empty(), "web/desktop must never be detected as missing");
 
     let mut plan = plan_with_sources(Lifecycle::Pending, &["intent"]);

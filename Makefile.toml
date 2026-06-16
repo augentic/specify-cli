@@ -129,6 +129,17 @@ args = ["publish", "--registry=augentic", "--allow-dirty", "--dry-run"]
 # Auxiliary tasks
 # -------------------------------------
 
+# Mirror the dedicated `wasi-tools` CI job (`.github/workflows/ci.yaml`):
+# the carve-out workspace is not a member of the host workspace, so host
+# `cargo clippy` / `cargo nextest` never compile vectis tests.
+[tasks.wasi-tools-check]
+script = '''
+set -euo pipefail
+cd wasi-tools
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+'''
+
 # Build the first-party `contract` WASI tool and refresh the checked-in
 # `wasi-tools/contract/dist/` artifact (and its sha256 sidecar) that
 # `tests/tool/contract.rs` loads. Rerun after editing the contract crate

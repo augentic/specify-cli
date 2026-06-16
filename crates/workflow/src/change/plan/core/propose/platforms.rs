@@ -1,16 +1,16 @@
 //! Platform shell detection and plan-time bootstrap slice insertion.
 
 use std::collections::HashSet;
-use std::path::Path;
 
 use specify_error::{Error, Result};
 
 use super::super::model::{Entry, Plan, SliceAuthorityOverride, Status};
 use crate::Platform;
 
-///
 /// Consumed by [`Plan::reconcile_platforms`] to insert bootstrap slices.
-/// Built by [`detect_missing_platforms`] from a project directory.
+///
+/// Built by the Vectis shell-detect library (`specify-vectis-shell-detect`)
+/// via [`crate::vectis_missing_platforms`] for Vectis-bound projects.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectMissingPlatforms {
     /// Project name from the topology (matches `ProjectRef.name`).
@@ -22,56 +22,6 @@ pub struct ProjectMissingPlatforms {
 
 /// Platforms with on-disk shell interpretations today.
 const SUPPORTED_PLATFORMS: &[Platform] = &[Platform::Core, Platform::Ios, Platform::Android];
-
-/// Detect which declared platforms lack on-disk shells in a project
-/// directory.
-///
-/// Only supported platforms (`core`, `ios`, `android`) are checked;
-/// `web` and `desktop` have no on-disk interpretation yet and are
-/// unconditionally treated as present.
-#[must_use]
-pub fn detect_missing_platforms(project_dir: &Path, platforms: &[Platform]) -> Vec<Platform> {
-    platforms
-        .iter()
-        .copied()
-        .filter(|p| SUPPORTED_PLATFORMS.contains(p) && !platform_present(project_dir, *p))
-        .collect()
-}
-
-fn platform_present(project_dir: &Path, platform: Platform) -> bool {
-    match platform {
-        Platform::Core => project_dir.join("shared/src/app.rs").is_file(),
-        Platform::Ios => {
-            let ios_dir = project_dir.join("iOS");
-            ios_dir.is_dir() && has_files_with_extension(&ios_dir, "swift")
-        }
-        Platform::Android => {
-            let android_dir = project_dir.join("Android");
-            android_dir.is_dir() && has_files_with_extension(&android_dir, "kt")
-        }
-        Platform::Web | Platform::Desktop => true,
-    }
-}
-
-fn has_files_with_extension(dir: &Path, ext: &str) -> bool {
-    walk_dir_recursive(dir).iter().any(|p| p.extension().and_then(|e| e.to_str()) == Some(ext))
-}
-
-fn walk_dir_recursive(dir: &Path) -> Vec<std::path::PathBuf> {
-    let mut out = Vec::new();
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return out;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            out.extend(walk_dir_recursive(&path));
-        } else {
-            out.push(path);
-        }
-    }
-    out
-}
 
 impl Plan {
     /// Insert bootstrap slices for declared-but-absent platform shells,

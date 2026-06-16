@@ -26,7 +26,7 @@ mod wire;
 
 pub use catalog::{LeadCatalog, build_catalog, build_request};
 pub use kernel::{ProposeOutcome, resolve_target};
-pub use platforms::{ProjectMissingPlatforms, detect_missing_platforms};
+pub use platforms::ProjectMissingPlatforms;
 pub use topology::{apply_greenfield_seed, resolve_topology};
 pub use wire::{
     LeadCatalogEntry, ProjectRef, ProposalKind, ProposalRequest, ProposalResponse, ResponseMember,

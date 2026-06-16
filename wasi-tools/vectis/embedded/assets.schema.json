@@ -9,6 +9,10 @@
   "properties": {
     "version": { "const": 1 },
     "provenance": { "$ref": "#/$defs/provenance" },
+    "app-icon": {
+      "$ref": "#/$defs/assetId",
+      "description": "Kebab-case key under assets: for the launcher icon (role: app-icon). Required when plan validation detects UI platform bootstrap and no shell-resident launcher icon satisfies the missing platform."
+    },
     "assets": {
       "type": "object",
       "propertyNames": { "$ref": "#/$defs/assetId" },
@@ -33,7 +37,7 @@
     },
     "role": {
       "type": "string",
-      "enum": ["decorative", "icon", "illustration", "photo"]
+      "enum": ["decorative", "icon", "illustration", "photo", "app-icon"]
     },
 
     "provenance": {
@@ -79,9 +83,55 @@
       "description": "Short human/machine-readable description of when or how this asset variant should be used, and what visually distinguishes it from siblings in the same family."
     },
 
+    "rasterDensitySources": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "ios": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": false,
+          "properties": {
+            "1x": { "$ref": "#/$defs/filePath" },
+            "2x": { "$ref": "#/$defs/filePath" },
+            "3x": { "$ref": "#/$defs/filePath" }
+          }
+        },
+        "android": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": false,
+          "properties": {
+            "mdpi": { "$ref": "#/$defs/filePath" },
+            "hdpi": { "$ref": "#/$defs/filePath" },
+            "xhdpi": { "$ref": "#/$defs/filePath" },
+            "xxhdpi": { "$ref": "#/$defs/filePath" },
+            "xxxhdpi": { "$ref": "#/$defs/filePath" }
+          }
+        }
+      }
+    },
+
+    "appIconPlatformSources": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "ios": {
+          "$ref": "#/$defs/filePath",
+          "description": "Export root directory or single file path for the iOS app icon."
+        },
+        "android": {
+          "$ref": "#/$defs/filePath",
+          "description": "Export root directory or single file path for the Android app icon."
+        }
+      }
+    },
+
     "rasterEntry": {
       "type": "object",
-      "required": ["kind", "role", "sources"],
+      "required": ["kind", "role"],
       "additionalProperties": false,
       "properties": {
         "kind": { "const": "raster" },
@@ -90,36 +140,41 @@
         "tint": { "$ref": "#/$defs/tokenRef" },
         "variant_of": { "$ref": "#/$defs/variantOf" },
         "usage_hint": { "$ref": "#/$defs/usageHint" },
+        "source": {
+          "$ref": "#/$defs/filePath",
+          "description": "Canonical master for role: app-icon only (typically PNG, JPEG, or WebP)."
+        },
         "sources": {
           "type": "object",
           "minProperties": 1,
           "additionalProperties": false,
           "properties": {
-            "ios": {
-              "type": "object",
-              "minProperties": 1,
-              "additionalProperties": false,
-              "properties": {
-                "1x": { "$ref": "#/$defs/filePath" },
-                "2x": { "$ref": "#/$defs/filePath" },
-                "3x": { "$ref": "#/$defs/filePath" }
-              }
-            },
-            "android": {
-              "type": "object",
-              "minProperties": 1,
-              "additionalProperties": false,
-              "properties": {
-                "mdpi": { "$ref": "#/$defs/filePath" },
-                "hdpi": { "$ref": "#/$defs/filePath" },
-                "xhdpi": { "$ref": "#/$defs/filePath" },
-                "xxhdpi": { "$ref": "#/$defs/filePath" },
-                "xxxhdpi": { "$ref": "#/$defs/filePath" }
-              }
+            "ios": {},
+            "android": {}
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "role": { "const": "app-icon" } },
+            "required": ["role"]
+          },
+          "then": {
+            "anyOf": [{ "required": ["sources"] }, { "required": ["source"] }],
+            "properties": {
+              "sources": { "$ref": "#/$defs/appIconPlatformSources" }
+            }
+          },
+          "else": {
+            "required": ["sources"],
+            "not": { "required": ["source"] },
+            "properties": {
+              "sources": { "$ref": "#/$defs/rasterDensitySources" }
             }
           }
         }
-      }
+      ]
     },
 
     "vectorEntry": {
@@ -144,19 +199,16 @@
           "properties": {
             "ios": {
               "$ref": "#/$defs/filePath",
-              "description": "Pre-converted iOS export — PDF (preferred) or SVG on iOS 13+."
+              "description": "Pre-converted iOS export — PDF (preferred) or SVG on iOS 13+; for role: app-icon, the AppIcon.appiconset export root."
             },
             "android": {
               "$ref": "#/$defs/filePath",
-              "description": "Pre-converted Android vector-drawable XML."
+              "description": "Pre-converted Android vector-drawable XML; for role: app-icon, the adaptive/legacy mipmap export root."
             }
           }
         }
       },
-      "anyOf": [
-        { "required": ["sources"] },
-        { "required": ["source"] }
-      ]
+      "anyOf": [{ "required": ["sources"] }, { "required": ["source"] }]
     },
 
     "symbolEntry": {
@@ -170,6 +222,10 @@
         "tint": { "$ref": "#/$defs/tokenRef" },
         "variant_of": { "$ref": "#/$defs/variantOf" },
         "usage_hint": { "$ref": "#/$defs/usageHint" },
+        "inferred": {
+          "type": "boolean",
+          "description": "When true, documents a screenshot-inferred platform glyph. Defaults to false at the validate layer."
+        },
         "symbols": {
           "type": "object",
           "minProperties": 1,

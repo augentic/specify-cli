@@ -30,6 +30,10 @@ thiserror = "2"
 toml = "1"
 assert_cmd = "2"
 tempfile = "3"
+resvg = { version = "0.47", default-features = false }
+usvg = { version = "0.47", default-features = false }
+tiny-skia = { version = "0.12", default-features = false }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
 
 [workspace.lints.rust]
 # Leaner lint posture than the host workspace. The vectis scaffold tests

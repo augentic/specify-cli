@@ -354,11 +354,11 @@ fn propose_from_emits_single_journal_tail() {
     );
 }
 
-// -- reconcile-platforms (bootstrap-slice insertion) -----------------
+// -- platform bootstrap (default-on reconciliation) --------------------
 
 /// N=1 plan/discovery/response for a single feature lead bound to the
-/// sole regular project — the surface `--reconcile-platforms` augments
-/// with bootstrap slices.
+/// sole regular project — `propose --from` augments with bootstrap slices
+/// when `project.yaml.platforms` is non-empty.
 const PLATFORM_PLAN: &str = "\
 name: platform-app
 sources:
@@ -385,13 +385,22 @@ fn vectis_stub_dir() -> PathBuf {
     repo_root().join("tests/fixtures/adapters/targets/vectis-stub")
 }
 
-/// Scaffold a single-project tree backed by the vectis stub target with
+/// Scaffold a single-project tree backed by a Vectis target with
 /// `--platforms <set>`, then seed the propose inputs (plan + discovery).
 fn platform_project(platforms: &str) -> TempDir {
     let tmp = tempdir().expect("tempdir");
     let root = tmp.path();
-    let adapter = root.join("adapters/targets/vectis-stub");
+    let adapter = root.join("adapters/targets/vectis");
     copy_dir(&vectis_stub_dir(), &adapter);
+
+    let adapter_yaml =
+        fs::read_to_string(adapter.join("adapter.yaml")).expect("read vectis-stub adapter.yaml");
+    fs::write(
+        adapter.join("adapter.yaml"),
+        adapter_yaml.replace("name: vectis-stub", "name: vectis"),
+    )
+    .expect("patch adapter name to vectis");
+
     specify_cmd()
         .current_dir(root)
         .args(["init"])
@@ -413,15 +422,14 @@ fn journal_events(root: &Path) -> Vec<Value> {
         .collect()
 }
 
-/// Run `plan propose --from <body> --reconcile-platforms` expecting
-/// success and return the parsed `--format json` summary.
+/// Run `plan propose --from <body>` expecting success and return the
+/// parsed `--format json` summary.
 fn propose_reconcile_ok(root: &Path, body: &str) -> Value {
     let response = write_response(root, body);
     let assert = specify_cmd()
         .current_dir(root)
         .args(["--format", "json", "plan", "propose", "--from"])
         .arg(&response)
-        .arg("--reconcile-platforms")
         .assert()
         .success();
     parse_stdout(&assert.get_output().stdout, root)
@@ -458,6 +466,32 @@ fn reconcile_greenfield_app_foundation() {
     assert_eq!(
         events[0]["payload"]["slice-names"],
         serde_json::json!(["app-foundation", "add-feature"])
+    );
+}
+
+#[test]
+fn reconcile_incremental_bootstraps() {
+    // With the `core` shell already present on disk, only the absent
+    // `ios` / `android` shells get per-platform `bootstrap-<platform>`
+    // slices (no `app-foundation` collapse).
+    let tmp = platform_project("core,ios,android");
+    let core_shell = tmp.path().join("shared/src/app.rs");
+    fs::create_dir_all(core_shell.parent().unwrap()).expect("mkdir shared/src");
+    fs::write(&core_shell, "fn app() {}\n").expect("write core shell");
+
+    let summary = propose_reconcile_ok(tmp.path(), PLATFORM_RESPONSE);
+    assert_eq!(
+        summary["slice-names"],
+        serde_json::json!(["bootstrap-ios", "bootstrap-android", "add-feature"]),
+        "an existing core shell yields per-platform bootstrap slices"
+    );
+
+    let events = journal_events(tmp.path());
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0]["event"], "plan.reconcile.completed");
+    assert_eq!(
+        events[0]["payload"]["slice-names"],
+        serde_json::json!(["bootstrap-ios", "bootstrap-android", "add-feature"])
     );
 }
 

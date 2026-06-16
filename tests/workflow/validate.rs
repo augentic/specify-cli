@@ -324,3 +324,249 @@ fn validate_reports_topology_cache_stale() {
         "stale cache is a suggestion-only finding, so validate must exit 0"
     );
 }
+
+#[test]
+fn plan_validate_payloads_round_trip_typed() {
+    let tmp = tempdir().unwrap();
+    init_omnia_project(&tmp);
+
+    // Minimal plan that exercises just the cycle and orphan-source
+    // checks — enough to confirm the typed payload deserialises
+    // cleanly.
+    fs::write(
+        tmp.path().join("plan.yaml"),
+        "name: demo\n\
+             sources:\n\
+             \x20\x20orphan-key:\n\
+             \x20\x20\x20\x20adapter: typescript\n\
+             \x20\x20\x20\x20path: /tmp/somewhere\n\
+             slices:\n\
+             \x20\x20- name: cyc-a\n\
+             \x20\x20\x20\x20project: default\n\
+             \x20\x20\x20\x20status: pending\n\
+             \x20\x20\x20\x20depends-on: [cyc-b]\n\
+             \x20\x20- name: cyc-b\n\
+             \x20\x20\x20\x20project: default\n\
+             \x20\x20\x20\x20status: pending\n\
+             \x20\x20\x20\x20depends-on: [cyc-a]\n",
+    )
+    .unwrap();
+
+    let assert = specify_cmd()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "plan", "validate"])
+        .assert();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
+    let value: Value = serde_json::from_str(&stdout).expect("stdout is JSON");
+    let findings = value["findings"].as_array().expect("findings array");
+
+    // The health checks carry their machine-readable payload on the
+    // neutral diagnostic's structured evidence (`evidence.data`) rather
+    // than a bespoke `data` field — unified onto the currency without
+    // loss.
+    let cycle = findings
+        .iter()
+        .find(|d| d["rule-id"] == "cycle-in-depends-on")
+        .expect("expected cycle-in-depends-on diagnostic");
+    assert_eq!(cycle["evidence"]["kind"], "structured");
+    let cycle_path = cycle["evidence"]["data"]["cycle"].as_array().expect("cycle path is array");
+    let names: Vec<String> =
+        cycle_path.iter().filter_map(|v| v.as_str().map(String::from)).collect();
+    assert_eq!(
+        names,
+        vec!["cyc-a".to_string(), "cyc-b".to_string(), "cyc-a".to_string()],
+        "cycle path must close on the first node"
+    );
+
+    let orphan = findings
+        .iter()
+        .find(|d| d["rule-id"] == "orphan-source")
+        .expect("expected orphan-source diagnostic");
+    assert_eq!(orphan["evidence"]["kind"], "structured");
+    assert_eq!(orphan["evidence"]["data"]["key"], "orphan-key");
+    assert_eq!(orphan["severity"], "suggestion");
+}
+
+#[test]
+fn plan_validate_healthy_exits_zero() {
+    let tmp = tempdir().unwrap();
+    init_omnia_project(&tmp);
+
+    specify_cmd()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "plan", "create", "demo"])
+        .assert()
+        .success();
+
+    let assert = specify_cmd()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "plan", "validate"])
+        .assert()
+        .success();
+    let value: Value = serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    assert_eq!(
+        value["findings"].as_array().unwrap().len(),
+        0,
+        "empty plan must emit zero findings: {value}"
+    );
+}
+
+// ---- RFC-46 bootstrap app-icon gate (plan validate) --------------------
+
+fn vectis_stub_dir() -> PathBuf {
+    repo_root().join("tests/fixtures/adapters/targets/vectis-stub")
+}
+
+fn init_vectis_greenfield(platforms: &str) -> TempDir {
+    let tmp = tempdir().unwrap();
+    let root = tmp.path();
+    let adapter = root.join("adapters/targets/vectis");
+    copy_dir(&vectis_stub_dir(), &adapter);
+    let adapter_yaml =
+        fs::read_to_string(adapter.join("adapter.yaml")).expect("read vectis-stub adapter.yaml");
+    fs::write(
+        adapter.join("adapter.yaml"),
+        adapter_yaml.replace("name: vectis-stub", "name: vectis"),
+    )
+    .expect("patch adapter name to vectis");
+
+    specify_cmd()
+        .current_dir(root)
+        .args(["init"])
+        .arg(&adapter)
+        .args(["--name", "platform-app", "--platforms", platforms])
+        .assert()
+        .success();
+
+    fs::write(
+        root.join("plan.yaml"),
+        "name: platform-app\nsources:\n  intent:\n    adapter: intent\n    value: \"Add a feature.\"\nslices:\n  - name: add-feature\n    status: pending\n",
+    )
+    .expect("write plan.yaml");
+    tmp
+}
+
+#[test]
+fn app_icon_missing_greenfield() {
+    let tmp = init_vectis_greenfield("core,ios,android");
+
+    let assert = specify_cmd()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "plan", "validate"])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
+
+    let value = parse_stdout(&assert.get_output().stdout, tmp.path());
+    let findings = value["findings"].as_array().expect("findings array");
+    let hits: Vec<&Value> =
+        findings.iter().filter(|r| r["rule-id"] == "plan-bootstrap-app-icon-missing").collect();
+    assert_eq!(hits.len(), 2, "ios and android must each fail: {findings:#?}");
+    assert!(hits.iter().all(|r| r["severity"] == "important"));
+}
+
+#[test]
+fn app_icon_valid_assets_passes() {
+    let tmp = init_vectis_greenfield("core,ios,android");
+    let design = tmp.path().join("design-system");
+    fs::create_dir_all(design.join("assets")).expect("mkdir assets");
+    fs::write(
+        design.join("assets.yaml"),
+        "version: 1\n\
+         app-icon: app-icon\n\
+         assets:\n\
+         \x20\x20app-icon:\n\
+         \x20\x20\x20\x20kind: vector\n\
+         \x20\x20\x20\x20role: app-icon\n\
+         \x20\x20\x20\x20source: assets/app-icon.svg\n",
+    )
+    .expect("write assets.yaml");
+    fs::write(design.join("assets/app-icon.svg"), "<svg/>").expect("write svg");
+
+    let assert = specify_cmd()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "plan", "validate"])
+        .assert()
+        .success();
+    let value = parse_stdout(&assert.get_output().stdout, tmp.path());
+    let findings = value["findings"].as_array().expect("findings array");
+    assert!(
+        !findings.iter().any(|r| r["rule-id"] == "plan-bootstrap-app-icon-missing"),
+        "valid path A master must not emit app-icon gate: {findings:#?}"
+    );
+}
+
+#[test]
+fn app_icon_pinned_exports_passes() {
+    let tmp = init_vectis_greenfield("core,ios,android");
+    let design = tmp.path().join("design-system");
+    fs::create_dir_all(design.join("assets/exports/ios/app-icon/AppIcon.appiconset"))
+        .expect("mkdir ios export");
+    fs::create_dir_all(design.join("assets/exports/android/app-icon"))
+        .expect("mkdir android export");
+    fs::write(
+        design.join("assets.yaml"),
+        "version: 1\n\
+         app-icon: app-icon\n\
+         assets:\n\
+         \x20\x20app-icon:\n\
+         \x20\x20\x20\x20kind: vector\n\
+         \x20\x20\x20\x20role: app-icon\n\
+         \x20\x20\x20\x20sources:\n\
+         \x20\x20\x20\x20\x20\x20ios: assets/exports/ios/app-icon/AppIcon.appiconset\n\
+         \x20\x20\x20\x20\x20\x20android: assets/exports/android/app-icon\n",
+    )
+    .expect("write assets.yaml");
+
+    let assert = specify_cmd()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "plan", "validate"])
+        .assert()
+        .success();
+    let value = parse_stdout(&assert.get_output().stdout, tmp.path());
+    let findings = value["findings"].as_array().expect("findings array");
+    assert!(
+        !findings.iter().any(|r| r["rule-id"] == "plan-bootstrap-app-icon-missing"),
+        "path B pinned exports must satisfy §6.2 without a `source:` master: {findings:#?}"
+    );
+}
+
+#[test]
+fn app_icon_shell_resident_passes() {
+    let tmp = init_vectis_greenfield("core,ios,android");
+    let appiconset = tmp.path().join("iOS/Demo/Resources/Assets.xcassets/AppIcon.appiconset");
+    fs::create_dir_all(&appiconset).expect("mkdir appiconset");
+    fs::write(
+        appiconset.join("Contents.json"),
+        r#"{"images":[{"filename":"AppIcon.png","idiom":"universal"}]}"#,
+    )
+    .expect("write contents");
+    fs::write(appiconset.join("AppIcon.png"), minimal_app_icon_png()).expect("write png");
+
+    let res_dir = tmp.path().join("Android/app/src/main/res");
+    fs::create_dir_all(res_dir.join("mipmap-anydpi-v26")).expect("mkdir v26");
+    fs::write(res_dir.join("mipmap-anydpi-v26/ic_launcher.xml"), "<adaptive-icon/>")
+        .expect("write launcher xml");
+
+    let assert = specify_cmd()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "plan", "validate"])
+        .assert()
+        .success();
+    let value = parse_stdout(&assert.get_output().stdout, tmp.path());
+    let findings = value["findings"].as_array().expect("findings array");
+    assert!(
+        !findings.iter().any(|r| r["rule-id"] == "plan-bootstrap-app-icon-missing"),
+        "shell-resident escape hatch must satisfy §6.3 without assets.yaml: {findings:#?}"
+    );
+}
+
+fn minimal_app_icon_png() -> Vec<u8> {
+    vec![
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44,
+        0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F,
+        0x15, 0xC4, 0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00,
+        0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
+        0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+    ]
+}
