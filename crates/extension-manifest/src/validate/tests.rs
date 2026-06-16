@@ -71,16 +71,17 @@ fn package_validation_reports_rules() {
     assert!(ids.contains(&RULE_VERSION_SEMVER));
     assert!(ids.contains(&RULE_PACKAGE_NAMESPACE));
     assert!(ids.contains(&RULE_PACKAGE_VERSION));
-    assert!(ids.contains(&RULE_PACKAGE_PERMISSIONS));
 }
 
 #[test]
-fn scalar_package_passes_with_perms() {
-    let manifest: ExtensionManifest =
-        serde_saphyr::from_str("tools:\n  - \"specify:contract@1.2.3\"\n")
-            .expect("parse scalar package");
-    let results = manifest.validate_structure(&project_scope());
-    assert!(results.is_empty(), "{results:?}");
+fn scalar_package_form_no_longer_parses() {
+    // The first-party scalar shorthand (`specify:<name>@<ver>`) and its
+    // embedded permissions catalog are retired (RFC-48 D10): a tool must
+    // be a full object with its own `source` and `permissions`.
+    let parsed = serde_saphyr::from_str::<ExtensionManifest>(
+        "tools:\n  - \"specify:contract@1.2.3\"\n",
+    );
+    assert!(parsed.is_err(), "the scalar first-party form must no longer deserialize");
 }
 
 #[test]
@@ -162,16 +163,17 @@ fn schema_accepts_root_write() {
 }
 
 #[test]
-fn schema_accepts_scalar_and_object() {
+fn schema_accepts_object_rejects_scalar() {
     let schema: serde_json::Value =
         serde_json::from_str(EXTENSION_JSON_SCHEMA).expect("schema parses");
     let validator = jsonschema::validator_for(&schema).expect("schema compiles");
-    for case in [
-        json!({ "tools": ["specify:contract@1.2.3"] }),
-        json!({ "tools": [{ "name": "contract", "version": "1.2.3", "source": "specify:contract@1.2.3" }] }),
-    ] {
-        assert!(validator.is_valid(&case), "schema should accept package case: {case}");
-    }
+    // The object form with a package `source:` is still valid.
+    let object =
+        json!({ "tools": [{ "name": "contract", "version": "1.2.3", "source": "specify:contract@1.2.3" }] });
+    assert!(validator.is_valid(&object), "schema should accept object package case: {object}");
+    // The retired scalar first-party shorthand no longer validates.
+    let scalar = json!({ "tools": ["specify:contract@1.2.3"] });
+    assert!(!validator.is_valid(&scalar), "schema must reject the retired scalar form: {scalar}");
 }
 
 #[test]

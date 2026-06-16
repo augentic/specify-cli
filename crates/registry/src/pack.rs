@@ -102,6 +102,28 @@ pub fn verify_digest(reference: &str, layer: &[u8], recorded: &str) -> Result<()
     }
 }
 
+/// Unpack a [`pack_adapter`]-produced layer into `dest`, materializing
+/// the adapter tree (RFC-48 D5 install into the global store). `dest` is
+/// created if absent. Packed layers carry only normal files and
+/// directories (symlinks are dereferenced at pack time), so extraction
+/// never re-introduces a symlink.
+///
+/// # Errors
+///
+/// Returns `adapter-pack-failed` when the layer cannot be zstd-decoded or
+/// the tar stream cannot be extracted into `dest`.
+pub fn unpack_adapter(layer: &[u8], dest: &Path) -> Result<(), ExtensionError> {
+    std::fs::create_dir_all(dest).map_err(|err| {
+        ExtensionError::pack(format!("create unpack dir {}: {err}", dest.display()))
+    })?;
+    let decoder = zstd::stream::read::Decoder::new(layer)
+        .map_err(|err| ExtensionError::pack(format!("init zstd decoder: {err}")))?;
+    let mut archive = tar::Archive::new(decoder);
+    archive.unpack(dest).map_err(|err| {
+        ExtensionError::pack(format!("unpack layer into {}: {err}", dest.display()))
+    })
+}
+
 #[derive(Debug)]
 struct PackEntry {
     /// Forward-slash relative path on the tar tape.

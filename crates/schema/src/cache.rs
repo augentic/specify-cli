@@ -109,6 +109,47 @@ fn projects_root() -> PathBuf {
     env::temp_dir().join("specify").join("projects")
 }
 
+/// Environment override for the global adapter store root (RFC-48 D5).
+/// When set to an absolute path, store entries are created directly
+/// beneath it (the `specify/adapters` suffix is *not* appended).
+const ADAPTER_STORE_ENV: &str = "SPECIFY_ADAPTER_CACHE";
+
+/// Absolute path to the global adapter store entry for an immutable
+/// `(name, version)` identity — `<store>/<name>@<version>/` (RFC-48 D5).
+///
+/// The store is keyed by the pinned identity, not the project, so two
+/// projects pinning the same `(name, version)` resolve to one shared,
+/// read-only entry (the Cargo `~/.cargo/registry` model). Install
+/// orchestration (pull → temp → verify → atomic rename → chmod) lives in
+/// the workflow layer; this is the pure location resolver both install
+/// and read paths agree on.
+#[must_use]
+pub fn adapter_store_entry(name: &str, version: &str) -> PathBuf {
+    adapter_store_root().join(format!("{name}@{version}"))
+}
+
+/// Resolve the parent directory that holds every adapter's
+/// content-addressed store entry.
+///
+/// Precedence: `$SPECIFY_ADAPTER_CACHE`, then
+/// `$XDG_CACHE_HOME/specify/adapters`, then
+/// `$HOME/.cache/specify/adapters`, then `<temp>/specify/adapters`.
+/// Empty or relative overrides are skipped rather than treated as an
+/// error, mirroring [`projects_root`].
+#[must_use]
+pub fn adapter_store_root() -> PathBuf {
+    if let Some(root) = env::var_os(ADAPTER_STORE_ENV).and_then(absolute) {
+        return root;
+    }
+    if let Some(root) = env::var_os("XDG_CACHE_HOME").and_then(absolute) {
+        return root.join("specify").join("adapters");
+    }
+    if let Some(home) = env::var_os("HOME").and_then(absolute) {
+        return home.join(".cache").join("specify").join("adapters");
+    }
+    env::temp_dir().join("specify").join("adapters")
+}
+
 /// Stable per-project identifier — the SHA-256 hex of the canonicalised
 /// project path, falling back to the raw path when canonicalisation
 /// fails (e.g. the directory does not yet exist).
@@ -131,7 +172,7 @@ fn absolute(value: OsString) -> Option<PathBuf> {
 mod tests {
     use std::path::Path;
 
-    use super::project_cache_dir;
+    use super::{adapter_store_entry, adapter_store_root, project_cache_dir};
 
     #[test]
     fn distinct_projects_get_distinct_dirs() {
@@ -146,5 +187,24 @@ mod tests {
         let first = project_cache_dir(Path::new("/some/project/a"));
         let second = project_cache_dir(Path::new("/some/project/a"));
         assert_eq!(first, second);
+    }
+
+    #[test]
+    fn store_entry_keys_by_name_and_version() {
+        let entry = adapter_store_entry("omnia", "1.2.0");
+        assert_eq!(entry.file_name().unwrap(), "omnia@1.2.0");
+        assert_eq!(entry.parent().unwrap(), adapter_store_root());
+    }
+
+    #[test]
+    fn store_entry_distinct_per_pinned_identity() {
+        // The store is keyed by the immutable identity, so two versions
+        // of one adapter never collide and share no entry.
+        assert_ne!(adapter_store_entry("omnia", "1.2.0"), adapter_store_entry("omnia", "1.3.0"));
+        assert_eq!(
+            adapter_store_entry("omnia", "1.2.0"),
+            adapter_store_entry("omnia", "1.2.0"),
+            "the same pinned identity is stable across calls"
+        );
     }
 }

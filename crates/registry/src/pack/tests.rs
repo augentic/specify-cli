@@ -121,6 +121,21 @@ fn pack_excludes_vcs_and_extra_names() {
 }
 
 #[test]
+fn unpack_round_trips_packed_tree() {
+    let dir = TempDir::new().expect("tempdir");
+    let root = dir.path().join("adapter");
+    write(&root, "adapter.yaml", b"name: demo\nversion: 1.0.0\n");
+    write(&root, "briefs/build.md", b"# build\n");
+    let layer = pack_adapter(&root, &[]).expect("pack");
+
+    let out = dir.path().join("unpacked");
+    unpack_adapter(&layer, &out).expect("unpack");
+
+    assert_eq!(fs::read(out.join("adapter.yaml")).expect("read yaml"), b"name: demo\nversion: 1.0.0\n");
+    assert_eq!(fs::read(out.join("briefs/build.md")).expect("read brief"), b"# build\n");
+}
+
+#[test]
 fn verify_digest_accepts_match_rejects_drift() {
     let dir = TempDir::new().expect("tempdir");
     let root = dir.path().join("adapter");

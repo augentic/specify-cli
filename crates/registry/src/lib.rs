@@ -11,6 +11,7 @@ mod package;
 pub mod pack;
 pub mod permissions;
 pub mod resolver;
+pub mod store;
 // The manifest DTOs and structural validation live in the wasmtime-free
 // `specify-tool-manifest` leaf; re-export them under their historical
 // module paths so `specify_registry::manifest::Extension` and

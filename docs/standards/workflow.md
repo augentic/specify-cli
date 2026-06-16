@@ -144,7 +144,7 @@ Newline-delimited JSON journal at `.specify/journal.jsonl`. The closed `EventKin
 
 ## What was cut and why
 
-There is no `specify adapter *` or `specify change *` namespace, and no bare-string `sources` shorthand on `plan.yaml.sources.<key>`. See [`DECISIONS.md` §"Plan source bindings"](../../DECISIONS.md#plan-source-bindings).
+The `specify adapter` namespace carries adapter *authoring* verbs only — `specify adapter build` and `specify adapter publish` (RFC-48 packaging and transport) — never adapter *resolution* (resolution stays on `specify source`/`specify target`). There is no `specify change *` namespace, and no bare-string `sources` shorthand on `plan.yaml.sources.<key>`. See [`DECISIONS.md` §"Plan source bindings"](../../DECISIONS.md#plan-source-bindings).
 
 ## Note to the implementing agent
 

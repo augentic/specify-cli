@@ -9,8 +9,8 @@ use specify_diagnostics::{Artifact, Diagnostic};
 pub use specify_schema::EXTENSION_JSON_SCHEMA;
 
 use crate::{
-    Extension, ExtensionManifest, ExtensionScope, ExtensionSource, first_party_permissions,
-    looks_like_sha256_hex, looks_like_windows_absolute,
+    Extension, ExtensionManifest, ExtensionScope, ExtensionSource, looks_like_sha256_hex,
+    looks_like_windows_absolute,
 };
 
 const RULE_NAME_FORMAT: &str = "tool.name-format";
@@ -19,7 +19,6 @@ const RULE_SOURCE_SUPPORTED: &str = "tool.source-is-supported-uri";
 const RULE_PACKAGE_FORMAT: &str = "tool.package-request-format";
 const RULE_PACKAGE_NAMESPACE: &str = "tool.package-namespace-first-party";
 const RULE_PACKAGE_VERSION: &str = "tool.package-version-is-exact-semver";
-const RULE_PACKAGE_PERMISSIONS: &str = "tool.package-permissions-catalog";
 const RULE_SHA256_FORMAT: &str = "tool.sha256-format";
 const RULE_PERMISSION_PATH_FORM: &str = "tool.permission-path-form";
 const RULE_LIFECYCLE_WRITE_DENIED: &str = "tool.lifecycle-state-write-denied";
@@ -74,14 +73,6 @@ impl Extension {
             }
         });
 
-        let package_permissions_detail = package.and_then(|p| match first_party_permissions(p) {
-            None => Some(format!("`{}` has no embedded permission defaults", p.name_ref())),
-            Some(expected) if self.permissions == expected => None,
-            Some(_) => {
-                Some(format!("`{}` permissions do not match embedded defaults", p.name_ref()))
-            }
-        });
-
         let sha256_detail = self
             .sha256
             .as_deref()
@@ -119,11 +110,6 @@ impl Extension {
                 RULE_PACKAGE_VERSION,
                 "package sources include an exact SemVer version without a leading v",
                 package_version_detail,
-            ),
-            check(
-                RULE_PACKAGE_PERMISSIONS,
-                "first-party package tools have embedded permission defaults",
-                package_permissions_detail,
             ),
             check(
                 RULE_SHA256_FORMAT,

@@ -8,19 +8,10 @@
     "tools": {
       "type": "array",
       "uniqueItems": true,
-      "items": {
-        "oneOf": [
-          { "$ref": "#/$defs/packageRequest" },
-          { "$ref": "#/$defs/tool" }
-        ]
-      }
+      "items": { "$ref": "#/$defs/tool" }
     }
   },
   "$defs": {
-    "packageRequest": {
-      "type": "string",
-      "pattern": "^specify:[a-z][a-z0-9-]*@\\d+\\.\\d+\\.\\d+(-[A-Za-z0-9.-]+)?(\\+[A-Za-z0-9.-]+)?$"
-    },
     "tool": {
       "type": "object",
       "additionalProperties": false,

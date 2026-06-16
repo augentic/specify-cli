@@ -38,7 +38,7 @@ pub const DEFAULT_WASM_PKG_CONFIG: &str = "default_registry = \"augentic.io\"\n\
 
 /// One declared WASI tool.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(from = "ToolForm")]
+#[serde(from = "ToolObject")]
 pub struct Extension {
     /// Extension name used by `specify tool run <name>`.
     pub name: String,
@@ -195,13 +195,10 @@ impl TryFrom<String> for ExtensionSource {
     }
 }
 
-#[derive(Deserialize)]
-#[serde(untagged)]
-enum ToolForm {
-    Scalar(String),
-    Object(ToolObject),
-}
-
+/// The full object form of a declared tool. The scalar first-party
+/// shorthand (`specify:<name>@<ver>`) and its embedded permissions
+/// catalog are retired (RFC-48 D10): every declaration spells out its
+/// own `source` and `permissions`.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ToolObject {
@@ -214,34 +211,10 @@ struct ToolObject {
     permissions: ExtensionPermissions,
 }
 
-impl From<ToolForm> for Extension {
-    fn from(form: ToolForm) -> Self {
-        match form {
-            ToolForm::Scalar(value) => {
-                let package = PackageRequest::parse(&value);
-                let permissions = first_party_permissions(&package).unwrap_or_default();
-                Self {
-                    name: package.name.clone(),
-                    version: package.version.clone(),
-                    source: ExtensionSource::Package(package),
-                    sha256: None,
-                    permissions,
-                }
-            }
-            ToolForm::Object(ToolObject {
-                name,
-                version,
-                source,
-                sha256,
-                permissions,
-            }) => Self {
-                name,
-                version,
-                source,
-                sha256,
-                permissions,
-            },
-        }
+impl From<ToolObject> for Extension {
+    fn from(object: ToolObject) -> Self {
+        let ToolObject { name, version, source, sha256, permissions } = object;
+        Self { name, version, source, sha256, permissions }
     }
 }
 
@@ -264,25 +237,6 @@ impl ExtensionPermissions {
     #[must_use]
     pub const fn is_default(&self) -> bool {
         self.read.is_empty() && self.write.is_empty()
-    }
-}
-
-/// Return embedded permissions for first-party scalar package declarations.
-#[must_use]
-pub fn first_party_permissions(package: &PackageRequest) -> Option<ExtensionPermissions> {
-    if package.namespace != "specify" {
-        return None;
-    }
-    match package.name.as_str() {
-        "contract" => Some(ExtensionPermissions {
-            read: vec!["$PROJECT_DIR/contracts".to_string()],
-            write: Vec::new(),
-        }),
-        "vectis" => Some(ExtensionPermissions {
-            read: vec!["$PROJECT_DIR".to_string(), "$CAPABILITY_DIR".to_string()],
-            write: vec!["$PROJECT_DIR".to_string()],
-        }),
-        _ => None,
     }
 }
 
@@ -444,14 +398,28 @@ mod tests {
     }
 
     #[test]
-    fn scalar_package_derives_fields() {
-        let manifest: ExtensionManifest =
-            serde_saphyr::from_str("tools:\n  - \"specify:contract@1.2.3\"\n")
-                .expect("parse package manifest");
-        assert_eq!(manifest.tools.len(), 1);
+    fn scalar_package_form_rejected() {
+        // The first-party scalar shorthand and its embedded permissions
+        // catalog are retired (RFC-48 D10): a tool is always a full
+        // object spelling out its own `source` and `permissions`. A bare
+        // package string no longer deserializes.
+        serde_saphyr::from_str::<ExtensionManifest>("tools:\n  - \"specify:contract@1.2.3\"\n")
+            .expect_err("scalar first-party form must be rejected");
+        serde_saphyr::from_str::<ExtensionManifest>("tools:\n  - \"other:helper@latest\"\n")
+            .expect_err("scalar package form must be rejected");
+    }
+
+    #[test]
+    fn object_package_source_round_trips() {
+        // A package `source:` string inside the object form is still a
+        // valid `ExtensionSource::Package` — only the top-level scalar
+        // entry shorthand is gone.
+        let manifest: ExtensionManifest = serde_saphyr::from_str(
+            "tools:\n  - name: contract\n    version: 1.2.3\n    source: \"specify:contract@1.2.3\"\n",
+        )
+        .expect("parse object package manifest");
         let tool = &manifest.tools[0];
         assert_eq!(tool.name, "contract");
-        assert_eq!(tool.version, "1.2.3");
         assert!(matches!(
             &tool.source,
             ExtensionSource::Package(package)
@@ -459,26 +427,6 @@ mod tests {
                     && package.name == "contract"
                     && package.version == "1.2.3"
         ));
-        assert_eq!(
-            tool.permissions,
-            ExtensionPermissions {
-                read: vec!["$PROJECT_DIR/contracts".to_string()],
-                write: Vec::new(),
-            }
-        );
-
-        let yaml = serde_saphyr::to_string(&manifest).expect("serialize package manifest");
-        assert!(yaml.contains("specify:contract@1.2.3"), "{yaml}");
-    }
-
-    #[test]
-    fn unknown_package_keeps_empty_perms() {
-        let manifest: ExtensionManifest =
-            serde_saphyr::from_str("tools:\n  - \"other:helper@latest\"\n")
-                .expect("parse package manifest");
-        let tool = &manifest.tools[0];
-        assert_eq!(tool.name, "helper");
-        assert_eq!(tool.version, "latest");
         assert_eq!(tool.permissions, ExtensionPermissions::default());
     }
 
@@ -643,23 +591,4 @@ mod tests {
         assert!(!looks_like_windows_absolute("C"), "too short");
     }
 
-    // The first-party `specify:vectis` scalar must inherit the embedded
-    // read+write permission catalog; a regression here would silently
-    // grant a tool zero filesystem authority.
-    #[test]
-    fn scalar_vectis_embeds_permissions() {
-        let manifest: ExtensionManifest =
-            serde_saphyr::from_str("tools:\n  - \"specify:vectis@0.3.0\"\n")
-                .expect("parse vectis scalar");
-        let tool = &manifest.tools[0];
-        assert_eq!(tool.name, "vectis");
-        assert_eq!(tool.version, "0.3.0");
-        assert_eq!(
-            tool.permissions,
-            ExtensionPermissions {
-                read: vec!["$PROJECT_DIR".to_string(), "$CAPABILITY_DIR".to_string()],
-                write: vec!["$PROJECT_DIR".to_string()],
-            }
-        );
-    }
 }
