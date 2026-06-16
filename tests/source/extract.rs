@@ -42,7 +42,7 @@ fn stage_intent(project: &Project) {
     fs::write(
         adapter_dir.join("adapter.yaml"),
         "name: intent
-version: 1
+version: 1.0.0
 axis: source
 execution: agent
 briefs:
@@ -124,7 +124,7 @@ fn prepare_prints_envelope_emits_event() {
 
     let body = parse_stdout(&assert.get_output().stdout, project.root());
     assert_eq!(body["adapter"], "typescript");
-    assert_eq!(body["version"], 1);
+    assert_eq!(body["version"], "1.0.0");
     assert_eq!(body["execution"], "agent");
 
     // extract — unlike survey — carries evidence-dir.
@@ -237,7 +237,7 @@ fn slot_extract_resolves_after_sync() {
 projects:
   - name: peer
     url: ./peer
-    adapter: omnia@v1
+    adapter: omnia@1.0.0
 ",
     )
     .expect("write registry.yaml");

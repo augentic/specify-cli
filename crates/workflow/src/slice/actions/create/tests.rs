@@ -12,14 +12,14 @@ fn ts() -> Timestamp {
 fn seeds_metadata_and_specs() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let made =
-        create(tmp.path(), "my-slice", "omnia@v1", CreateIfExists::Fail, ts()).expect("create");
+        create(tmp.path(), "my-slice", "omnia@1.0.0", CreateIfExists::Fail, ts()).expect("create");
 
     assert!(made.created, "fresh dir is created");
     assert!(!made.restarted);
     assert!(made.dir.join("specs").is_dir(), "specs/ scaffolded");
     assert!(SliceMetadata::path(&made.dir).exists(), "metadata.yaml written");
     assert_eq!(made.metadata.status, LifecycleStatus::Refining);
-    assert_eq!(made.metadata.target, "omnia@v1");
+    assert_eq!(made.metadata.target, "omnia@1.0.0");
     assert_eq!(made.metadata.created_at, Some(ts()));
 
     let loaded = SliceMetadata::load(&made.dir).expect("reload");
@@ -29,7 +29,7 @@ fn seeds_metadata_and_specs() {
 #[test]
 fn invalid_name_rejected() {
     let tmp = tempfile::tempdir().expect("tempdir");
-    let err = create(tmp.path(), "Bad_Name", "omnia@v1", CreateIfExists::Fail, ts())
+    let err = create(tmp.path(), "Bad_Name", "omnia@1.0.0", CreateIfExists::Fail, ts())
         .expect_err("non-kebab name");
     assert!(
         matches!(
@@ -48,8 +48,8 @@ fn invalid_name_rejected() {
 fn duplicate_fails() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let _first =
-        create(tmp.path(), "dup", "omnia@v1", CreateIfExists::Fail, ts()).expect("first create");
-    let err = create(tmp.path(), "dup", "omnia@v1", CreateIfExists::Fail, ts())
+        create(tmp.path(), "dup", "omnia@1.0.0", CreateIfExists::Fail, ts()).expect("first create");
+    let err = create(tmp.path(), "dup", "omnia@1.0.0", CreateIfExists::Fail, ts())
         .expect_err("second create");
     assert!(
         matches!(
@@ -66,10 +66,10 @@ fn duplicate_fails() {
 #[test]
 fn continue_reuses_dir() {
     let tmp = tempfile::tempdir().expect("tempdir");
-    let _first =
-        create(tmp.path(), "keep", "omnia@v1", CreateIfExists::Fail, ts()).expect("first create");
-    let reused =
-        create(tmp.path(), "keep", "omnia@v1", CreateIfExists::Continue, ts()).expect("continue");
+    let _first = create(tmp.path(), "keep", "omnia@1.0.0", CreateIfExists::Fail, ts())
+        .expect("first create");
+    let reused = create(tmp.path(), "keep", "omnia@1.0.0", CreateIfExists::Continue, ts())
+        .expect("continue");
     assert!(!reused.created, "continue reuses, does not create");
     assert!(!reused.restarted);
 }
@@ -77,13 +77,13 @@ fn continue_reuses_dir() {
 #[test]
 fn restart_recreates_dir() {
     let tmp = tempfile::tempdir().expect("tempdir");
-    let first =
-        create(tmp.path(), "redo", "omnia@v1", CreateIfExists::Fail, ts()).expect("first create");
+    let first = create(tmp.path(), "redo", "omnia@1.0.0", CreateIfExists::Fail, ts())
+        .expect("first create");
     let marker = first.dir.join("specs").join("scratch.txt");
     std::fs::write(&marker, b"stale").expect("write marker");
 
     let again =
-        create(tmp.path(), "redo", "omnia@v1", CreateIfExists::Restart, ts()).expect("restart");
+        create(tmp.path(), "redo", "omnia@1.0.0", CreateIfExists::Restart, ts()).expect("restart");
     assert!(again.created);
     assert!(again.restarted, "restart replaces the directory");
     assert!(!marker.exists(), "restart wipes prior contents");

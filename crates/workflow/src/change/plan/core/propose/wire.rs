@@ -9,6 +9,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::super::model::{Disagreement, Divergence};
 use crate::registry::topology::{Decision, Surface};
 
 /// Closed `kind` discriminator for the reconciliation envelope.
@@ -61,7 +62,7 @@ pub struct ProjectRef {
     /// `plan.yaml.slices[].project`.
     pub name: String,
     /// The project's target adapter in `name@vN` form (e.g.
-    /// `omnia@v1`). Resolved on demand by [`super::resolve_target`] for a
+    /// `omnia@1.0.0`). Resolved on demand by [`super::resolve_target`] for a
     /// slice bound to this project; it is not written to
     /// `plan.yaml` (a slice stores only its `project`).
     pub target: String,
@@ -115,6 +116,12 @@ pub struct LeadCatalogEntry {
     /// and its salient constraint so a same-slug lead from another
     /// source can be matched or distinguished on content.
     pub synopsis: String,
+    /// Optional agent-authored topic slugs carried from the discovery
+    /// lead. Additional grouping context for the agent and the join key
+    /// for the decision-contradiction warning; the CLI computes no
+    /// grouping from them. Absent (empty) means unclassified.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub topics: Vec<String>,
 }
 
 /// `kind: response` envelope — the agent's slice grouping.
@@ -167,6 +174,20 @@ pub struct ResponseSlice {
     /// which case the kernel auto-binds it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project: Option<String>,
+    /// Agent-flagged slice-level divergence: `likely` when the matched
+    /// leads materially disagree. Absent means no divergence. The kernel
+    /// carries it onto `plan.yaml.slices[].divergence`; the operator
+    /// adjudicates `accepted` / `rejected` later via `specify plan amend
+    /// --divergence`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub divergence: Option<Divergence>,
+    /// The per-field disagreeing values backing a `divergence` flag.
+    /// Recommended non-empty (with ≥2 distinct source values each) when
+    /// `divergence` is `likely`; the CLI advises on structural
+    /// consistency but never decides materiality and never blocks. Empty
+    /// stays off the wire.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub disagreements: Vec<Disagreement>,
 }
 
 /// One matched catalog row referenced by a [`ResponseSlice`].

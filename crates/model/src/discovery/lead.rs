@@ -29,6 +29,13 @@ pub struct Lead {
     /// line. Plan-time headline material only — never slice-time
     /// `Evidence`.
     pub synopsis: String,
+    /// Optional agent-authored per-lead topic slugs (kebab-case).
+    /// Survey populates them as additional context; the CLI computes no
+    /// grouping from them — they are agent context and the join key for
+    /// the propose-time decision-contradiction warning. Absent (the
+    /// default) means unclassified and never blocks reconciliation.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub topics: Vec<String>,
 }
 
 #[cfg(test)]

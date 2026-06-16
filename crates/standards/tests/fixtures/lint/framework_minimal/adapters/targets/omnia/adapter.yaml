@@ -1,5 +1,5 @@
 name: omnia
-version: "2"
+version: "2.0.0"
 axis: target
 description: Minimal target adapter fixture.
 briefs:

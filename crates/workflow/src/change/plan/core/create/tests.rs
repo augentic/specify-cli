@@ -18,6 +18,7 @@ fn create_forces_pending() {
         context: vec![],
         description: None,
         divergence: None,
+        disagreements: Vec::new(),
         authority_override: SliceAuthorityOverride::default(),
     };
     plan.create(incoming).expect("create ok");
@@ -112,6 +113,7 @@ fn create_allows_omitted_project() {
         context: vec![],
         description: None,
         divergence: None,
+        disagreements: Vec::new(),
         authority_override: SliceAuthorityOverride::default(),
     };
     plan.create(entry).expect("create must accept an entry that omits project");
@@ -131,6 +133,7 @@ fn create_preserves_context() {
         context: vec!["contracts/http/foo.yaml".into()],
         description: None,
         divergence: None,
+        disagreements: Vec::new(),
         authority_override: SliceAuthorityOverride::default(),
     };
     plan.create(entry).expect("create ok");
@@ -153,6 +156,7 @@ fn create_rejects_bad_context() {
         context: vec!["../escape".into()],
         description: None,
         divergence: None,
+        disagreements: Vec::new(),
         authority_override: SliceAuthorityOverride::default(),
     };
     let err = plan.create(entry).expect_err("invalid context path must be rejected");

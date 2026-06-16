@@ -5,6 +5,7 @@ pub mod cli;
 mod create;
 mod entry;
 mod lifecycle;
+pub mod lock;
 mod propose;
 mod remove;
 
@@ -40,6 +41,11 @@ pub fn run(ctx: &Ctx, action: PlanAction) -> Result<()> {
             actor,
         } => lifecycle::transition(ctx, name, target, undo, &actor),
         PlanAction::Archive { force } => lifecycle::archive(ctx, force),
+        // `plan lock` is peeled off by the dispatcher (it passes the
+        // child's exit code through `Exit::Code`); this defensive arm
+        // keeps the match exhaustive and never collapses a real run to
+        // a misleading success.
+        PlanAction::Lock { command } => lock::run(ctx, &command).map(|_code| ()),
     }
 }
 

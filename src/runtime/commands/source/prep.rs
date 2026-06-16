@@ -20,7 +20,7 @@
 use std::path::{Path, PathBuf};
 
 use specify_error::{Error, Result};
-use specify_workflow::adapter::SourceAdapter;
+use specify_workflow::adapter::{AdapterRef, SourceAdapter};
 
 use crate::runtime::commands::BRIEFS_DIR;
 
@@ -153,6 +153,9 @@ impl SandboxLayout {
 pub struct PrepRequest<'a> {
     /// Kebab-case source-adapter name.
     pub adapter: &'a str,
+    /// Optional semver pin from the source bind (RFC-47 D2). `None`
+    /// resolves the single installed identity.
+    pub version: Option<semver::Version>,
     /// Project directory containing `adapters/` and `.specify/`.
     pub project_dir: &'a Path,
     /// Operation the prep targets — drives the `$SCRATCH_DIR` keying.
@@ -202,7 +205,11 @@ pub struct SourcePrep {
 /// `adapter-schema-violation`, …) and I/O failures from the `evidence/`
 /// directory create.
 pub fn prepare(request: &PrepRequest<'_>) -> Result<SourcePrep> {
-    let resolved = SourceAdapter::resolve(request.adapter, request.project_dir)?;
+    let adapter_ref = AdapterRef {
+        name: request.adapter.to_string(),
+        version: request.version.clone(),
+    };
+    let resolved = SourceAdapter::resolve(&adapter_ref, request.project_dir)?;
     let adapter_dir = resolved.location.path().clone();
     let briefs_dir = adapter_dir.join(BRIEFS_DIR);
 

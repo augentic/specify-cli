@@ -97,6 +97,7 @@ pub fn build_request(discovery: &Discovery, projects: &[ProjectRef]) -> Result<P
             source: lead.source.clone(),
             lead: lead.lead.clone(),
             synopsis: lead.synopsis.clone(),
+            topics: lead.topics.clone(),
         })
         .collect();
 

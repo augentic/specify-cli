@@ -56,6 +56,7 @@ pub(super) fn add(ctx: &Ctx, args: AddArgs) -> Result<()> {
         context,
         description,
         divergence: None,
+        disagreements: Vec::new(),
         authority_override: authority_override_map,
     };
     let plan_path = ctx.layout().plan_path();

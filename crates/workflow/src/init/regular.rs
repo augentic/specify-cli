@@ -11,7 +11,7 @@ use specify_error::Error;
 
 use crate::adapter::TargetAdapter;
 use crate::config::{Layout, ProjectConfig};
-use crate::init::adapter_uri::adapter_name_from_value;
+use crate::init::adapter_uri::adapter_ref_from_value;
 use crate::init::cache::{ManifestMeta, cache_adapter, cache_codex};
 use crate::init::{
     InitOptions, InitResult, resolve_version, resolved_name, scaffold_wasm_pkg_config,
@@ -61,8 +61,8 @@ pub(super) fn run(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, E
     // leaves `codex_present` false.
     let codex_present = cache_codex(opts.project_dir, &source, opts.include_framework, now)?;
     let adapter_value = source.adapter_value;
-    let adapter_name_in_value = adapter_name_from_value(&adapter_value).to_string();
-    let resolved = TargetAdapter::resolve(&adapter_name_in_value, opts.project_dir)?;
+    let adapter_ref = adapter_ref_from_value(&adapter_value);
+    let resolved = TargetAdapter::resolve(&adapter_ref, opts.project_dir)?;
     let adapter_name = resolved.manifest.name.clone();
     let validated_platforms =
         validate_platforms(opts.platforms, resolved.manifest.platforms.as_ref(), &adapter_name)?;

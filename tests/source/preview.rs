@@ -38,7 +38,7 @@ fn preview_succeeds_without_specify_dir() {
 
     let actual = parse_stdout(&assert.get_output().stdout, root);
     assert_eq!(actual["adapter"], "typescript");
-    assert_eq!(actual["version"], 1);
+    assert_eq!(actual["version"], "1.0.0");
 
     let briefs = actual["briefs"].as_array().expect("briefs array");
     assert_eq!(briefs.len(), 2);

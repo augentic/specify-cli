@@ -69,7 +69,7 @@ fn prepare_prints_envelope_emits_event() {
 
     let body = parse_stdout(&assert.get_output().stdout, project.root());
     assert_eq!(body["adapter"], "typescript");
-    assert_eq!(body["version"], 1);
+    assert_eq!(body["version"], "1.0.0");
     assert_eq!(body["execution"], "agent");
     assert!(
         body.get("evidence-dir").is_none(),

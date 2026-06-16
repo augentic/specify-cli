@@ -14,12 +14,12 @@ fn manifest(relative: &str, body: &str) -> DiscoveredFile {
 fn extracts_source_manifest() {
     let file = manifest(
         "adapters/sources/intent/adapter.yaml",
-        "name: intent\nversion: 1\naxis: source\n",
+        "name: intent\nversion: \"1.0.0\"\naxis: source\n",
     );
     let manifest = extract(&file).expect("manifest extracted");
     assert_eq!(manifest.axis, AdapterAxis::Sources);
     assert_eq!(manifest.name, "intent");
-    assert_eq!(manifest.version.as_deref(), Some("1"));
+    assert_eq!(manifest.version.as_deref(), Some("1.0.0"));
     assert!(manifest.brief_keys.is_empty());
 }
 
@@ -35,7 +35,7 @@ fn extracts_target_manifest_string_version() {
 fn extracts_briefs_keys_when_declared() {
     let file = manifest(
         "adapters/sources/intent/adapter.yaml",
-        "name: intent\nversion: 1\nbriefs:\n  survey: briefs/survey.md\n  extract: briefs/extract.md\n",
+        "name: intent\nversion: \"1.0.0\"\nbriefs:\n  survey: briefs/survey.md\n  extract: briefs/extract.md\n",
     );
     let manifest = extract(&file).expect("manifest extracted");
     assert_eq!(manifest.brief_keys, vec!["extract".to_string(), "survey".to_string()]);
@@ -43,7 +43,7 @@ fn extracts_briefs_keys_when_declared() {
 
 #[test]
 fn missing_briefs_leaves_keys_empty() {
-    let file = manifest("adapters/targets/omnia/adapter.yaml", "name: omnia\nversion: 1\n");
+    let file = manifest("adapters/targets/omnia/adapter.yaml", "name: omnia\nversion: \"1.0.0\"\n");
     let manifest = extract(&file).expect("manifest extracted");
     assert!(manifest.brief_keys.is_empty());
 }
@@ -52,7 +52,7 @@ fn missing_briefs_leaves_keys_empty() {
 fn extracts_well_formed_tools() {
     let file = manifest(
         "adapters/targets/vectis/adapter.yaml",
-        "name: vectis\nversion: 1\ntools:\n  - name: vectis\n    version: \"0.4.0\"\n",
+        "name: vectis\nversion: \"1.0.0\"\ntools:\n  - name: vectis\n    version: \"0.4.0\"\n",
     );
     let manifest = extract(&file).expect("manifest extracted");
     assert_eq!(manifest.tools.len(), 1);
@@ -64,7 +64,7 @@ fn extracts_well_formed_tools() {
 fn drops_malformed_tool_entries() {
     let file = manifest(
         "adapters/targets/vectis/adapter.yaml",
-        "name: vectis\nversion: 1\ntools:\n  - name: vectis\n  - just-a-string\n",
+        "name: vectis\nversion: \"1.0.0\"\ntools:\n  - name: vectis\n  - just-a-string\n",
     );
     let manifest = extract(&file).expect("manifest still extracted despite malformed tools");
     assert!(manifest.tools.is_empty(), "entries missing name/version are dropped");
@@ -72,7 +72,7 @@ fn drops_malformed_tool_entries() {
 
 #[test]
 fn missing_tools_leaves_list_empty() {
-    let file = manifest("adapters/targets/omnia/adapter.yaml", "name: omnia\nversion: 1\n");
+    let file = manifest("adapters/targets/omnia/adapter.yaml", "name: omnia\nversion: \"1.0.0\"\n");
     let manifest = extract(&file).expect("manifest extracted");
     assert!(manifest.tools.is_empty());
 }

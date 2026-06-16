@@ -24,7 +24,7 @@
     },
     "targetRef": {
       "type": "string",
-      "pattern": "^[a-z][a-z0-9-]*@v\\d+$"
+      "pattern": "^[a-z][a-z0-9-]*@\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$"
     },
     "decision": {
       "type": "object",
@@ -83,7 +83,7 @@
         },
         "target": {
           "$ref": "#/$defs/targetRef",
-          "description": "The project's target adapter in `name@vN` form, resolved from its `project.yaml.adapter`."
+          "description": "The project's target adapter in `name@<semver>` form, resolved from its `project.yaml.adapter`."
         },
         "description": {
           "type": "string",

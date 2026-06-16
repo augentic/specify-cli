@@ -231,7 +231,7 @@ fn paths_dimension_matches(
 }
 
 /// Strip the optional `@v<major>` suffix from an adapter reference so
-/// v1 matching compares bare names. `"omnia@v1"` becomes `"omnia"`;
+/// v1 matching compares bare names. `"omnia@1.0.0"` becomes `"omnia"`;
 /// `"omnia"` is returned unchanged.
 fn strip_version_suffix(adapter_ref: &str) -> &str {
     adapter_ref.split_once('@').map_or(adapter_ref, |(name, _)| name)

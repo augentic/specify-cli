@@ -17,7 +17,7 @@ use specify_diagnostics::{
 };
 use specify_error::{Error, Result};
 
-use super::model::{Entry, Plan, Status};
+use super::model::{Divergence, Entry, Plan, Status};
 use crate::registry::Registry;
 
 /// Build a plan-domain diagnostic on the neutral currency.
@@ -100,6 +100,7 @@ impl Plan {
         results.extend(check_single_in_progress(&self.entries));
         results.extend(check_context_paths(&self.entries));
         results.extend(orphan_authority_override_keys(&self.entries));
+        results.extend(check_divergence_consistency(&self.entries));
         if let Some(reg) = registry {
             results.extend(check_project_in_registry(&self.entries, reg));
             results.extend(check_project_binding_required(&self.entries, reg));
@@ -346,6 +347,61 @@ pub fn orphan_authority_override_keys(changes: &[Entry]) -> Vec<Diagnostic> {
                     Some(entry.name.to_string()),
                 ));
             }
+        }
+    }
+    out
+}
+
+/// Structural divergence consistency (RFC-46 D4). The agent owns the
+/// *materiality* judgment; the CLI only checks that the flag and the
+/// recorded values agree:
+///
+/// - a slice that flags a live divergence (`likely` / `accepted`) but
+///   records no adequate `disagreements[]` (non-empty, ≥2 distinct
+///   source values per field) is incomplete
+///   (`slice-divergence-unrecorded`);
+/// - a slice that records `disagreements[]` without a divergence flag is
+///   an orphan record (`slice-divergence-orphan-values`).
+///
+/// Both are advisory (`Suggestion`): `divergence` is operator-settable
+/// standalone via `specify plan amend --divergence` (a contract-locked,
+/// advisory-metadata-in-v1 surface), so neither finding may block that
+/// write. They surface the inconsistency at `plan validate` / Gate 1.
+/// `rejected` carries no obligation (the plan is to be re-proposed), so
+/// it triggers neither check.
+fn check_divergence_consistency(changes: &[Entry]) -> Vec<Diagnostic> {
+    let mut out = Vec::new();
+    for entry in changes {
+        let requires_values = entry.divergence.is_some_and(Divergence::requires_values);
+        let recorded = !entry.disagreements.is_empty();
+        let unflagged = matches!(entry.divergence, None | Some(Divergence::None));
+        if requires_values {
+            let adequate = recorded
+                && entry.disagreements.iter().all(|d| {
+                    d.values.iter().map(|v| v.source.as_str()).collect::<HashSet<_>>().len() >= 2
+                });
+            if !adequate {
+                out.push(plan_finding(
+                    "slice-divergence-unrecorded",
+                    Severity::Suggestion,
+                    format!(
+                        "slice '{}' flags divergence but records no disagreeing values \
+                         (each field needs ≥2 distinct source values)",
+                        entry.name
+                    ),
+                    Some(entry.name.to_string()),
+                ));
+            }
+        } else if unflagged && recorded {
+            out.push(plan_finding(
+                "slice-divergence-orphan-values",
+                Severity::Suggestion,
+                format!(
+                    "slice '{}' records disagreements but is not flagged 'divergence'",
+                    entry.name
+                ),
+                Some(entry.name.to_string()),
+            ));
         }
     }
     out

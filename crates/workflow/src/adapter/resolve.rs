@@ -10,20 +10,26 @@ use std::path::{Path, PathBuf};
 use specify_error::Error;
 
 use super::core::{
-    ADAPTER_FILENAME, AdapterLocation, Axis, ResolvedSourceAdapter, ResolvedTargetAdapter,
-    SourceAdapter, TargetAdapter, adapter_axis_dir, cache_dir, check_axis_and_name,
-    check_execution,
+    ADAPTER_FILENAME, AdapterLocation, AdapterRef, Axis, ResolvedSourceAdapter,
+    ResolvedTargetAdapter, SourceAdapter, TargetAdapter, adapter_axis_dir, cache_dir,
+    check_axis_and_name, check_execution, check_requested_version, check_requires_specify,
+    check_version,
 };
 use super::validate_manifest::{axis_collision_error, sibling_manifest_path, validate_schema};
 
 impl SourceAdapter {
-    /// Resolve a source adapter by kebab-case name.
+    /// Resolve a source adapter by its [`AdapterRef`] identity
+    /// (`(name, version)`).
     ///
     /// Probe order, per workflow §Resolver and cache:
     ///
     /// 1. `<project-cache>/manifests/sources/<name>/adapter.yaml`
     ///    (agent-populated out-of-tree manifest cache).
     /// 2. `<project_dir>/adapters/sources/<name>/adapter.yaml` (in-repo).
+    ///
+    /// The probe keys on `adapter_ref.name`; a `Some(_)` version pin is
+    /// matched against the installed manifest by equality after load
+    /// (RFC-47 D2).
     ///
     /// # Errors
     ///
@@ -36,26 +42,51 @@ impl SourceAdapter {
     /// - `adapter-axis-mismatch` — manifest's `axis:` does not match
     ///   [`Axis::Source`].
     /// - `adapter-name-mismatch` — manifest's `name:` does not match
-    ///   `name`.
+    ///   `adapter_ref.name`.
     /// - `adapter-schema-violation` — manifest fails the source-axis
     ///   JSON Schema.
-    pub fn resolve(name: &str, project_dir: &Path) -> Result<ResolvedSourceAdapter, Error> {
+    /// - `adapter-version-malformed` — manifest `version` is not semver.
+    /// - `adapter-version-required` — a version pin does not match the
+    ///   installed identity.
+    /// - `adapter-cli-too-old` — the running binary is older than the
+    ///   adapter's declared `specify` floor (RFC-47 D3, exit 3).
+    pub fn resolve(
+        adapter_ref: &AdapterRef, project_dir: &Path,
+    ) -> Result<ResolvedSourceAdapter, Error> {
+        let name = adapter_ref.name.as_str();
         let (manifest, location, manifest_path) =
             resolve_typed::<Self>(Axis::Source, name, project_dir)?;
         check_axis_and_name(Axis::Source, name, manifest.axis, &manifest.name, &manifest_path)?;
         check_execution(manifest.execution, &manifest_path)?;
+        check_requested_version(
+            adapter_ref.version.as_ref(),
+            name,
+            &manifest.version,
+            &manifest_path,
+        )?;
+        check_requires_specify(
+            manifest.requires_specify.as_ref(),
+            env!("CARGO_PKG_VERSION"),
+            name,
+            &manifest_path,
+        )?;
         Ok(ResolvedSourceAdapter { manifest, location })
     }
 }
 
 impl TargetAdapter {
-    /// Resolve a target adapter by kebab-case name.
+    /// Resolve a target adapter by its [`AdapterRef`] identity
+    /// (`(name, version)`).
     ///
     /// Probe order, per workflow §Resolver and cache:
     ///
     /// 1. `<project-cache>/manifests/targets/<name>/adapter.yaml`
     ///    (agent-populated out-of-tree manifest cache).
     /// 2. `<project_dir>/adapters/targets/<name>/adapter.yaml` (in-repo).
+    ///
+    /// The probe keys on `adapter_ref.name`; a `Some(_)` version pin is
+    /// matched against the installed manifest by equality after load
+    /// (RFC-47 D2).
     ///
     /// # Errors
     ///
@@ -68,14 +99,34 @@ impl TargetAdapter {
     /// - `adapter-axis-mismatch` — manifest's `axis:` does not match
     ///   [`Axis::Target`].
     /// - `adapter-name-mismatch` — manifest's `name:` does not match
-    ///   `name`.
+    ///   `adapter_ref.name`.
     /// - `adapter-schema-violation` — manifest fails the target-axis
     ///   JSON Schema.
-    pub fn resolve(name: &str, project_dir: &Path) -> Result<ResolvedTargetAdapter, Error> {
+    /// - `adapter-version-malformed` — manifest `version` is not semver.
+    /// - `adapter-version-required` — a version pin does not match the
+    ///   installed identity.
+    /// - `adapter-cli-too-old` — the running binary is older than the
+    ///   adapter's declared `specify` floor (RFC-47 D3, exit 3).
+    pub fn resolve(
+        adapter_ref: &AdapterRef, project_dir: &Path,
+    ) -> Result<ResolvedTargetAdapter, Error> {
+        let name = adapter_ref.name.as_str();
         let (manifest, location, manifest_path) =
             resolve_typed::<Self>(Axis::Target, name, project_dir)?;
         check_axis_and_name(Axis::Target, name, manifest.axis, &manifest.name, &manifest_path)?;
         check_execution(manifest.execution, &manifest_path)?;
+        check_requested_version(
+            adapter_ref.version.as_ref(),
+            name,
+            &manifest.version,
+            &manifest_path,
+        )?;
+        check_requires_specify(
+            manifest.requires_specify.as_ref(),
+            env!("CARGO_PKG_VERSION"),
+            name,
+            &manifest_path,
+        )?;
         Ok(ResolvedTargetAdapter { manifest, location })
     }
 }
@@ -132,6 +183,7 @@ fn load_validated(
         detail: format!("failed to parse {}: {err}", manifest_path.display()),
     })?;
     validate_schema(axis, &manifest_path, &raw_value)?;
+    check_version(&raw_value, &manifest_path)?;
 
     Ok((location, manifest_path, raw_value))
 }

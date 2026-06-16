@@ -26,7 +26,7 @@ use crate::Platform;
 use crate::adapter::{PlatformsViolation, TargetAdapter};
 use crate::change::plan_finding;
 use crate::config::ProjectConfig;
-use crate::init::adapter_name_from_value;
+use crate::init::adapter_ref_from_value;
 use crate::registry::Registry;
 
 /// Current `topology.lock` schema version.
@@ -96,6 +96,11 @@ pub struct Decision {
     pub id: String,
     /// The record's H1 heading text.
     pub title: String,
+    /// Topic slugs this decision governs (RFC-46 D3), projected from the
+    /// record's `topics:` front-matter. The plan-time join key against
+    /// surveyed lead `topics[]`. Empty stays off the wire.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub topics: Vec<String>,
 }
 
 /// One baseline domain's projected surface.
@@ -222,8 +227,8 @@ impl TopologyProject {
                 format!("workspace slot `{registry_name}` project.yaml omits the `adapter` field"),
             )
         })?;
-        let resolved = TargetAdapter::resolve(adapter_name_from_value(adapter_value), slot_dir)?;
-        let target = format!("{}@v{}", resolved.manifest.name, resolved.manifest.version);
+        let resolved = TargetAdapter::resolve(&adapter_ref_from_value(adapter_value), slot_dir)?;
+        let target = format!("{}@{}", resolved.manifest.name, resolved.manifest.version);
 
         validate_topology_platforms(
             registry_name,

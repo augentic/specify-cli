@@ -410,7 +410,7 @@ fn init_rejects_cross_axis_name_collision() {
     fs::write(
         source_root.join("adapter.yaml"),
         r"name: omnia
-version: 1
+version: 1.0.0
 axis: source
 briefs:
   survey: briefs/survey.md
@@ -520,7 +520,7 @@ fn init_platforms_not_allowed_fails() {
     fs::create_dir_all(target_dir.join("briefs")).unwrap();
     fs::write(
         target_dir.join("adapter.yaml"),
-        "name: adapter-limited\nversion: 1\naxis: target\nexecution: agent\nbriefs:\n  shape: briefs/shape.md\n  build: briefs/build.md\n  merge: briefs/merge.md\ndescription: Stub adapter with limited platforms\nplatforms:\n  required: true\n  allowed: [core, ios]\n  default: [core, ios]\n",
+        "name: adapter-limited\nversion: 1.0.0\naxis: target\nexecution: agent\nbriefs:\n  shape: briefs/shape.md\n  build: briefs/build.md\n  merge: briefs/merge.md\ndescription: Stub adapter with limited platforms\nplatforms:\n  required: true\n  allowed: [core, ios]\n  default: [core, ios]\n",
     ).unwrap();
     for brief in ["shape.md", "build.md", "merge.md"] {
         fs::write(target_dir.join("briefs").join(brief), "# Stub\n").unwrap();

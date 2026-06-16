@@ -26,7 +26,7 @@ pub struct Input {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Adapter {
     pub name: String,
-    pub version: u32,
+    pub version: semver::Version,
     pub description: String,
     pub briefs: Vec<Brief>,
 }
@@ -145,7 +145,7 @@ fn conventions_bullets(input: &Input) -> Vec<String> {
     }
     if let Some(adapter) = &input.adapter {
         bullets.push(format!(
-            "adapter `{}` v{}: {}.",
+            "adapter `{}` {}: {}.",
             one_line(&adapter.name),
             adapter.version,
             one_line(&adapter.description)
@@ -243,7 +243,7 @@ mod tests {
             description: Some("Rust services".to_string()),
             adapter: Some(Adapter {
                 name: "omnia".to_string(),
-                version: 1,
+                version: semver::Version::new(1, 0, 0),
                 description: "Omnia Rust WASM workflow".to_string(),
                 briefs: vec![
                     Brief {
@@ -315,21 +315,21 @@ mod tests {
         input.dependencies = vec![
             Dep {
                 name: "zeta".to_string(),
-                adapter: "omnia@v1".to_string(),
+                adapter: "omnia@1.0.0".to_string(),
                 url: "../zeta".to_string(),
                 description: None,
             },
             Dep {
                 name: "alpha".to_string(),
-                adapter: "omnia@v1".to_string(),
+                adapter: "omnia@1.0.0".to_string(),
                 url: "../alpha".to_string(),
                 description: None,
             },
         ];
 
         let rendered = render_body(&input);
-        let alpha = rendered.find("`alpha` @ `omnia@v1`").expect("alpha dependency rendered");
-        let zeta = rendered.find("`zeta` @ `omnia@v1`").expect("zeta dependency rendered");
+        let alpha = rendered.find("`alpha` @ `omnia@1.0.0`").expect("alpha dependency rendered");
+        let zeta = rendered.find("`zeta` @ `omnia@1.0.0`").expect("zeta dependency rendered");
 
         assert!(alpha < zeta, "dependencies must render in sorted order:\n{rendered}");
     }
@@ -339,7 +339,7 @@ mod tests {
         let mut input = regular_input();
         input.dependencies = vec![Dep {
             name: "alpha".to_string(),
-            adapter: "omnia@v1".to_string(),
+            adapter: "omnia@1.0.0".to_string(),
             url: "../alpha".to_string(),
             description: Some("Alpha service".to_string()),
         }];
@@ -347,7 +347,7 @@ mod tests {
         let rendered = render_body(&input);
 
         assert!(
-            rendered.contains("`alpha` @ `omnia@v1` -> `../alpha`. Description: Alpha service."),
+            rendered.contains("`alpha` @ `omnia@1.0.0` -> `../alpha`. Description: Alpha service."),
             "dependency description must render when present:\n{rendered}"
         );
     }

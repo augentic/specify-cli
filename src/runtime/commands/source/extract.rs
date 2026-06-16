@@ -51,7 +51,7 @@ use crate::runtime::context::Ctx;
 #[serde(rename_all = "kebab-case")]
 struct ExtractHandoff {
     adapter: String,
-    version: u32,
+    version: semver::Version,
     briefs_dir: PathBuf,
     /// `$SOURCE_DIR` — present for path bindings, absent for
     /// value-bound sources.
@@ -110,6 +110,7 @@ pub fn run(ctx: &Ctx, source: &str, lead: &str, slice: &str, phase: Phase) -> Re
     let leads = [lead.to_string()];
     let prepared = prep::prepare(&prep::PrepRequest {
         adapter: &binding.adapter,
+        version: binding.version.clone(),
         project_dir: &ctx.project_dir,
         op: prep::SourceOp::Extract {
             slice: slice.to_string(),
@@ -160,7 +161,7 @@ impl<'a> op::Flow<'a> for ExtractFlow<'a> {
         );
         Ok(ExtractHandoff {
             adapter: c.prepared.manifest.name.clone(),
-            version: c.prepared.manifest.version,
+            version: c.prepared.manifest.version.clone(),
             briefs_dir: c.prepared.briefs_dir.clone(),
             source_dir,
             value_inline,
@@ -218,7 +219,7 @@ fn evidence_dir(prepared: &prep::SourcePrep) -> Result<PathBuf> {
 }
 
 fn write_handoff_text(w: &mut dyn Write, body: &ExtractHandoff) -> std::io::Result<()> {
-    writeln!(w, "adapter: {} v{}", body.adapter, body.version)?;
+    writeln!(w, "adapter: {} {}", body.adapter, body.version)?;
     writeln!(w, "execution: {}", body.execution)?;
     writeln!(w, "briefs-dir: {}", body.briefs_dir.display())?;
     if let Some(source_dir) = &body.source_dir {

@@ -1,6 +1,7 @@
 use serde_json::json;
 
 use super::*;
+use crate::registry::Surface;
 use crate::slice::synthesis::authority::Agreement;
 
 /// The synthesis-response worked example — the agent's
@@ -107,12 +108,23 @@ fn build_inputs_carries_lead_and_claims() {
         })],
     };
 
-    let inputs = build_synthesis_inputs("identity-service", &[docs, legacy], "# Shape brief\nbody");
+    let baseline = vec![Surface {
+        domain: "identity".to_string(),
+        requirements: vec!["User registration".to_string()],
+        more: None,
+    }];
+    let inputs = build_synthesis_inputs(
+        "identity-service",
+        &[docs, legacy],
+        "# Shape brief\nbody",
+        &baseline,
+    );
 
     assert_eq!(inputs.version, SYNTHESIS_VERSION);
     assert_eq!(inputs.kind, SynthesisInputsKind::Inputs);
     assert_eq!(inputs.slice, "identity-service");
     assert_eq!(inputs.shape_brief, "# Shape brief\nbody");
+    assert_eq!(inputs.baseline, baseline);
 
     assert_eq!(inputs.sources.len(), 2);
     let docs = &inputs.sources[0];

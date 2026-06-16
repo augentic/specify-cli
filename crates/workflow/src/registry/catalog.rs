@@ -57,6 +57,28 @@ pub struct RegistryProject {
     /// Optional contract role declarations for this project.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub contracts: Option<ContractRoles>,
+    /// RFC-46 D6 — optional greenfield identity seed. Carries the
+    /// project's intended domain slugs so a fresh project with no
+    /// baseline (`.specify/specs/` absent) still routes leads at plan
+    /// time — the greenfield analog of the projected `surface[]` domain
+    /// list. The seed projects into an empty `ProjectRef.surface[]` and
+    /// is ignored once a real baseline exists. Carries domain slugs
+    /// only; adapter/description material lives in `project.yaml`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub greenfield_seed: Option<GreenfieldSeed>,
+}
+
+/// RFC-46 D6 greenfield identity seed — see
+/// [`RegistryProject::greenfield_seed`].
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct GreenfieldSeed {
+    /// Intended domain slugs (kebab-case), validated by
+    /// [`Registry::validate_shape`]. Each projects into a `surface[]`
+    /// entry with empty `requirements[]` until the real baseline
+    /// supersedes it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub domains: Vec<String>,
 }
 
 /// Contract role declarations for a registry project.

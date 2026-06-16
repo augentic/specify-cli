@@ -1,5 +1,5 @@
 name: omnia
-version: 1
+version: "1.0.0"
 axis: target
 execution: agent
 briefs:

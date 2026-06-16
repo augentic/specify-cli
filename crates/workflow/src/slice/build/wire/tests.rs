@@ -23,7 +23,7 @@ fn report(status: &str, findings: &[Value]) -> BuildReport {
     serde_json::from_value(json!({
         "version": 1,
         "slice": "identity-service",
-        "target": "omnia@v1",
+        "target": "omnia@1.0.0",
         "status": status,
         "findings": findings,
     }))
@@ -34,7 +34,7 @@ fn report_with_outputs(status: &str, outputs: &[Value]) -> BuildReport {
     serde_json::from_value(json!({
         "version": 1,
         "slice": "identity-service",
-        "target": "vectis@v1",
+        "target": "vectis@1.0.0",
         "status": status,
         "findings": [],
         "outputs": outputs,
@@ -47,7 +47,7 @@ fn report_with_ui_surface(screens: u32) -> BuildReport {
     serde_json::from_value(json!({
         "version": 1,
         "slice": "identity-service",
-        "target": "vectis@v1",
+        "target": "vectis@1.0.0",
         "status": "success",
         "findings": [],
         "ui-surface": { "screens": screens },
@@ -197,7 +197,7 @@ fn report_rejects_unknown_field() {
     let bogus = json!({
         "version": 1,
         "slice": "identity-service",
-        "target": "omnia@v1",
+        "target": "omnia@1.0.0",
         "status": "success",
         "findings": [],
         "stray": true

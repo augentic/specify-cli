@@ -79,6 +79,7 @@ fn serializes_kebab_case() {
             context: vec![],
             description: None,
             divergence: None,
+            disagreements: Vec::new(),
             authority_override: SliceAuthorityOverride::default(),
         }],
     };
@@ -228,6 +229,45 @@ fn binding_normalises_shorthand() {
 }
 
 #[test]
+fn source_binding_version_round_trips() {
+    // RFC-47 D2: a `sources.<key>.version` semver pin survives a
+    // parse → serialize → reparse round-trip, while a binding that
+    // omits `version` stays `None` (existing plans parse unchanged).
+    let yaml = r"name: pinned
+sources:
+  pinned-src:
+    adapter: typescript
+    version: 2.3.1
+    path: /repo
+  bare-src:
+    adapter: intent
+    value: do the thing
+slices: []
+";
+    let plan: Plan = serde_saphyr::from_str(yaml).expect("parse");
+    assert_eq!(plan.sources["pinned-src"].version, Some(semver::Version::new(2, 3, 1)));
+    assert_eq!(plan.sources["bare-src"].version, None, "an omitted version stays None");
+
+    let rendered = serde_saphyr::to_string(&plan).expect("serialize");
+    let reparsed: Plan = serde_saphyr::from_str(&rendered).expect("reparse");
+    assert_eq!(plan, reparsed, "the optional version pin must survive a round-trip");
+    assert_eq!(
+        rendered.matches("version:").count(),
+        1,
+        "only the pinned binding emits a `version:` key, got:\n{rendered}"
+    );
+}
+
+#[test]
+fn target_ref_parses_semver() {
+    // RFC-47 D1: a `name@<semver>` target parses and renders verbatim;
+    // the legacy `name@vN` git-ref form is no longer a valid target.
+    let parsed = TargetRef::parse("omnia@1.0.0").expect("semver target parses");
+    assert_eq!(parsed.to_string(), "omnia@1.0.0");
+    TargetRef::parse("omnia@v1").expect_err("the legacy @vN form must be rejected");
+}
+
+#[test]
 fn is_drained_only_when_all_done() {
     let plan = Plan {
         name: "demo".into(),
@@ -243,6 +283,7 @@ fn is_drained_only_when_all_done() {
                 context: vec![],
                 description: None,
                 divergence: None,
+                disagreements: Vec::new(),
                 authority_override: SliceAuthorityOverride::default(),
             },
             Entry {
@@ -254,6 +295,7 @@ fn is_drained_only_when_all_done() {
                 context: vec![],
                 description: None,
                 divergence: None,
+                disagreements: Vec::new(),
                 authority_override: SliceAuthorityOverride::default(),
             },
         ],
@@ -278,6 +320,7 @@ fn is_executing_when_any_in_progress() {
                 context: vec![],
                 description: None,
                 divergence: None,
+                disagreements: Vec::new(),
                 authority_override: SliceAuthorityOverride::default(),
             },
             Entry {
@@ -289,6 +332,7 @@ fn is_executing_when_any_in_progress() {
                 context: vec![],
                 description: None,
                 divergence: None,
+                disagreements: Vec::new(),
                 authority_override: SliceAuthorityOverride::default(),
             },
         ],

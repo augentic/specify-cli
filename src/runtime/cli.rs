@@ -62,8 +62,10 @@ pub enum Commands {
     /// standard parse-error diagnostic when the invariant is violated.
     Init {
         /// Adapter identifier. First-party shorthand (`omnia`,
-        /// `omnia@v1` — ref defaults to `v1`) resolves to the published
-        /// adapter on GitHub. Also accepts a local path
+        /// `omnia@1.0.0` — bare name resolves the single installed
+        /// identity, a semver pin records the full `name@<semver>`)
+        /// resolves to the published adapter on GitHub. Also accepts a
+        /// local path
         /// (`./adapters/targets/omnia`, `file://…`) or a full
         /// `https://github.com/<owner>/<repo>/adapters/targets/<name>`
         /// URL. Required unless `--workspace` or `--upgrade` is set;

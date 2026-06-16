@@ -38,7 +38,7 @@ use crate::runtime::context::Ctx;
 #[serde(rename_all = "kebab-case")]
 struct SurveyHandoff {
     adapter: String,
-    version: u32,
+    version: semver::Version,
     briefs_dir: PathBuf,
     /// `$SOURCE_DIR` — absent for value-bound sources (e.g. `intent`).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -86,6 +86,7 @@ pub fn run(ctx: &Ctx, source: &str, plan_name: Option<&str>, phase: Phase) -> Re
 
     let prepared = prep::prepare(&prep::PrepRequest {
         adapter: &binding.adapter,
+        version: binding.version.clone(),
         project_dir: &ctx.project_dir,
         op: prep::SourceOp::Survey,
         source: source_path.as_deref(),
@@ -126,7 +127,7 @@ impl<'a> op::Flow<'a> for SurveyFlow<'a> {
         let c = &self.common;
         Ok(SurveyHandoff {
             adapter: c.prepared.manifest.name.clone(),
-            version: c.prepared.manifest.version,
+            version: c.prepared.manifest.version.clone(),
             briefs_dir: c.prepared.briefs_dir.clone(),
             source_dir: c.source_path.map(Path::to_path_buf),
             scratch_dir: scratch,
@@ -231,7 +232,7 @@ fn load_plan(ctx: &Ctx, plan_name: Option<&str>) -> Result<Plan> {
 }
 
 fn write_handoff_text(w: &mut dyn Write, body: &SurveyHandoff) -> std::io::Result<()> {
-    writeln!(w, "adapter: {} v{}", body.adapter, body.version)?;
+    writeln!(w, "adapter: {} {}", body.adapter, body.version)?;
     writeln!(w, "execution: {}", body.execution)?;
     writeln!(w, "briefs-dir: {}", body.briefs_dir.display())?;
     if let Some(source_dir) = &body.source_dir {

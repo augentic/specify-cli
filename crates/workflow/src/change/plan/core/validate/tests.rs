@@ -5,7 +5,8 @@ use specify_model::evidence::ClaimKind;
 use tempfile::tempdir;
 
 use super::super::model::{
-    Plan, SliceAuthorityOverride, SliceSourceBinding, SourceBinding, Status,
+    Disagreement, DisagreementValue, Divergence, Plan, SliceAuthorityOverride, SliceSourceBinding,
+    SourceBinding, Status,
 };
 use super::super::{PLAN_EXAMPLE_YAML, change, plan_with_changes};
 use crate::change::{CYCLE, detect};
@@ -34,6 +35,71 @@ fn duplicate_name_error() {
     assert_eq!(dupes.len(), 1, "expected one duplicate-name result, got {results:#?}");
     assert_eq!(dupes[0].severity, Severity::Important);
     assert_eq!(dupes[0].slice.as_deref(), Some("foo"));
+}
+
+fn disagreement(field: &str, values: &[(&str, &str)]) -> Disagreement {
+    Disagreement {
+        field: field.to_string(),
+        values: values
+            .iter()
+            .map(|(source, value)| DisagreementValue {
+                source: (*source).to_string(),
+                value: (*value).to_string(),
+            })
+            .collect(),
+    }
+}
+
+#[test]
+fn divergence_flag_no_values_advisory() {
+    let mut a = change("a", Status::Pending);
+    a.divergence = Some(Divergence::Likely);
+    let plan = plan_with_changes(vec![a]);
+    let results = plan.validate(None, None);
+    let hits: Vec<_> =
+        results.iter().filter(|r| has_code(r, "slice-divergence-unrecorded")).collect();
+    assert_eq!(hits.len(), 1, "got {results:#?}");
+    assert_eq!(hits[0].severity, Severity::Suggestion);
+    assert!(!blocking(hits[0]), "divergence is operator-settable standalone; must not block");
+}
+
+#[test]
+fn divergence_single_source_flagged() {
+    let mut a = change("a", Status::Pending);
+    a.divergence = Some(Divergence::Likely);
+    a.disagreements = vec![disagreement("min-length", &[("docs", "8")])];
+    let plan = plan_with_changes(vec![a]);
+    let results = plan.validate(None, None);
+    assert!(
+        results.iter().any(|r| has_code(r, "slice-divergence-unrecorded")),
+        "a single source value is not a disagreement: {results:#?}"
+    );
+}
+
+#[test]
+fn divergence_two_sources_clean() {
+    let mut a = change("a", Status::Pending);
+    a.divergence = Some(Divergence::Likely);
+    a.disagreements = vec![disagreement("min-length", &[("docs", "8"), ("legacy", "12")])];
+    let plan = plan_with_changes(vec![a]);
+    let results = plan.validate(None, None);
+    assert!(
+        !results.iter().any(|r| has_code(r, "slice-divergence-unrecorded")),
+        "a two-source disagreement is consistent: {results:#?}"
+    );
+}
+
+#[test]
+fn disagreements_without_flag_is_advisory() {
+    let mut a = change("a", Status::Pending);
+    a.disagreements = vec![disagreement("min-length", &[("docs", "8"), ("legacy", "12")])];
+    let plan = plan_with_changes(vec![a]);
+    let results = plan.validate(None, None);
+    let hits: Vec<_> =
+        results.iter().filter(|r| has_code(r, "slice-divergence-orphan-values")).collect();
+    assert_eq!(hits.len(), 1, "got {results:#?}");
+    assert_eq!(hits[0].severity, Severity::Suggestion);
+    assert!(!blocking(hits[0]), "orphan values are advisory, not blocking");
 }
 
 #[test]
@@ -231,9 +297,10 @@ fn project_not_in_registry() {
         projects: vec![RegistryProject {
             name: "real-project".to_string(),
             url: ".".to_string(),
-            adapter: Some("omnia@v1".to_string()),
+            adapter: Some("omnia@1.0.0".to_string()),
             description: None,
             contracts: None,
+            greenfield_seed: None,
         }],
     };
     let results = plan.validate(None, Some(&registry));
@@ -251,16 +318,18 @@ fn project_matches_registry() {
             RegistryProject {
                 name: "alpha".to_string(),
                 url: ".".to_string(),
-                adapter: Some("omnia@v1".to_string()),
+                adapter: Some("omnia@1.0.0".to_string()),
                 description: Some("Alpha".to_string()),
                 contracts: None,
+                greenfield_seed: None,
             },
             RegistryProject {
                 name: "beta".to_string(),
                 url: "git@github.com:org/beta.git".to_string(),
-                adapter: Some("omnia@v1".to_string()),
+                adapter: Some("omnia@1.0.0".to_string()),
                 description: Some("Beta".to_string()),
                 contracts: None,
+                greenfield_seed: None,
             },
         ],
     };
@@ -294,16 +363,18 @@ fn omitted_project_flagged_multi() {
             RegistryProject {
                 name: "alpha".to_string(),
                 url: ".".to_string(),
-                adapter: Some("omnia@v1".to_string()),
+                adapter: Some("omnia@1.0.0".to_string()),
                 description: None,
                 contracts: None,
+                greenfield_seed: None,
             },
             RegistryProject {
                 name: "beta".to_string(),
                 url: "git@github.com:org/beta.git".to_string(),
-                adapter: Some("contracts@v1".to_string()),
+                adapter: Some("contracts@1.0.0".to_string()),
                 description: None,
                 contracts: None,
+                greenfield_seed: None,
             },
         ],
     };
@@ -326,9 +397,10 @@ fn omitted_project_ok_single() {
         projects: vec![RegistryProject {
             name: "only".to_string(),
             url: ".".to_string(),
-            adapter: Some("omnia@v1".to_string()),
+            adapter: Some("omnia@1.0.0".to_string()),
             description: None,
             contracts: None,
+            greenfield_seed: None,
         }],
     };
     let results = plan.validate(None, Some(&registry));

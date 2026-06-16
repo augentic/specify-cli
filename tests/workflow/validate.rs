@@ -206,7 +206,7 @@ fn validate_reports_all_health_diagnostics() {
              projects:\n\
              \x20\x20- name: alpha\n\
              \x20\x20\x20\x20url: git@github.com:org/alpha.git\n\
-             \x20\x20\x20\x20adapter: omnia@v1\n",
+             \x20\x20\x20\x20adapter: omnia@1.0.0\n",
     )
     .unwrap();
     let slot = tmp.path().join("workspace/alpha");
@@ -285,7 +285,7 @@ fn validate_reports_topology_cache_stale() {
     fs::create_dir_all(&slot_specify).unwrap();
     fs::write(
         slot_specify.join("project.yaml"),
-        "name: alpha\nadapter: omnia@v1\ndescription: Fresh description\n",
+        "name: alpha\nadapter: omnia@1.0.0\ndescription: Fresh description\n",
     )
     .unwrap();
     copy_dir(
@@ -298,7 +298,7 @@ fn validate_reports_topology_cache_stale() {
         "version: 1\n\
              projects:\n\
              \x20\x20- name: alpha\n\
-             \x20\x20\x20\x20target: omnia@v1\n\
+             \x20\x20\x20\x20target: omnia@1.0.0\n\
              \x20\x20\x20\x20description: Stale description\n",
     )
     .unwrap();

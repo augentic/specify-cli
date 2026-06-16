@@ -15,7 +15,7 @@ use specify_vectis_shell_detect::missing_shell_platforms;
 use crate::Platform;
 use crate::adapter::TargetAdapter;
 use crate::config::ProjectConfig;
-use crate::init::adapter_name_from_value;
+use crate::init::adapter_ref_from_value;
 
 const VECTIS_ADAPTER: &str = "vectis";
 
@@ -54,7 +54,7 @@ fn is_vectis_bound(project_dir: &Path) -> Result<bool, Error> {
     let Some(adapter_value) = config.adapter.as_deref() else {
         return Ok(false);
     };
-    let name = adapter_name_from_value(adapter_value);
-    let resolved = TargetAdapter::resolve(name, project_dir)?;
+    let adapter_ref = adapter_ref_from_value(adapter_value);
+    let resolved = TargetAdapter::resolve(&adapter_ref, project_dir)?;
     Ok(resolved.manifest.name == VECTIS_ADAPTER)
 }

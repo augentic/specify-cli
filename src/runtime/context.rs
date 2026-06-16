@@ -6,7 +6,7 @@ use serde::Serialize;
 use specify_error::Error;
 use specify_workflow::adapter::{ResolvedTargetAdapter, TargetAdapter};
 use specify_workflow::config::{Layout, ProjectConfig};
-use specify_workflow::init::adapter_name_from_value;
+use specify_workflow::init::adapter_ref_from_value;
 
 use crate::output::Format;
 use crate::runtime::output;
@@ -71,8 +71,8 @@ impl Ctx {
                     .to_string(),
             });
         };
-        let name = adapter_name_from_value(adapter_value);
-        TargetAdapter::resolve(name, &self.project_dir)
+        let adapter_ref = adapter_ref_from_value(adapter_value);
+        TargetAdapter::resolve(&adapter_ref, &self.project_dir)
     }
 
     /// Typed view over `.specify/`-anchored paths. Hand this to

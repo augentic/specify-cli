@@ -34,7 +34,15 @@ pub fn build_source_map(sources: Vec<SourceArg>) -> Result<BTreeMap<String, Sour
                 detail: format!("duplicate key `{key}` in --source arguments"),
             });
         }
-        map.insert(key, SourceBinding { adapter, path, value });
+        map.insert(
+            key,
+            SourceBinding {
+                adapter,
+                version: None,
+                path,
+                value,
+            },
+        );
     }
     Ok(map)
 }

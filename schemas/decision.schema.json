@@ -28,6 +28,12 @@
       "items": { "$ref": "#/$defs/reqRef" },
       "description": "Optional traceability into this slice's requirements (`REQ-NNN`)."
     },
+    "topics": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/slug" },
+      "description": "Optional kebab-case topic slugs naming the domains this decision governs. RFC-46 D3 join key: plan-time `propose` matches them against surveyed lead `topics[]` and surfaces an advisory `lead-decision-topic-overlap` (review) when a lead's topic is governed by an existing decision. Absent (the default) means the decision participates in no topic join; it never blocks anything."
+    },
     "id": {
       "$ref": "#/$defs/decRef",
       "description": "Engine-stamped durable project-global id (`DEC-NNNN`). Absent in the slice-authored form; required on the persisted baseline form. Assigned by `specify slice merge` as `max(existing) + 1`, never reused."

@@ -30,6 +30,7 @@ pub(super) fn run(
         adapter: adapter.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
         description: description.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
         contracts: None,
+        greenfield_seed: None,
     };
 
     // `registry add` is "create or update": an absent `registry.yaml`

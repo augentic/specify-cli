@@ -27,7 +27,7 @@ slices:
 fn seed_slice(project: &Project, name: &str, status: &str) {
     let slice_dir = project.slices_dir().join(name);
     fs::create_dir_all(&slice_dir).expect("mkdir slice");
-    fs::write(slice_dir.join("metadata.yaml"), format!("target: omnia@v1\nstatus: {status}\n"))
+    fs::write(slice_dir.join("metadata.yaml"), format!("target: omnia@1.0.0\nstatus: {status}\n"))
         .expect("write metadata.yaml");
 }
 

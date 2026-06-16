@@ -1,10 +1,13 @@
 //! Parsing the `<adapter>` argument: first-party shorthand
-//! (`omnia`, `omnia@v1`), bare local paths, `file://` URIs, and
+//! (`omnia`, `omnia@1.0.0`), bare local paths, `file://` URIs, and
 //! `https://github.com/...` URIs (with optional `@ref` or
 //! `tree/<ref>` discriminators).
 //!
-//! First-party shorthand resolves a bare adapter name to the
-//! canonical published adapter on GitHub (ref defaults to `v1`).
+//! First-party shorthand resolves a bare adapter name to the canonical
+//! published adapter on GitHub. The shorthand carries the RFC-47 semver
+//! identity (`omnia@1.0.0`); the git checkout ref is derived as
+//! `v<major>` while `project.yaml.adapter` records the full semver pin
+//! (transport stays git until RFC-48).
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -12,6 +15,7 @@ use std::path::{Path, PathBuf};
 use specify_error::Error;
 use tempfile::TempDir;
 
+use crate::adapter::AdapterRef;
 use crate::init::git::sparse_checkout_github;
 
 #[derive(Debug)]
@@ -27,8 +31,8 @@ impl AdapterUri {
         if is_github_url(adapter) {
             return Self::from_github(adapter);
         }
-        if let Some((name, reference)) = parse_first_party_shorthand(adapter) {
-            return Self::from_shorthand(name, reference);
+        if let Some((name, version)) = parse_first_party_shorthand(adapter) {
+            return Self::from_shorthand(name, version.as_ref());
         }
         Self::from_local(adapter, project_dir)
     }
@@ -62,13 +66,22 @@ impl AdapterUri {
         })
     }
 
-    /// Resolve a first-party shorthand (`omnia`, `omnia@v1`) to the
+    /// Resolve a first-party shorthand (`omnia`, `omnia@1.0.0`) to the
     /// canonical published adapter on GitHub. `init` is target-only, so
     /// the shorthand resolves under `adapters/targets/<name>/`.
-    fn from_shorthand(name: &str, reference: &str) -> Result<Self, Error> {
-        let url =
-            format!("https://github.com/augentic/specify/adapters/targets/{name}@{reference}");
-        Self::from_github(&url)
+    ///
+    /// The git checkout ref is derived from the pinned semver as
+    /// `v<major>` (defaulting to `v1` when no version is given), since
+    /// transport stays git-based until RFC-48. `adapter_value` records
+    /// the canonical `name@<semver>` identity (RFC-47), not the derived
+    /// checkout URL, so `project.yaml.adapter` carries the version pin.
+    fn from_shorthand(name: &str, version: Option<&semver::Version>) -> Result<Self, Error> {
+        let git_ref = version.map_or_else(|| "v1".to_string(), |v| format!("v{}", v.major));
+        let url = format!("https://github.com/augentic/specify/adapters/targets/{name}@{git_ref}");
+        let mut uri = Self::from_github(&url)?;
+        uri.adapter_value =
+            version.map_or_else(|| name.to_string(), |version| format!("{name}@{version}"));
+        Ok(uri)
     }
 
     fn from_github(adapter: &str) -> Result<Self, Error> {
@@ -154,19 +167,22 @@ fn is_github_url(adapter: &str) -> bool {
 }
 
 /// Recognise a first-party adapter shorthand and split it into
-/// `(name, ref)`, defaulting the ref to `v1`. Returns `None` for paths
-/// (`./foo`, `/abs`, `file://…`) and URLs (anything carrying `:` or
-/// `/`), so those keep flowing through [`AdapterUri::from_local`] /
-/// [`AdapterUri::from_github`]. Accepts `^[a-z][a-z0-9-]*(@v\d+)?$`.
-fn parse_first_party_shorthand(adapter: &str) -> Option<(&str, &str)> {
+/// `(name, version)`. A bare `name` carries no pin (`None`); a
+/// `name@<semver>` carries the parsed [`semver::Version`] (RFC-47
+/// identity). Returns `None` for paths (`./foo`, `/abs`, `file://…`)
+/// and URLs (anything carrying `:` or `/`), and for a `@suffix` that is
+/// not exact semver — so those keep flowing through
+/// [`AdapterUri::from_local`] / [`AdapterUri::from_github`].
+fn parse_first_party_shorthand(adapter: &str) -> Option<(&str, Option<semver::Version>)> {
     if adapter.contains('/') || adapter.contains(':') {
         return None;
     }
     match adapter.split_once('@') {
-        Some((name, reference)) if is_first_party_name(name) && is_version_ref(reference) => {
-            Some((name, reference))
+        Some((name, reference)) if is_first_party_name(name) => {
+            let version = semver::Version::parse(reference).ok()?;
+            Some((name, Some(version)))
         }
-        None if is_first_party_name(adapter) => Some((adapter, "v1")),
+        None if is_first_party_name(adapter) => Some((adapter, None)),
         Some(_) | None => None,
     }
 }
@@ -179,13 +195,6 @@ fn is_first_party_name(name: &str) -> bool {
     };
     first.is_ascii_lowercase()
         && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
-}
-
-/// `^v\d+$` — a major-version ref discriminator (`v1`, `v2`, …).
-fn is_version_ref(reference: &str) -> bool {
-    reference
-        .strip_prefix('v')
-        .is_some_and(|digits| !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()))
 }
 
 fn split_ref_suffix(adapter: &str) -> (&str, Option<&str>) {
@@ -235,6 +244,21 @@ pub fn adapter_name_from_value(value: &str) -> &str {
     stripped.rsplit('/').next().unwrap_or(stripped)
 }
 
+/// Build an [`AdapterRef`] identity from a `project.yaml.adapter` (or
+/// slice `target`) value: the kebab `name` plus an optional pinned
+/// semver `version` recovered from the `@<suffix>` (RFC-47 D2).
+///
+/// The version is `Some(_)` only when the `@suffix` parses as exact
+/// semver — a bare name, a `file://` path, or a GitHub URL carrying a
+/// non-semver git ref (e.g. `@v1`) all yield `version: None`, so
+/// resolution falls back to the single installed identity.
+#[must_use]
+pub fn adapter_ref_from_value(value: &str) -> AdapterRef {
+    let name = adapter_name_from_value(value).to_string();
+    let version = at_ref_suffix(value).and_then(|suffix| semver::Version::parse(suffix).ok());
+    AdapterRef { name, version }
+}
+
 fn strip_at_ref_suffix(value: &str) -> &str {
     let last_slash = value.rfind('/').unwrap_or(0);
     if let Some(at) = value.rfind('@')
@@ -243,6 +267,14 @@ fn strip_at_ref_suffix(value: &str) -> &str {
         return &value[..at];
     }
     value
+}
+
+/// The `@<suffix>` after the last path segment, if any — the inverse of
+/// [`strip_at_ref_suffix`].
+fn at_ref_suffix(value: &str) -> Option<&str> {
+    let last_slash = value.rfind('/').unwrap_or(0);
+    let at = value.rfind('@')?;
+    (at > last_slash && at + 1 < value.len()).then(|| &value[at + 1..])
 }
 
 #[cfg(test)]

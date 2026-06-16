@@ -1,5 +1,5 @@
 name: foo
-version: 1
+version: "1.0.0"
 axis: target
 briefs:
   shape: briefs/shape.md

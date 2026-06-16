@@ -317,6 +317,48 @@ pub fn scratch_dir(project_dir: &Path, adapter: &str, segment: &str) -> PathBuf 
     crate::config::Layout::new(project_dir).scratch_dir().join(adapter).join(segment)
 }
 
+/// The identity an adapter resolves against: a kebab-case `name` plus
+/// an optional pinned semver `version` (RFC-47 D2).
+///
+/// Resolution keys on `(name, version)`. `version: None` is the
+/// bare-name shorthand — it resolves the single installed identity for
+/// `name`, or raises `adapter-version-required` when a single identity
+/// cannot be picked. A `Some(_)` version is an exact pin: resolution
+/// matches it against the installed manifest by equality, and a pin
+/// that names no installed identity is `adapter-version-required` as
+/// well ("resolution cannot pick a single installed identity for the
+/// name"). Semver range resolution is deferred to RM-21; this value
+/// type is the seam those extensions widen without re-breaking the
+/// resolve call sites.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdapterRef {
+    /// Kebab-case adapter name.
+    pub name: String,
+    /// Optional exact semver pin; `None` selects the single installed
+    /// identity.
+    pub version: Option<semver::Version>,
+}
+
+impl AdapterRef {
+    /// A bare-name reference with no version pin.
+    #[must_use]
+    pub fn bare(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            version: None,
+        }
+    }
+
+    /// A reference pinned to an exact semver version.
+    #[must_use]
+    pub fn pinned(name: impl Into<String>, version: semver::Version) -> Self {
+        Self {
+            name: name.into(),
+            version: Some(version),
+        }
+    }
+}
+
 /// In-memory representation of a source-adapter manifest
 /// (`adapters/sources/<name>/adapter.yaml`).
 ///
@@ -331,8 +373,20 @@ pub struct SourceAdapter {
     /// Kebab-case adapter name; must match the directory under
     /// `adapters/sources/<name>/`.
     pub name: String,
-    /// Major adapter version.
-    pub version: u32,
+    /// Semver adapter version. Resolution keys on this as identity
+    /// (see [`super::AdapterRef`]); the per-axis JSON Schema enforces
+    /// the semver `pattern` and `check_version` is the typed
+    /// belt-and-suspenders gate (`adapter-version-malformed`).
+    pub version: semver::Version,
+    /// Optional host-CLI compatibility floor (RFC-47 D3): the exact
+    /// minimum `specify` platform version this adapter needs,
+    /// deserialized from the `specify` manifest key. The loader compares
+    /// it against the running binary at resolve time
+    /// ([`check_requires_specify`]) and aborts with `adapter-cli-too-old`
+    /// (exit 3) when the binary is older. `None` means no floor — the
+    /// field is optional and back-compatible.
+    #[serde(default, rename = "specify", skip_serializing_if = "Option::is_none")]
+    pub requires_specify: Option<semver::Version>,
     /// Axis discriminator on the wire. Always [`Axis::Source`] after a
     /// successful [`SourceAdapter::resolve`]; the field is retained
     /// so YAML round-trips byte-for-byte through serde.
@@ -372,8 +426,20 @@ pub struct TargetAdapter {
     /// Kebab-case adapter name; must match the directory under
     /// `adapters/targets/<name>/`.
     pub name: String,
-    /// Major adapter version.
-    pub version: u32,
+    /// Semver adapter version. Resolution keys on this as identity
+    /// (see [`super::AdapterRef`]); the per-axis JSON Schema enforces
+    /// the semver `pattern` and `check_version` is the typed
+    /// belt-and-suspenders gate (`adapter-version-malformed`).
+    pub version: semver::Version,
+    /// Optional host-CLI compatibility floor (RFC-47 D3): the exact
+    /// minimum `specify` platform version this adapter needs,
+    /// deserialized from the `specify` manifest key. The loader compares
+    /// it against the running binary at resolve time
+    /// ([`check_requires_specify`]) and aborts with `adapter-cli-too-old`
+    /// (exit 3) when the binary is older. `None` means no floor — the
+    /// field is optional and back-compatible.
+    #[serde(default, rename = "specify", skip_serializing_if = "Option::is_none")]
+    pub requires_specify: Option<semver::Version>,
     /// Axis discriminator on the wire. Always [`Axis::Target`] after
     /// a successful [`TargetAdapter::resolve`]; the field is retained
     /// so YAML round-trips byte-for-byte through serde.
@@ -513,6 +579,118 @@ pub(super) fn check_execution(
             "adapter manifest declares a closed `execution` mode",
             format!("{} omits the required `execution` field", manifest_path.display()),
         ));
+    }
+    Ok(())
+}
+
+/// Typed `version` gate, run on the raw manifest value before the
+/// typed deserialise so a malformed semver surfaces as the specific
+/// `adapter-version-malformed` finding rather than the free-form
+/// `adapter-manifest-malformed` serde error.
+///
+/// Mirrors `specify_tool_manifest`'s `tool.version-is-semver` rule:
+/// the per-axis JSON Schemas already mark `version` with the semver
+/// `pattern`, so this typed gate is the belt-and-suspenders for a
+/// manifest that reaches the loader through a path that bypassed
+/// schema validation.
+///
+/// # Errors
+///
+/// Returns [`Error::Validation`] with the kebab discriminant
+/// `adapter-version-malformed` when `version` is absent, non-string,
+/// or not parseable as an exact semver.
+pub(super) fn check_version(
+    raw_value: &serde_json::Value, manifest_path: &Path,
+) -> Result<(), Error> {
+    let raw_version = raw_value.get("version").and_then(serde_json::Value::as_str);
+    let Some(raw_version) = raw_version else {
+        return Err(Error::validation_failed(
+            "adapter-version-malformed",
+            "adapter manifest declares a semver `version` string",
+            format!("{} omits a string `version` field", manifest_path.display()),
+        ));
+    };
+    if let Err(err) = semver::Version::parse(raw_version) {
+        return Err(Error::validation_failed(
+            "adapter-version-malformed",
+            "adapter manifest declares a semver `version` string",
+            format!(
+                "{} declares `version: {raw_version}`, which is not an exact semver: {err}",
+                manifest_path.display(),
+            ),
+        ));
+    }
+    Ok(())
+}
+
+/// Match the requested [`AdapterRef`] version against the single
+/// installed manifest identity (RFC-47 D2).
+///
+/// Resolution is project-local with exactly one installed identity per
+/// `name`, so a `None` pin always picks that identity. A `Some(_)` pin
+/// must equal the installed `version`; a pin that names a different
+/// version cannot be satisfied, so resolution "cannot pick a single
+/// installed identity for the name" — the `adapter-version-required`
+/// case. Exact pins only; semver range matching is deferred to RM-21.
+///
+/// # Errors
+///
+/// Returns [`Error::Validation`] with the kebab discriminant
+/// `adapter-version-required` when a pinned version does not match the
+/// installed identity.
+pub(super) fn check_requested_version(
+    requested: Option<&semver::Version>, name: &str, installed: &semver::Version,
+    manifest_path: &Path,
+) -> Result<(), Error> {
+    if let Some(requested) = requested
+        && requested != installed
+    {
+        return Err(Error::validation_failed(
+            "adapter-version-required",
+            "a version pin resolves a single installed adapter identity",
+            format!(
+                "{} requested `{name}@{requested}`, but the installed identity is `{name}@{installed}`",
+                manifest_path.display(),
+            ),
+        ));
+    }
+    Ok(())
+}
+
+/// Enforce an adapter's host-CLI compatibility floor (RFC-47 D3).
+///
+/// `floor` is the adapter's optional `specify` minimum (already parsed
+/// into a typed `semver::Version`); `current` is the running binary's
+/// version (the resolve call sites pass `env!("CARGO_PKG_VERSION")`,
+/// the same source [`crate::config`] uses). When the binary is older
+/// than the floor the adapter cannot be honored, so resolution aborts
+/// with [`Error::AdapterCliTooOld`] on the exit-3 `EXIT_VERSION_TOO_OLD`
+/// path — the adapter-granularity analog of the `project.yaml`
+/// `specify_version` floor.
+///
+/// `current` is parsed permissively: an unparseable running version is
+/// treated as "not older" rather than bricking resolution, mirroring
+/// `config::version_is_older`. An absent `floor` is a clean pass.
+///
+/// # Errors
+///
+/// Returns [`Error::AdapterCliTooOld`] when `current` parses below
+/// `floor`.
+pub(super) fn check_requires_specify(
+    floor: Option<&semver::Version>, current: &str, name: &str, manifest_path: &Path,
+) -> Result<(), Error> {
+    let Some(floor) = floor else {
+        return Ok(());
+    };
+    let Ok(current_version) = semver::Version::parse(current) else {
+        return Ok(());
+    };
+    if current_version < *floor {
+        return Err(Error::AdapterCliTooOld {
+            adapter: format!("{name} ({})", manifest_path.display()),
+            required: floor.to_string(),
+            found: current.to_string(),
+        });
     }
     Ok(())
 }

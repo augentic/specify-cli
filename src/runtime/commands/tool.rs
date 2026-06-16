@@ -17,7 +17,7 @@ use specify_error::{Error, Result};
 use specify_tool::load::{self};
 use specify_tool::manifest::{Axis as ToolAxis, Tool, ToolManifest, ToolScope};
 use specify_workflow::adapter::{ResolvedTargetAdapter, TargetAdapter};
-use specify_workflow::init::adapter_name_from_value;
+use specify_workflow::init::adapter_ref_from_value;
 
 pub(super) use self::dto::{Inventory, ScopedTool};
 use self::dto::{WarningRow, warning_row};
@@ -60,8 +60,8 @@ fn resolve_project_adapter(ctx: &Ctx) -> Result<Option<ResolvedTargetAdapter>> {
     let Some(value) = ctx.config.adapter.as_deref() else {
         return Ok(None);
     };
-    let name = adapter_name_from_value(value);
-    TargetAdapter::resolve(name, &ctx.project_dir).map(Some)
+    let adapter_ref = adapter_ref_from_value(value);
+    TargetAdapter::resolve(&adapter_ref, &ctx.project_dir).map(Some)
 }
 
 fn validate_manifest_tools(tools: &[Tool], scope: &ToolScope) -> Result<()> {

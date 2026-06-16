@@ -77,7 +77,7 @@ mod tests {
         fs::create_dir_all(&briefs_dir).expect("create adapter dirs");
         fs::write(
             adapter_dir.join("adapter.yaml"),
-            "name: mini\nversion: 1\naxis: target\nexecution: agent\nbriefs:\n  shape: briefs/shape.md\n  build: briefs/build.md\n  merge: briefs/merge.md\ndescription: Mini adapter\n",
+            "name: mini\nversion: 1.0.0\naxis: target\nexecution: agent\nbriefs:\n  shape: briefs/shape.md\n  build: briefs/build.md\n  merge: briefs/merge.md\ndescription: Mini adapter\n",
         )
         .expect("write adapter");
         for op in ["shape", "build", "merge"] {
@@ -116,7 +116,7 @@ mod tests {
             .expect("alpha meta");
         fs::write(
             Registry::path(tmp.path()),
-            "version: 1\nprojects:\n  - name: zeta\n    url: ../zeta\n    adapter: mini@v1\n    description: Zeta service\n  - name: alpha\n    url: ../alpha\n    adapter: mini@v1\n    description: Alpha service\n",
+            "version: 1\nprojects:\n  - name: zeta\n    url: ../zeta\n    adapter: mini@1.0.0\n    description: Zeta service\n  - name: alpha\n    url: ../alpha\n    adapter: mini@1.0.0\n    description: Alpha service\n",
         )
         .expect("write registry");
         let cfg_path = Layout::new(tmp.path()).config_path();

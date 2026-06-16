@@ -176,7 +176,7 @@ fn write_source_adapter_manifest(root: &Path, name: &str) {
         &path,
         format!(
             r"name: {name}
-version: 1
+version: 1.0.0
 axis: source
 description: Synthetic source adapter for specify lint framework golden tests.
 briefs:
@@ -225,7 +225,7 @@ fn write_target_adapter_manifest(root: &Path, name: &str) {
         &path,
         format!(
             r"name: {name}
-version: 1
+version: 1.0.0
 axis: target
 description: Synthetic target adapter for specify lint framework golden tests.
 briefs:
@@ -389,7 +389,7 @@ fn violations_tree_emits_expected_envelope() {
     write_core_namespace_owner_rule(temp.path());
     write_target_adapter_manifest(temp.path(), "omnia");
     let bad_manifest = temp.path().join("adapters/targets/omnia/adapter.yaml");
-    fs::write(&bad_manifest, "name: omnia\nversion: 1\naxis: target\n").expect("bad manifest");
+    fs::write(&bad_manifest, "name: omnia\nversion: 1.0.0\naxis: target\n").expect("bad manifest");
     write_codex_rule(
         temp.path(),
         "adapters/targets/omnia/rules/frame-misplaced.md",

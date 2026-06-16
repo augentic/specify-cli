@@ -128,13 +128,13 @@ fn adapters_no_match_is_filtered() {
     assert!(out.is_empty());
 }
 
-/// Test 5: `omnia@v1` on the rule side matches a bare `omnia` on
+/// Test 5: `omnia@1.0.0` on the rule side matches a bare `omnia` on
 /// the caller side — v1 strips the `@v<major>` suffix.
 #[test]
 fn adapter_version_suffix_is_stripped() {
     let entry = make_entry(
         "OMNIA-002",
-        Some(applicability_with(Some(vec!["omnia@v1"]), None, None, None)),
+        Some(applicability_with(Some(vec!["omnia@1.0.0"]), None, None, None)),
         None,
     );
     let inputs = make_inputs("omnia", &[], &[], &[], false, false);

@@ -40,7 +40,7 @@ fn assert_invalid(validator: &Validator, instance: &JsonValue, ctx: &str) {
 
 const PLUGIN_VALID_SOURCE: &str = r"
 name: typescript
-version: 1
+version: 1.0.0
 axis: source
 execution: agent
 briefs:
@@ -51,7 +51,7 @@ description: Extracts behavioural evidence from TypeScript codebases.
 
 const PLUGIN_VALID_TARGET: &str = r"
 name: omnia
-version: 1
+version: 1.0.0
 axis: target
 execution: agent
 briefs:
@@ -63,7 +63,7 @@ description: Omnia Rust WASM target adapter.
 
 const PLUGIN_INVALID_NO_AXIS: &str = r"
 name: typescript
-version: 1
+version: 1.0.0
 briefs:
   survey: briefs/survey.md
   extract: briefs/extract.md
@@ -71,7 +71,7 @@ briefs:
 
 const PLUGIN_INVALID_BAD_AXIS: &str = r"
 name: typescript
-version: 1
+version: 1.0.0
 axis: lens
 briefs:
   survey: briefs/survey.md
@@ -80,16 +80,16 @@ briefs:
 
 const PLUGIN_INVALID_NAME_NOT_KEBAB: &str = r"
 name: CodeTypeScript
-version: 1
+version: 1.0.0
 axis: source
 briefs:
   survey: briefs/survey.md
   extract: briefs/extract.md
 ";
 
-const PLUGIN_INVALID_VERSION_FLOAT: &str = r"
+const PLUGIN_INVALID_VERSION_NOT_SEMVER: &str = r"
 name: typescript
-version: 1.5
+version: '1'
 axis: source
 briefs:
   survey: briefs/survey.md
@@ -109,14 +109,14 @@ fn plugin_rejects_axis_and_primitives() {
     assert_invalid(&v, &yaml(PLUGIN_INVALID_NO_AXIS), "plugin/no-axis");
     assert_invalid(&v, &yaml(PLUGIN_INVALID_BAD_AXIS), "plugin/bad-axis");
     assert_invalid(&v, &yaml(PLUGIN_INVALID_NAME_NOT_KEBAB), "plugin/name-not-kebab");
-    assert_invalid(&v, &yaml(PLUGIN_INVALID_VERSION_FLOAT), "plugin/version-float");
+    assert_invalid(&v, &yaml(PLUGIN_INVALID_VERSION_NOT_SEMVER), "plugin/version-not-semver");
 }
 
 // --- source.schema.json --------------------------------------------
 
 const SOURCE_INVALID_AXIS_TARGET: &str = r"
 name: typescript
-version: 1
+version: 1.0.0
 axis: target
 briefs:
   survey: briefs/survey.md
@@ -125,7 +125,7 @@ briefs:
 
 const SOURCE_INVALID_EXTRA_BRIEF: &str = r"
 name: typescript
-version: 1
+version: 1.0.0
 axis: source
 briefs:
   survey: briefs/survey.md
@@ -135,7 +135,7 @@ briefs:
 
 const SOURCE_INVALID_MISSING_BRIEF: &str = r"
 name: typescript
-version: 1
+version: 1.0.0
 axis: source
 briefs:
   survey: briefs/survey.md
@@ -162,7 +162,7 @@ fn source_rejects_axis_and_brief_violations() {
 
 const TARGET_INVALID_AXIS_SOURCE: &str = r"
 name: omnia
-version: 1
+version: 1.0.0
 axis: source
 briefs:
   shape: briefs/shape.md
@@ -172,7 +172,7 @@ briefs:
 
 const TARGET_INVALID_BRIEFS_INCLUDE_EXTRACT: &str = r"
 name: omnia
-version: 1
+version: 1.0.0
 axis: target
 briefs:
   shape: briefs/shape.md
@@ -183,7 +183,7 @@ briefs:
 
 const TARGET_INVALID_MISSING_MERGE_BRIEF: &str = r"
 name: omnia
-version: 1
+version: 1.0.0
 axis: target
 briefs:
   shape: briefs/shape.md

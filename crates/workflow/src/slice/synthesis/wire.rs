@@ -31,6 +31,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use specify_error::{Error, Result};
 
+use crate::registry::topology::Surface;
 use crate::slice::model::SliceModel;
 
 /// Wire version pinned by `schemas/slice/synthesis.schema.json`
@@ -136,6 +137,14 @@ pub struct SynthesisInputs {
     /// The resolved target `shape` brief body. Resolved and read by C8 —
     /// never by this module.
     pub shape_brief: String,
+    /// RFC-46 D5 — the slice's bound project baseline surface (one entry
+    /// per `.specify/specs/<domain>/spec.md`), so synthesis reconciles
+    /// against existing requirements instead of duplicating them. Read
+    /// from the project topology at assembly time; empty (greenfield, or
+    /// no baseline) stays off the wire. Context only — no schema or
+    /// `model.yaml` change.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub baseline: Vec<Surface>,
 }
 
 /// One bound source's contribution to the synthesis inputs.
@@ -204,7 +213,7 @@ impl SynthesisSourceInput {
 /// and reads the brief) so this function stays pure and adapter-free.
 #[must_use]
 pub fn build_synthesis_inputs(
-    slice: &str, sources: &[SynthesisSourceInput], shape_brief: &str,
+    slice: &str, sources: &[SynthesisSourceInput], shape_brief: &str, baseline: &[Surface],
 ) -> SynthesisInputs {
     SynthesisInputs {
         version: SYNTHESIS_VERSION,
@@ -212,6 +221,7 @@ pub fn build_synthesis_inputs(
         slice: slice.to_string(),
         sources: sources.to_vec(),
         shape_brief: shape_brief.to_string(),
+        baseline: baseline.to_vec(),
     }
 }
 

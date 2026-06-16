@@ -27,6 +27,7 @@ use specify_diagnostics::{
 };
 use specify_error::Result;
 use specify_workflow::adapter::{Axis, SourceAdapter, TargetAdapter};
+use specify_workflow::init::adapter_ref_from_value;
 
 use crate::runtime::cli::{Cli, Commands, Format};
 use crate::runtime::commands::contract::cli::ContractAction;
@@ -96,7 +97,15 @@ pub fn run(cli: Cli) -> Exit {
         Commands::Slice { action } => scoped(format, plan_dir, |ctx| slice::run(ctx, action)),
         Commands::Catalog { action } => scoped(format, plan_dir, |ctx| catalog::run(ctx, action)),
         Commands::Archive { action } => scoped(format, plan_dir, |ctx| archive::run(ctx, &action)),
-        Commands::Plan { action } => scoped(format, plan_dir, |ctx| plan::run(ctx, action)),
+        Commands::Plan { action } => match action {
+            // `plan lock` passes the wrapped child's exit code through
+            // `Exit::Code`, so it bypasses the `Result<()>`-collapsing
+            // `scoped` path the rest of the plan verbs share.
+            plan::cli::PlanAction::Lock { command } => {
+                run_plan_lock_with(format, plan_dir, &command)
+            }
+            action => scoped(format, plan_dir, |ctx| plan::run(ctx, action)),
+        },
         Commands::Registry { action } => scoped(format, plan_dir, |ctx| registry::run(ctx, action)),
         Commands::Completions { shell } => {
             let mut cmd = Cli::command();
@@ -248,6 +257,22 @@ fn run_tool_with(format: Format, name: &str, args: Vec<String>) -> Exit {
     }
 }
 
+/// `specify plan lock -- <cmd>` runs a child under the plan lock and
+/// passes its exit code through. Like [`run_tool_with`] it sits outside
+/// the `Result<()>` channel so the success branch can carry the child's
+/// own exit code rather than collapsing to `Success`.
+fn run_plan_lock_with(format: Format, plan_dir: Option<PathBuf>, command: &[String]) -> Exit {
+    let ctx = match Ctx::load(format, plan_dir) {
+        Ok(ctx) => ctx,
+        Err(err) => return report(format, &err),
+    };
+    match plan::lock::run(&ctx, command) {
+        Ok(0) => Exit::Success,
+        Ok(code) => Exit::Code(code),
+        Err(err) => report(format, &err),
+    }
+}
+
 /// Directory segment under a resolved adapter root that holds the
 /// brief markdown files. Manifest brief paths are relative and join
 /// onto `<adapter-root>/briefs/`. Shared with the source prep seam
@@ -332,7 +357,7 @@ fn resolve_adapter(format: Format, axis: Axis, value: &str, project_dir: &Path) 
     // manifest's relative brief paths join onto (preview.rs:68).
     let (name, resolved_path, briefs_dir, location, operations, description) = match axis {
         Axis::Source => {
-            let resolved = SourceAdapter::resolve(value, project_dir)?;
+            let resolved = SourceAdapter::resolve(&adapter_ref_from_value(value), project_dir)?;
             let operations = resolved.manifest.operations().map(ToString::to_string).collect();
             let briefs_dir = resolved.location.path().join(BRIEFS_DIR);
             let resolved_path = resolved.location.path().display().to_string();
@@ -347,8 +372,7 @@ fn resolve_adapter(format: Format, axis: Axis, value: &str, project_dir: &Path) 
             )
         }
         Axis::Target => {
-            let name = value.split_once('@').map_or(value, |(n, _)| n);
-            let resolved = TargetAdapter::resolve(name, project_dir)?;
+            let resolved = TargetAdapter::resolve(&adapter_ref_from_value(value), project_dir)?;
             let operations = resolved.manifest.operations().map(ToString::to_string).collect();
             let briefs_dir = resolved.location.path().join(BRIEFS_DIR);
             let resolved_path = resolved.location.path().display().to_string();

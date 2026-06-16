@@ -36,7 +36,7 @@ fn c01_sync_unknown_selector_preflight() {
          projects:\n\
          \x20\x20- name: alpha\n\
          \x20\x20\x20\x20url: git@github.com:org/alpha.git\n\
-         \x20\x20\x20\x20adapter: omnia@v1\n",
+         \x20\x20\x20\x20adapter: omnia@1.0.0\n",
     )
     .unwrap();
     let gitignore_before = fs::read_to_string(tmp.path().join(".gitignore")).ok();
@@ -80,15 +80,15 @@ fn c01_sync_skips_unselected_slots() {
          projects:\n\
          \x20\x20- name: billing\n\
          \x20\x20\x20\x20url: ./billing\n\
-         \x20\x20\x20\x20adapter: omnia@v1\n\
+         \x20\x20\x20\x20adapter: omnia@1.0.0\n\
          \x20\x20\x20\x20description: billing service\n\
          \x20\x20- name: orders\n\
          \x20\x20\x20\x20url: ./orders\n\
-         \x20\x20\x20\x20adapter: omnia@v1\n\
+         \x20\x20\x20\x20adapter: omnia@1.0.0\n\
          \x20\x20\x20\x20description: orders service\n\
          \x20\x20- name: inventory\n\
          \x20\x20\x20\x20url: ./inventory\n\
-         \x20\x20\x20\x20adapter: omnia@v1\n\
+         \x20\x20\x20\x20adapter: omnia@1.0.0\n\
          \x20\x20\x20\x20description: inventory service\n",
     )
     .unwrap();
@@ -121,10 +121,10 @@ fn c01_sync_journals_completed_event() {
          projects:\n\
          \x20\x20- name: billing\n\
          \x20\x20\x20\x20url: ./billing\n\
-         \x20\x20\x20\x20adapter: omnia@v1\n\
+         \x20\x20\x20\x20adapter: omnia@1.0.0\n\
          \x20\x20- name: orders\n\
          \x20\x20\x20\x20url: ./orders\n\
-         \x20\x20\x20\x20adapter: omnia@v1\n",
+         \x20\x20\x20\x20adapter: omnia@1.0.0\n",
     )
     .unwrap();
 
@@ -170,7 +170,7 @@ fn push_journals_completed_event() {
          projects:\n\
          \x20\x20- name: alpha\n\
          \x20\x20\x20\x20url: ./alpha\n\
-         \x20\x20\x20\x20adapter: omnia@v1\n",
+         \x20\x20\x20\x20adapter: omnia@1.0.0\n",
     )
     .unwrap();
 
@@ -207,7 +207,7 @@ fn c01_push_unknown_selector_preflight() {
          projects:\n\
          \x20\x20- name: alpha\n\
          \x20\x20\x20\x20url: git@github.com:org/alpha.git\n\
-         \x20\x20\x20\x20adapter: omnia@v1\n",
+         \x20\x20\x20\x20adapter: omnia@1.0.0\n",
     )
     .unwrap();
 
@@ -254,7 +254,7 @@ fn c04_prepare_returns_json() {
          projects:\n\
          \x20\x20- name: alpha\n\
          \x20\x20\x20\x20url: ./alpha\n\
-         \x20\x20\x20\x20adapter: omnia@v1\n",
+         \x20\x20\x20\x20adapter: omnia@1.0.0\n",
     )
     .unwrap();
 
@@ -309,7 +309,7 @@ fn c04_prepare_origin_head_diagnostic() {
          projects:\n\
          \x20\x20- name: alpha\n\
          \x20\x20\x20\x20url: ./alpha\n\
-         \x20\x20\x20\x20adapter: omnia@v1\n",
+         \x20\x20\x20\x20adapter: omnia@1.0.0\n",
     )
     .unwrap();
 
@@ -366,11 +366,11 @@ version: 1
 projects:
   - name: alpha
     url: .
-    adapter: omnia@v1
+    adapter: omnia@1.0.0
     description: Root project
   - name: beta
     url: ../peer-proj
-    adapter: omnia@v1
+    adapter: omnia@1.0.0
     description: Peer project
 ";
     fs::write(root.join("registry.yaml"), reg).expect("registry");
@@ -414,7 +414,7 @@ fn sync_mirror_skips_self_slot() {
          projects:\n\
          \x20\x20- name: alpha\n\
          \x20\x20\x20\x20url: .\n\
-         \x20\x20\x20\x20adapter: omnia@v1\n",
+         \x20\x20\x20\x20adapter: omnia@1.0.0\n",
     )
     .expect("registry");
 
@@ -462,7 +462,7 @@ fn sync_mirror_keeps_foreign_cache_entries() {
          projects:\n\
          \x20\x20- name: beta\n\
          \x20\x20\x20\x20url: ../peer-proj\n\
-         \x20\x20\x20\x20adapter: omnia@v1\n",
+         \x20\x20\x20\x20adapter: omnia@1.0.0\n",
     )
     .expect("registry");
 

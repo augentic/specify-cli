@@ -16,10 +16,36 @@
       "type": "string",
       "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
     },
+    "disagreement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["field", "values"],
+      "properties": {
+        "field": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The aspect the matched leads disagree on (a free-form label, e.g. `password-min-length`)."
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["source", "value"],
+            "properties": {
+              "source": { "$ref": "#/$defs/kebabName" },
+              "value": { "type": "string" }
+            }
+          },
+          "description": "The per-source disagreeing values; a genuine disagreement records ≥2 distinct source values."
+        }
+      },
+      "description": "RFC-46 D4 — one field on which a slice's matched leads materially disagree, recorded by the propose agent alongside a `divergence` flag."
+    },
     "targetRef": {
       "type": "string",
-      "description": "Target adapter identifier, e.g. `omnia@v1` or `contracts@v1`. Mirrors `plan.schema.json` slice `target` pattern.",
-      "pattern": "^[a-z][a-z0-9-]*@v\\d+$"
+      "description": "Target adapter identifier, e.g. `omnia@1.0.0` or `contracts@1.0.0`. Mirrors `plan.schema.json` slice `target` pattern.",
+      "pattern": "^[a-z][a-z0-9-]*@\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$"
     },
     "decision": {
       "type": "object",
@@ -156,6 +182,12 @@
           "type": "string",
           "minLength": 1,
           "description": "Reconciliation-grade per-source headline from this source's survey of the lead. Primary signal for agent cross-source grouping — SHOULD name the operation/surface and salient constraint; MAY span more than one line when one is too thin."
+        },
+        "topics": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/kebabName" },
+          "description": "Optional agent-authored topic slugs carried from the discovery lead. Additional grouping context for the agent and the join key for the decision-contradiction warning; the CLI computes no grouping from them."
         }
       }
     },
@@ -247,6 +279,16 @@
         "project": {
           "$ref": "#/$defs/kebabName",
           "description": "Project this slice binds to, chosen by the agent from the request's `projects[]`. Required on every slice when the request offers more than one project; optional when exactly one project exists, in which case the kernel auto-binds it and derives `target` from that project's entry."
+        },
+        "divergence": {
+          "type": "string",
+          "enum": ["likely", "accepted", "rejected"],
+          "description": "Agent-flagged slice-level divergence: `likely` when the matched leads materially disagree. Absent means no divergence. The kernel carries it onto `plan.yaml.slices[].divergence`; the operator adjudicates `accepted` / `rejected` later via `specify plan amend --divergence`."
+        },
+        "disagreements": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/disagreement" },
+          "description": "The per-field disagreeing values backing a `divergence` flag. Recommended non-empty (with \u22652 distinct source values per field) when `divergence` is `likely`; the CLI advises on structural consistency (`slice-divergence-unrecorded` / `slice-divergence-orphan-values`) but never decides materiality and never blocks the write."
         }
       }
     },

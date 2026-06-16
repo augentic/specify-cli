@@ -27,7 +27,7 @@ A pin **newer** than the binary is exit `3` (`Error::CliTooOld` — the binary m
 
 ## Atomic writes
 
-Use `yaml_write` (in `crates/model/src/atomic.rs`) for any file a concurrent reader may observe mid-write: `plan.yaml`, `metadata.yaml`, `plan.lock`, and the registry. It serialises to `NamedTempFile::new_in(parent)` and `persist`-renames over the target so readers either see the prior bytes or the new bytes. Plain `fs::write` is reserved for files no other process reads concurrently with the writer (one-shot scratch output, fixtures inside a tempdir test).
+Use `yaml_write` (in `crates/model/src/atomic.rs`) for any file a concurrent reader may observe mid-write: `plan.yaml`, `metadata.yaml`, and the registry. It serialises to `NamedTempFile::new_in(parent)` and `persist`-renames over the target so readers either see the prior bytes or the new bytes. Plain `fs::write` is reserved for files no other process reads concurrently with the writer (one-shot scratch output, fixtures inside a tempdir test). `plan.lock` is the deliberate exception: `specify plan lock` writes its diagnostic body in place (`set_len(0)` + write on the locked fd), never via a rename — an atomic `persist`-rename would replace the inode and sever the OS advisory lock the open descriptor holds. The body is diagnostic noise (the lock identity is the file lock itself), so a reader that races the in-place write simply falls back to `holder-pid=unknown`.
 
 ## YAML library
 
@@ -120,19 +120,21 @@ Per workflow §"Note to the implementing agent", touching any of these symbols r
 
 ### First-party `<adapter>` shorthand at init
 
-`specify init <adapter>` accepts a first-party **shorthand** — `^[a-z][a-z0-9-]*(@v\d+)?$` (`omnia`, `omnia@v1`; ref defaults to `v1`) — alongside the local-path and GitHub-URL forms. `AdapterUri::parse` (`crates/workflow/src/init/adapter_uri.rs`) expands it to the canonical published adapter `https://github.com/augentic/specify/adapters/targets/<name>@<ref>` (a networked sparse checkout). `init` is target-only, so the shorthand resolves under `adapters/targets/`; anything carrying `:` or `/` is not shorthand and continues through `from_local` / `from_github` unchanged.
+`specify init <adapter>` accepts a first-party **shorthand** — `^[a-z][a-z0-9-]*(@<semver>)?$` (`omnia`, `omnia@1.0.0`) — alongside the local-path and GitHub-URL forms. A bare name carries no version pin (resolves the single installed identity); a `name@<semver>` pin records the full `name@<semver>` identity on `project.yaml.adapter` (RFC-47). `AdapterUri::parse` (`crates/workflow/src/init/adapter_uri.rs`) expands the shorthand to the canonical published adapter `https://github.com/augentic/specify/adapters/targets/<name>@<git-ref>`, deriving the **git checkout ref `v<major>`** from the pinned semver (transport stays repo-ref until RFC-48). `init` is target-only, so the shorthand resolves under `adapters/targets/`; anything carrying `:` or `/` (including a `@v<major>` git-ref form) is not semver shorthand and continues through `from_local` / `from_github` unchanged.
 
-### Per-adapter versioning — forward position only
+### Adapter identity: semver version + `AdapterRef` (RFC-47)
 
-Recorded position for RM-21 (third-party adapter ecosystem); **no pre-1.0 commitment**. Today `omnia@v1` pins a *repo ref* of `augentic/specify` — the adapter's content is whatever that ref's tree carries, and `adapter.yaml.version` is a schema field, not a resolution key. Per-adapter semver would change, relative to that status quo:
+`adapter.yaml.version` is a **required semver string** (`x.y.z` with optional `-prerelease` / `+build`), enforced by the per-axis JSON Schema and parsed into `SourceAdapter.version` / `TargetAdapter.version` as a typed `semver::Version`. It is the adapter's **identity**, not a descriptive field: synthesized target refs (`topology.lock`, proposal, slice metadata, build-report) render `name@<semver>`, and `TargetRef::parse` requires the `name@<semver>` form (the legacy `name@v<major>` is no longer a valid target).
 
-- **Resolution key** — the shorthand grammar becomes `<name>@<semver-req>` resolved against a per-adapter release index, not a repo branch/tag; `adapter.yaml.version` graduates from descriptive field to resolution authority (and must become full semver).
-- **Cache identity** — the manifest cache keys on `(name, adapter-version)` instead of `(name, repo-ref)`; two adapters published from one repo ref stop sharing an identity.
-- **Compatibility contract** — an adapter release declares the CLI floor it needs (a `requires-cli` field validated at resolve time), replacing today's implicit "the ref tree matches the binary that documented it".
-- **Migration surface** — if a migration story is ever introduced post-1.0, adapter majors would be candidates alongside CLI majors, so a project pinned to `omnia@^1` crossing to `@2` gets a deliberate upgrade path rather than a silent re-vendor.
-- **Namespacing** — third-party adapters need an owner segment (`org/name@req`) and a publish channel outside `augentic/specify`; name-axis uniqueness (§"Adapter name uniqueness") then applies per-namespace.
+The loader threads identity through a value type — `AdapterRef { name: String, version: Option<semver::Version> }` (`crates/workflow/src/adapter/core.rs`). `SourceAdapter::resolve` / `TargetAdapter::resolve` take `&AdapterRef`; `locate_axis` stays name-only for the probe (project-local single-identity world). Two gates back the identity:
 
-Until RM-21 activates, repo-ref pinning stays: it is one mechanism, already exercised, and the ecosystem is N=1 publisher. Revisit when the first third-party adapter exists or RM-21 is scheduled, whichever lands first.
+- **`adapter-version-malformed`** — the post-schema load gate (`check_version`) rejects a manifest whose raw `version` is absent or not exact semver, before typed deserialization, so the diagnostic names the field rather than surfacing a generic parse error.
+- **`adapter-version-required`** — `check_requested_version` rejects a pin (`AdapterRef.version = Some(_)`) that does not match the installed manifest identity. Latent in the single-identity world (a `None` pin always picks the installed identity); wired now so RFC-48's multi-identity store widens the same seam.
+- **`adapter-cli-too-old`** — RFC-47 D3 host-CLI compatibility floor. `adapter.yaml` carries an optional `specify` semver string (parsed into `requires_specify: Option<semver::Version>`); the post-schema gate `check_requires_specify` compares it against the running binary (`env!("CARGO_PKG_VERSION")`) and aborts with `Error::AdapterCliTooOld` on the exit-3 `EXIT_VERSION_TOO_OLD` path when the binary is older — the adapter-granularity analog of the `project.yaml.specify_version` floor. Exact floor only (no ranges, matching the version-pin posture); absent means no floor. The check is transport-independent (identical for `Local`, `Cached`, and any future registry tree).
+
+A `sources.<key>.version` optional pin on `SourceBinding` (and `sourceBinding` in `plan.schema.json`) carries the same `Option<semver::Version>` — additive, so existing `plan.yaml` binds parse unchanged.
+
+**Transport is unchanged.** Distribution stays a git sparse checkout of `augentic/specify`; the shorthand derives the git checkout ref `v<major>` from the pinned semver. A per-adapter release index, `(name, adapter-version)` cache identity, and third-party namespacing (`org/name@req`) remain **RFC-48 / RM-21 forward position with no pre-1.0 commitment** — RFC-47 lands only the identity, resolve-signature, and exact host-CLI floor, not the packaging/transport change. A semver-*range* `specify`-floor policy or a cross-version compatibility matrix stays deferred to RM-21.
 
 ## Plan lifecycle: two stored states
 
@@ -151,6 +153,8 @@ Collapsing the variants into one struct means every consumer goes through the sa
 ## `Divergence` enum
 
 `plan.yaml.slices[].divergence` is the closed enum `none | likely | accepted | rejected` (kebab-case wire; `none` is the elided default). `specify plan amend --divergence` only accepts `accepted | rejected` — `likely` is reserved for the `propose` sub-step of `/spec:plan`. Operators flipping the field after Gate 1 use `accepted | rejected` exclusively. Refer to workflow §"Plan-time reconciliation".
+
+RFC-46 D4 adds the sibling `plan.yaml.slices[].disagreements[]` (`{ field, values: [{ source, value }] }`, the `Disagreement` / `DisagreementValue` types), authored by the propose agent alongside a `divergence` flag and carried from the proposal `responseSlice` onto the plan entry by the reconcile kernel. The CLI never decides materiality; `Plan::validate` only checks structural consistency and surfaces it as **advisory** (`Suggestion`) findings: `slice-divergence-unrecorded` (a live `likely`/`accepted` flag without ≥2 distinct source values per recorded field) and `slice-divergence-orphan-values` (recorded values with no flag). Both are deliberately non-blocking — `divergence` is operator-settable standalone via `plan amend --divergence` (advisory metadata in v1), so a divergence-consistency finding may never break that contract-locked write; it surfaces at `plan validate` / Gate 1 instead.
 
 ## Plan per-slice authority overrides
 
@@ -450,7 +454,7 @@ Derived state is projected on demand from the journal plus committed artifacts �
 
 ## Architecture seam hardening
 
-One hardening move per seam, each carried by its own standing decision: the machine-checked cross-repo contract is `specify contract dump` plus the `cli-contract` lint kind (R1); control flow keeps migrating into CLI verbs — the `specify plan status` next-action projection and the read-side plan-lock probe in `crates/workflow/src/plan_lock.rs` (R2); status surfaces are projections per [§"Projection over persistence"](#projection-over-persistence), with `specify journal show` as the read verb (R3); vocabulary restatements became links or lint-pinned homes (R5). The explicit anti-recommendation stands: `specify-workflow` is not split.
+One hardening move per seam, each carried by its own standing decision: the machine-checked cross-repo contract is `specify contract dump` plus the `cli-contract` lint kind (R1); control flow keeps migrating into CLI verbs — the `specify plan status` next-action projection, and both the acquisition and the read-side probe of the driver lock in `crates/workflow/src/plan_lock.rs` (R2): `specify plan lock -- <cmd>` is the `flock(1)`-style command-wrapper that takes the lock for the spawned child's lifetime (so lock handling is cross-platform and Python/`flock(1)`/`zsystem`-free), and the plan-state-writing verbs `require_held`; status surfaces are projections per [§"Projection over persistence"](#projection-over-persistence), with `specify journal show` as the read verb (R3); vocabulary restatements became links or lint-pinned homes (R5). The explicit anti-recommendation stands: `specify-workflow` is not split.
 
 ## Composition accumulation and component inference
 

@@ -79,6 +79,7 @@ impl<'a> Parser<'a> {
         let mut lead: Option<String> = None;
         let mut source: Option<String> = None;
         let mut synopsis: Option<String> = None;
+        let mut topics: Vec<String> = Vec::new();
 
         while self.cursor < self.lines.len() {
             let raw = self.lines[self.cursor];
@@ -102,6 +103,9 @@ impl<'a> Parser<'a> {
                     }
                     "synopsis" => {
                         synopsis = Some(value.to_string());
+                    }
+                    "topics" => {
+                        topics = parse_topics(value);
                     }
                     "aliases" => {
                         return Err(parse_err(format!(
@@ -129,8 +133,27 @@ impl<'a> Parser<'a> {
             lead,
             source,
             synopsis,
+            topics,
         })
     }
+}
+
+/// Parse an inline `topics:` bullet value into kebab slugs.
+///
+/// Accepts the flow-sequence form `[a, b, c]` (matching the lead schema
+/// example) as well as a bare comma-separated list; brackets are
+/// stripped, entries are trimmed, and empties are dropped. Slug shape is
+/// enforced downstream by schema validation, not here.
+fn parse_topics(value: &str) -> Vec<String> {
+    value
+        .trim()
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(ToString::to_string)
+        .collect()
 }
 
 pub fn is_inventory_heading(line: &str) -> bool {

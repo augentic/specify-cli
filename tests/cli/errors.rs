@@ -49,6 +49,16 @@ fn error_exit_cases() -> Vec<(&'static str, Error, u8)> {
             },
             3,
         ),
+        // 3 — CLI older than an adapter's `specify` floor (RFC-47 D3).
+        (
+            "adapter-cli-too-old",
+            Error::AdapterCliTooOld {
+                adapter: "omnia (adapter.yaml)".to_string(),
+                required: "2.0.0".to_string(),
+                found: "1.0.0".to_string(),
+            },
+            3,
+        ),
     ]
 }
 

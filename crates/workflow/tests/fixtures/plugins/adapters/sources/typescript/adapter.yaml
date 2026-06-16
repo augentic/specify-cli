@@ -1,5 +1,5 @@
 name: typescript
-version: 1
+version: "1.0.0"
 axis: source
 execution: agent
 briefs:

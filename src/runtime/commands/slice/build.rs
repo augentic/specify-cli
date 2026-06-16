@@ -47,7 +47,7 @@ use specify_workflow::adapter::{
 };
 use specify_workflow::change::{BOOTSTRAP_APP_ICON_MISSING, bootstrap_app_icon_findings};
 use specify_workflow::config::ProjectConfig;
-use specify_workflow::init::adapter_name_from_value;
+use specify_workflow::init::adapter_ref_from_value;
 use specify_workflow::journal::{self, EventKind};
 use specify_workflow::platform::bootstrap_context;
 use specify_workflow::schema::{validate_build_report_json, validate_build_request_json};
@@ -124,8 +124,8 @@ struct BuildResult {
 pub(super) fn run(ctx: &Ctx, name: &str, phase: Phase) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(name);
     let metadata = SliceMetadata::load(&slice_dir)?;
-    let target_name = adapter_name_from_value(&metadata.target);
-    let resolved = TargetAdapter::resolve(target_name, &ctx.project_dir)?;
+    let target_ref = adapter_ref_from_value(&metadata.target);
+    let resolved = TargetAdapter::resolve(&target_ref, &ctx.project_dir)?;
 
     match resolved.manifest.execution {
         Some(Execution::Tool) => run_tool(ctx, name, &slice_dir, &resolved.manifest),
