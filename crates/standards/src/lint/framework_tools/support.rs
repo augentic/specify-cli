@@ -47,7 +47,7 @@ fn diagnostic(index: usize, row: &ToolFinding) -> Diagnostic {
         related_rule_ids: None,
         title: row.message.clone(),
         severity: Severity::Important,
-        source: DiagnosticSource::Extension,
+        source: DiagnosticSource::Tool,
         kind: DiagnosticKind::Violation,
         target_adapter: None,
         source_adapter: None,

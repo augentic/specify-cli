@@ -30,7 +30,7 @@ fn schema_contract_no_schemas_exits_nonzero() {
     let assert = specify_cmd()
         .current_dir(&project)
         .env("SPECIFY_EXTENSIONS_CACHE", &cache)
-        .args(["tool", "schema", "contract", "tokens"])
+        .args(["extension", "schema", "contract", "tokens"])
         .assert()
         .failure();
 
@@ -56,7 +56,7 @@ fn schema_vectis_tokens_returns_valid_json() {
     let assert = specify_cmd()
         .current_dir(&project)
         .env("SPECIFY_EXTENSIONS_CACHE", &cache)
-        .args(["tool", "schema", "vectis", "tokens"])
+        .args(["extension", "schema", "vectis", "tokens"])
         .assert()
         .success();
 
@@ -83,7 +83,7 @@ fn schema_vectis_unknown_name_exits_nonzero() {
     let assert = specify_cmd()
         .current_dir(&project)
         .env("SPECIFY_EXTENSIONS_CACHE", &cache)
-        .args(["tool", "schema", "vectis", "nonexistent"])
+        .args(["extension", "schema", "vectis", "nonexistent"])
         .assert()
         .failure();
 
@@ -110,7 +110,7 @@ fn schema_undeclared_tool_exits_two() {
     let assert = specify_cmd()
         .current_dir(project)
         .env("SPECIFY_EXTENSIONS_CACHE", &cache)
-        .args(["--format", "json", "tool", "schema", "nosuch", "tokens"])
+        .args(["--format", "json", "extension", "schema", "nosuch", "tokens"])
         .assert()
         .failure();
 

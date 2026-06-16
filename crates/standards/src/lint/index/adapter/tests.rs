@@ -49,35 +49,6 @@ fn missing_briefs_leaves_keys_empty() {
 }
 
 #[test]
-fn extracts_well_formed_tools() {
-    let file = manifest(
-        "adapters/targets/vectis/adapter.yaml",
-        "name: vectis\nversion: \"1.0.0\"\ntools:\n  - name: vectis\n    version: \"0.4.0\"\n",
-    );
-    let manifest = extract(&file).expect("manifest extracted");
-    assert_eq!(manifest.tools.len(), 1);
-    assert_eq!(manifest.tools[0].name, "vectis");
-    assert_eq!(manifest.tools[0].version, "0.4.0");
-}
-
-#[test]
-fn drops_malformed_tool_entries() {
-    let file = manifest(
-        "adapters/targets/vectis/adapter.yaml",
-        "name: vectis\nversion: \"1.0.0\"\ntools:\n  - name: vectis\n  - just-a-string\n",
-    );
-    let manifest = extract(&file).expect("manifest still extracted despite malformed tools");
-    assert!(manifest.tools.is_empty(), "entries missing name/version are dropped");
-}
-
-#[test]
-fn missing_tools_leaves_list_empty() {
-    let file = manifest("adapters/targets/omnia/adapter.yaml", "name: omnia\nversion: \"1.0.0\"\n");
-    let manifest = extract(&file).expect("manifest extracted");
-    assert!(manifest.tools.is_empty());
-}
-
-#[test]
 fn rejects_unknown_axis() {
     let file = manifest("adapters/whatever/intent/adapter.yaml", "name: intent\n");
     assert!(extract(&file).is_none());

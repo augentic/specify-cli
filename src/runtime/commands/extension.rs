@@ -1,4 +1,4 @@
-//! `specify tool *` dispatcher. Hosts the shared inventory-assembly
+//! `specify extension *` dispatcher. Hosts the shared inventory-assembly
 //! helpers (declared-tool merge, adapter resolution, manifest
 //! validation) consumed by every per-subcommand handler.
 
@@ -15,8 +15,10 @@ pub(super) use gc::run as gc;
 pub(super) use run::{run, run_captured};
 use specify_error::{Error, Result};
 use specify_registry::load::{self};
-use specify_registry::manifest::{Axis as ToolAxis, Extension, ExtensionManifest, ExtensionScope};
-use specify_workflow::adapter::{ResolvedTargetAdapter, TargetAdapter};
+use specify_registry::manifest::{
+    Axis as ToolAxis, Extension, ExtensionManifest, ExtensionScope, ExtensionSource,
+};
+use specify_workflow::adapter::{ADAPTER_WASM_FILENAME, ResolvedTargetAdapter, TargetAdapter};
 use specify_workflow::init::adapter_ref_from_value;
 
 pub(super) use self::dto::{Inventory, ScopedTool};
@@ -31,21 +33,9 @@ pub fn build_inventory(ctx: &Ctx) -> Result<Inventory> {
     let project_tools = load::project_tools(ctx.config.name.clone(), ctx.config.tools.clone());
 
     let mut scopes = vec![project_scope];
-    let plugin = resolve_project_adapter(ctx)?;
-    let plugin_tools = if let Some(plugin) = plugin {
-        let plugin_scope = ExtensionScope::Plugin {
-            axis: ToolAxis::Target,
-            plugin_slug: plugin.manifest.name.clone(),
-            capability_dir: plugin.location.path().clone(),
-        };
-        scopes.push(plugin_scope.clone());
-        let sidecar_tools =
-            load::plugin_sidecar(plugin.location.path(), &plugin.manifest.name, ToolAxis::Target)?;
-        let tools: Vec<Extension> = sidecar_tools.iter().map(|(_, tool)| tool.clone()).collect();
-        validate_manifest_tools(&tools, &plugin_scope)?;
-        sidecar_tools
-    } else {
-        Vec::new()
+    let plugin_tools = match resolve_project_adapter(ctx)? {
+        Some(plugin) => adapter_extension_scoped(&plugin, &mut scopes),
+        None => Vec::new(),
     };
 
     let (merged, warnings) = load::merge_scoped(project_tools, plugin_tools);
@@ -54,6 +44,38 @@ pub fn build_inventory(ctx: &Ctx) -> Result<Inventory> {
         warnings: warnings.into_iter().map(warning_row).collect(),
         scopes,
     })
+}
+
+/// Project the resolved target adapter's singular `extension`
+/// declaration (RFC-48 D11) into a plugin-scope [`Extension`], sourcing
+/// the WASI component from the committed `adapter.wasm` in the installed
+/// adapter tree rather than a retired `tools.yaml` sidecar.
+///
+/// An adapter with no `extension` contributes nothing. The extension
+/// rides the adapter's own semver identity (RFC-47), so its `version`
+/// is the manifest version and its run handle defaults to the adapter
+/// name when the declaration omits `name`.
+fn adapter_extension_scoped(
+    plugin: &ResolvedTargetAdapter, scopes: &mut Vec<ExtensionScope>,
+) -> Vec<(ExtensionScope, Extension)> {
+    let Some(declaration) = &plugin.manifest.extension else {
+        return Vec::new();
+    };
+    let plugin_dir = plugin.location.path();
+    let scope = ExtensionScope::Plugin {
+        axis: ToolAxis::Target,
+        plugin_slug: plugin.manifest.name.clone(),
+        capability_dir: plugin_dir.clone(),
+    };
+    scopes.push(scope.clone());
+    let extension = Extension {
+        name: declaration.name.clone().unwrap_or_else(|| plugin.manifest.name.clone()),
+        version: plugin.manifest.version.to_string(),
+        source: ExtensionSource::LocalPath(plugin_dir.join(ADAPTER_WASM_FILENAME)),
+        sha256: None,
+        permissions: declaration.permissions.clone(),
+    };
+    vec![(scope, extension)]
 }
 
 fn resolve_project_adapter(ctx: &Ctx) -> Result<Option<ResolvedTargetAdapter>> {
@@ -79,14 +101,18 @@ fn validate_manifest_tools(tools: &[Extension], scope: &ExtensionScope) -> Resul
     };
     let code = first.rule_id.clone().unwrap_or_else(|| "tool-manifest-invalid".to_string());
     let detail = diagnostics.iter().map(|d| d.impact.as_str()).collect::<Vec<_>>().join("; ");
-    Err(Error::validation_failed(code, "tools.yaml manifest must satisfy structural rules", detail))
+    Err(Error::validation_failed(
+        code,
+        "declared extensions must satisfy structural rules",
+        detail,
+    ))
 }
 
 fn find<'a>(inventory: &'a Inventory, name: &str) -> Result<&'a ScopedTool> {
     inventory.tools.iter().find(|scoped| scoped.tool.name == name).ok_or_else(|| {
         Error::validation_failed(
             "tool-not-declared",
-            "tool must be declared in tools.yaml",
+            "extension must be declared in project.yaml or the bound adapter",
             format!("tool not declared: {name}"),
         )
     })

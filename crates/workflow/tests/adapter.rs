@@ -224,15 +224,13 @@ briefs:
 }
 
 #[test]
-fn resolves_captures_with_tools() {
+fn resolves_captures_with_extension() {
     // workflow §Acceptance scenario #26-1 (release blocker, D1):
     // pin the loader against the live `adapters/sources/captures/`
-    // adapter shape shipped by the `plg` repo. The manifest carries
-    // a `tools: [{ name: replay-index }]` declaration and a free-
-    // form `description:` field; both must round-trip through the
-    // axis-aware loader without forcing the operator to bind the
-    // declared WASI tool (the tool itself is a follow-up per authority and reconciliation contract
-    // §Implementation plan).
+    // adapter shape. The manifest carries a singular `extension`
+    // declaration (RFC-48 D11) — an optional run `name` plus structured
+    // `{read, write}` permissions — and a free-form `description:`
+    // field; both must round-trip through the axis-aware loader.
     //
     // This test is the cli-side complement to the deno harness
     // assertions in `augentic/specify` at
@@ -244,20 +242,22 @@ fn resolves_captures_with_tools() {
     fs::create_dir_all(manifest_dir.join("briefs")).expect("create captures adapter dir");
     fs::write(
         manifest_dir.join("adapter.yaml"),
-        r"name: captures
+        r#"name: captures
 version: 1.0.0
 axis: source
 execution: agent
 briefs:
   survey: briefs/survey.md
   extract: briefs/extract.md
-tools:
-  - name: replay-index
-    version: 0.1.0
+extension:
+  name: replay-index
+  permissions:
+    read: ["$PROJECT_DIR/.specify"]
+    write: []
 description: >-
   Runtime capture source adapter. Walks a read-only capture tree under
   `$SOURCE_DIR` and emits one lead per observed handler entry point.
-",
+"#,
     )
     .expect("write captures manifest");
     fs::write(manifest_dir.join("briefs/survey.md"), "# survey\n").expect("survey brief stub");
@@ -267,6 +267,10 @@ description: >-
         .expect("captures adapter loads via SourceAdapter::resolve");
     assert_eq!(resolved.manifest.name, "captures");
     assert_eq!(resolved.manifest.axis, Axis::Source);
+    let extension = resolved.manifest.extension.as_ref().expect("singular extension declared");
+    assert_eq!(extension.name.as_deref(), Some("replay-index"));
+    assert_eq!(extension.permissions.read, vec!["$PROJECT_DIR/.specify".to_string()]);
+    assert!(extension.permissions.write.is_empty());
     assert_eq!(
         resolved.manifest.operations().copied().collect::<Vec<_>>(),
         vec![SourceOperation::Extract, SourceOperation::Survey],

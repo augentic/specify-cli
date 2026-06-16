@@ -76,24 +76,6 @@ impl ExtensionError {
         }
     }
 
-    /// Build a manifest-read error.
-    pub(crate) fn manifest_read(path: impl Into<PathBuf>, source: std::io::Error) -> Self {
-        let path = path.into();
-        Self::Diag {
-            code: "tool-manifest-read",
-            detail: format!("tool manifest at {}: read failed: {source}", path.display()),
-        }
-    }
-
-    /// Build a manifest-parse error.
-    pub(crate) fn manifest_parse(path: impl Into<PathBuf>, source: impl std::fmt::Display) -> Self {
-        let path = path.into();
-        Self::Diag {
-            code: "tool-manifest-parse",
-            detail: format!("tool manifest at {}: parse failed: {source}", path.display()),
-        }
-    }
-
     /// Build an atomic-cache-move error.
     pub(crate) fn atomic_move_failed(
         from: impl Into<PathBuf>, to: impl Into<PathBuf>, source: std::io::Error,
@@ -214,6 +196,41 @@ impl ExtensionError {
         Self::Diag {
             code: "tool-network-other",
             detail: format!("`{}` network error: {}", url.into(), detail.into()),
+        }
+    }
+
+    /// Build an `adapter-pack-failed` diagnostic for the byte-deterministic
+    /// pack stage (RFC-48 D1).
+    pub(crate) fn pack(detail: impl Into<String>) -> Self {
+        Self::Diag {
+            code: "adapter-pack-failed",
+            detail: format!("adapter pack failed: {}", detail.into()),
+        }
+    }
+
+    /// Build an `adapter-transport-failed` diagnostic for OCI
+    /// publish/pull failures (RFC-48 D6).
+    pub(crate) fn transport(reference: impl Into<String>, detail: impl Into<String>) -> Self {
+        Self::Diag {
+            code: "adapter-transport-failed",
+            detail: format!("adapter registry transport for `{}` failed: {}", reference.into(), detail.into()),
+        }
+    }
+
+    /// Build an `adapter-digest-mismatch` diagnostic — the verify-on-read
+    /// gate that refuses an artifact whose content digest differs from
+    /// the recorded immutable identity (RFC-48 D4).
+    pub(crate) fn digest_mismatch(
+        reference: impl Into<String>, expected: impl Into<String>, actual: impl Into<String>,
+    ) -> Self {
+        Self::Diag {
+            code: "adapter-digest-mismatch",
+            detail: format!(
+                "adapter `{}` content digest {} does not match the recorded immutable digest {}",
+                reference.into(),
+                actual.into(),
+                expected.into(),
+            ),
         }
     }
 }

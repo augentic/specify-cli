@@ -14,9 +14,9 @@
 use serde_json::{Map, Value, json};
 use specify_schema::{ValidationStatus, WORKSPACE_MODEL_JSON_SCHEMA, validate_value};
 use specify_standards::lint::{
-    AdapterAxis, AdapterDir, AdapterManifest, AdapterTool, Brief, BriefScope, File, FileKind,
-    Frontmatter, IgnoreDirective, MarkdownLink, MarkdownSection, ScanProfile, Scenario, Skill,
-    Symlink, WorkspaceModel, WorkspaceModelVersion,
+    AdapterAxis, AdapterDir, AdapterManifest, Brief, BriefScope, File, FileKind, Frontmatter,
+    IgnoreDirective, MarkdownLink, MarkdownSection, ScanProfile, Scenario, Skill, Symlink,
+    WorkspaceModel, WorkspaceModelVersion,
 };
 
 fn assert_schema_valid(value: &Value) {
@@ -148,10 +148,6 @@ fn populated_model_round_trips() {
             path: "adapters/targets/omnia/adapter.yaml".into(),
             version: Some("1".into()),
             brief_keys: vec!["build".into(), "merge".into(), "shape".into()],
-            tools: vec![AdapterTool {
-                name: "omnia".into(),
-                version: "0.1.0".into(),
-            }],
         }],
         ignore_directives: vec![IgnoreDirective {
             path: "src/lib.rs".into(),

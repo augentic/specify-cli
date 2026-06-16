@@ -6,7 +6,9 @@ pub mod cache;
 pub mod error;
 pub mod host;
 pub mod load;
+pub mod oci;
 mod package;
+pub mod pack;
 pub mod permissions;
 pub mod resolver;
 // The manifest DTOs and structural validation live in the wasmtime-free

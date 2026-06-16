@@ -1,4 +1,4 @@
-//! CLI acceptance tests for `specify tool`.
+//! CLI acceptance tests for `specify extension`.
 
 use std::fmt::Write as _;
 use std::fs;
@@ -40,7 +40,6 @@ impl ToolFixtures {
         }
         for path in [
             root.join("tools-test-project/.specify/project.yaml"),
-            root.join("tools-test-adp/tools.yaml"),
             root.join("tools-test-project-adp/.specify/project.yaml"),
         ] {
             let text = fs::read_to_string(&path).expect("read fixture manifest");
@@ -68,10 +67,6 @@ impl ToolFixtures {
 
     fn project_wasm(&self, name: &str) -> PathBuf {
         self.project().join("wasm").join(format!("{name}.wasm"))
-    }
-
-    fn cap_wasm(&self, name: &str) -> PathBuf {
-        self.adapter().join("wasm").join(format!("{name}.wasm"))
     }
 }
 
@@ -120,8 +115,18 @@ fn write_project_manifest(project: &Path, yaml: &str) {
     fs::write(project.join(".specify/project.yaml"), yaml).expect("write project.yaml");
 }
 
-fn write_adapter_tools(adapter: &Path, tools: &str) {
-    fs::write(adapter.join("tools.yaml"), format!("tools:\n{tools}")).expect("write tools.yaml");
+/// Rewrite the fixture adapter's `adapter.yaml` so its singular
+/// `extension` declaration runs under `name`. The WASI component is the
+/// committed `adapter.wasm` already in the fixture tree (RFC-48 D11), so
+/// only the run handle changes.
+fn write_adapter_extension(adapter: &Path, name: &str) {
+    fs::write(
+        adapter.join("adapter.yaml"),
+        format!(
+            "name: tools-test-adp\nversion: 1.0.0\naxis: target\nexecution: agent\nbriefs:\n  shape: briefs/shape.md\n  build: briefs/build.md\n  merge: briefs/merge.md\ndescription: Fixture adapter for installed-tree extension acceptance tests\nextension:\n  name: {name}\n"
+        ),
+    )
+    .expect("write adapter.yaml");
 }
 
 fn run_json_failure(project: &Path, cache: &Path, args: &[&str], code: i32) -> Value {
@@ -148,8 +153,8 @@ fn assert_validation_rule(value: &Value, rule_id: &str) {
 fn help_lists_active_verbs() {
     // `tool --help` must exit 0; the verb inventory is asserted via the
     // contract dump rather than exact clap wording.
-    specify_cmd().args(["tool", "--help"]).assert().success();
-    let verbs = crate::common::contract_dump_verbs(&["tool"]);
+    specify_cmd().args(["extension", "--help"]).assert().success();
+    let verbs = crate::common::contract_dump_verbs(&["extension"]);
     for verb in ["run", "fetch", "gc", "schema"] {
         assert!(verbs.iter().any(|v| v == verb), "tool must declare `{verb}`, got: {verbs:?}");
     }
@@ -168,7 +173,7 @@ fn gc_prunes_orphaned_cache_entry() {
     specify_cmd()
         .current_dir(&project)
         .env("SPECIFY_EXTENSIONS_CACHE", &cache)
-        .args(["tool", "run", "echo", "--", "seed"])
+        .args(["extension", "run", "echo", "--", "seed"])
         .assert()
         .success();
     let echo_dir = cache.join("project--tools-test/echo/0.1.0");
@@ -180,7 +185,7 @@ fn gc_prunes_orphaned_cache_entry() {
     let assert = specify_cmd()
         .current_dir(&project)
         .env("SPECIFY_EXTENSIONS_CACHE", &cache)
-        .args(["--format", "json", "tool", "gc"])
+        .args(["--format", "json", "extension", "gc"])
         .assert()
         .success();
     let body = parse_json(&assert.get_output().stdout);
@@ -237,37 +242,8 @@ fn manifest_validation_reports_rule_ids() {
 
     for (entry, rule_id) in cases {
         write_project_manifest(&project, &project_manifest(&entry));
-        let value = run_json_failure(&project, &cache, &["tool", "run", "echo"], 2);
+        let value = run_json_failure(&project, &cache, &["extension", "run", "echo"], 2);
         assert_validation_rule(&value, rule_id);
-    }
-}
-
-#[test]
-fn adapter_manifest_reports_sidecar_rules() {
-    let fixtures = ToolFixtures::new();
-    let cache = cache_dir("adapter-validation");
-    let cases = [
-        (tool_entry("exit-seven", "0.1.0", "https://", None, None), "tool.source-is-supported-uri"),
-        (
-            tool_entry(
-                "exit-seven",
-                "0.1.0",
-                &file_uri(&fixtures.cap_wasm("exit-seven")),
-                None,
-                Some("    permissions:\n      read:\n        - \"$PROJECT_DIR/../inputs\"\n"),
-            ),
-            "tool.permission-path-form",
-        ),
-    ];
-
-    for (entry, rule_id) in cases {
-        write_adapter_tools(&fixtures.adapter(), &entry);
-        let value =
-            run_json_failure(&fixtures.cap_project(), &cache, &["tool", "run", "exit-seven"], 2);
-        assert_validation_rule(&value, rule_id);
-        let cap_yaml =
-            fs::read_to_string(fixtures.adapter().join("adapter.yaml")).expect("read adapter.yaml");
-        assert!(!cap_yaml.contains("\ntools:"), "sidecar mutation must not touch adapter.yaml");
     }
 }
 
@@ -280,7 +256,7 @@ fn cache_miss_hit_and_override_observable() {
     let first = specify_cmd()
         .current_dir(&project)
         .env("SPECIFY_EXTENSIONS_CACHE", &cache)
-        .args(["tool", "run", "echo", "--", "hello", "world"])
+        .args(["extension", "run", "echo", "--", "hello", "world"])
         .assert()
         .success();
     let stdout = String::from_utf8(first.get_output().stdout.clone()).expect("utf8 stdout");
@@ -295,7 +271,7 @@ fn cache_miss_hit_and_override_observable() {
     specify_cmd()
         .current_dir(&project)
         .env("SPECIFY_EXTENSIONS_CACHE", &cache)
-        .args(["tool", "run", "echo", "--", "hello", "world"])
+        .args(["extension", "run", "echo", "--", "hello", "world"])
         .assert()
         .success();
     assert_eq!(
@@ -316,7 +292,7 @@ fn cache_miss_hit_and_override_observable() {
     specify_cmd()
         .current_dir(&project)
         .env("SPECIFY_EXTENSIONS_CACHE", &cache)
-        .args(["tool", "fetch", "echo"])
+        .args(["extension", "fetch", "echo"])
         .assert()
         .success();
     let refetched = fs::read_to_string(&sidecar).expect("read refetched sidecar");
@@ -338,7 +314,7 @@ fn digest_mismatch_fails_before_install() {
     );
     write_project_manifest(&project, &project_manifest(&entry));
 
-    let value = run_json_failure(&project, &cache, &["tool", "run", "echo"], 1);
+    let value = run_json_failure(&project, &cache, &["extension", "run", "echo"], 1);
     assert_eq!(value["error"], "tool-resolver", "{value}");
     assert!(
         !cache.join("project--tools-test/echo/0.1.0/module.wasm").exists(),
@@ -358,7 +334,7 @@ fn local_path_source_runs_without_file_uri() {
     let assert = specify_cmd()
         .current_dir(&project)
         .env("SPECIFY_EXTENSIONS_CACHE", &cache)
-        .args(["tool", "run", "echo", "--", "local"])
+        .args(["extension", "run", "echo", "--", "local"])
         .assert()
         .success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
@@ -376,7 +352,7 @@ fn https_network_failure_is_typed() {
     let entry = tool_entry("echo", "0.1.0", &url, None, None);
     write_project_manifest(&project, &project_manifest(&entry));
 
-    let value = run_json_failure(&project, &cache, &["tool", "run", "echo"], 1);
+    let value = run_json_failure(&project, &cache, &["extension", "run", "echo"], 1);
     let code = value["error"].as_str().expect("error code");
     assert!(
         matches!(code, "tool-network-other" | "tool-network-timeout" | "tool-network-malformed"),
@@ -395,7 +371,7 @@ fn invalid_wasm_runtime_failure_is_typed() {
     let entry = tool_entry("echo", "0.1.0", &file_uri(&invalid_wasm), None, None);
     write_project_manifest(&project, &project_manifest(&entry));
 
-    let value = run_json_failure(&project, &cache, &["tool", "run", "echo"], 1);
+    let value = run_json_failure(&project, &cache, &["extension", "run", "echo"], 1);
     assert_eq!(value["error"], "tool-runtime", "{value}");
 }
 
@@ -408,7 +384,7 @@ fn allowed_fs_reads_and_writes_declared() {
     let read = specify_cmd()
         .current_dir(&project)
         .env("SPECIFY_EXTENSIONS_CACHE", &cache)
-        .args(["tool", "run", "read-only"])
+        .args(["extension", "run", "read-only"])
         .assert()
         .success();
     let stdout = String::from_utf8(read.get_output().stdout.clone()).expect("utf8 stdout");
@@ -419,7 +395,7 @@ fn allowed_fs_reads_and_writes_declared() {
     let write = specify_cmd()
         .current_dir(&project)
         .env("SPECIFY_EXTENSIONS_CACHE", &cache)
-        .args(["tool", "run", "read-write"])
+        .args(["extension", "run", "read-write"])
         .assert()
         .success();
     let stdout = String::from_utf8(write.get_output().stdout.clone()).expect("utf8 stdout");
@@ -441,7 +417,7 @@ fn denied_fs_lifecycle_fail_pre_guest() {
     );
     write_project_manifest(&project, &project_manifest(&denied));
 
-    let value = run_json_failure(&project, &cache, &["tool", "run", "read-only"], 2);
+    let value = run_json_failure(&project, &cache, &["extension", "run", "read-only"], 2);
     assert_validation_rule(&value, "tool-permission-denied");
 
     let lifecycle = tool_entry(
@@ -452,7 +428,7 @@ fn denied_fs_lifecycle_fail_pre_guest() {
         Some("    permissions:\n      write:\n        - \"$PROJECT_DIR/.specify\"\n"),
     );
     write_project_manifest(&project, &project_manifest(&lifecycle));
-    let value = run_json_failure(&project, &cache, &["tool", "run", "read-write"], 2);
+    let value = run_json_failure(&project, &cache, &["extension", "run", "read-write"], 2);
     assert_validation_rule(&value, "tool.lifecycle-state-write-denied");
 }
 
@@ -465,11 +441,11 @@ fn adapter_non_zero_exit_caches_by_scope() {
     let assert = specify_cmd()
         .current_dir(fixtures.cap_project())
         .env("SPECIFY_EXTENSIONS_CACHE", &cache)
-        .args(["tool", "run", "exit-seven"])
+        .args(["extension", "run", "exit-seven"])
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(7));
-    assert!(cache.join("adapter--target--tools-test-adp/exit-seven/0.1.0/module.wasm").is_file());
+    assert!(cache.join("adapter--target--tools-test-adp/exit-seven/1.0.0/module.wasm").is_file());
 }
 
 #[test]
@@ -479,17 +455,15 @@ fn name_collision_project_scope_wins() {
     let cache = cache_dir("collision");
     let project_echo =
         tool_entry("echo", "0.1.0", &file_uri(&fixtures.project_wasm("echo")), None, None);
-    let cap_echo =
-        tool_entry("echo", "0.1.0", &file_uri(&fixtures.cap_wasm("exit-seven")), None, None);
-    let cap_exit =
-        tool_entry("exit-seven", "0.1.0", &file_uri(&fixtures.cap_wasm("exit-seven")), None, None);
+    // Point the adapter's singular extension at the run handle `echo`,
+    // colliding with the project-scope `echo`; project scope must win.
     write_project_manifest(&project, &adapter_project_manifest(Some(&project_echo)));
-    write_adapter_tools(&fixtures.adapter(), &format!("{cap_echo}{cap_exit}"));
+    write_adapter_extension(&fixtures.adapter(), "echo");
 
     let run = specify_cmd()
         .current_dir(&project)
         .env("SPECIFY_EXTENSIONS_CACHE", &cache)
-        .args(["tool", "run", "echo", "--", "project-wins"])
+        .args(["extension", "run", "echo", "--", "project-wins"])
         .assert()
         .success();
     let stdout = String::from_utf8(run.get_output().stdout.clone()).expect("utf8 stdout");

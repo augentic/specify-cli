@@ -386,7 +386,7 @@ mod unit {
             declared: false,
             ..FakeRunner::new("", 0)
         };
-        let hint = hint(HintKind::Extension, "ghost");
+        let hint = hint(HintKind::Tool, "ghost");
         let out =
             evaluate(&rule(), &hint, &candidates(&["a.md"]), Path::new("/tmp"), &runner, &mut 1)
                 .expect("evaluate");
@@ -398,7 +398,7 @@ mod unit {
     #[test]
     fn findings_folded_and_restamped() {
         let runner = FakeRunner::new(&single_finding_json(), 1);
-        let hint = hint(HintKind::Extension, "demo");
+        let hint = hint(HintKind::Tool, "demo");
         let out = evaluate(
             &rule(),
             &hint,
@@ -421,7 +421,7 @@ mod unit {
             stderr: b"boom".to_vec(),
             ..FakeRunner::new("", 3)
         };
-        let hint = hint(HintKind::Extension, "demo");
+        let hint = hint(HintKind::Tool, "demo");
         let out =
             evaluate(&rule(), &hint, &candidates(&["a.md"]), Path::new("/tmp"), &runner, &mut 1)
                 .expect("evaluate");
@@ -431,7 +431,7 @@ mod unit {
 
     #[test]
     fn runtime_failure_propagates() {
-        let hint = hint(HintKind::Extension, "demo");
+        let hint = hint(HintKind::Tool, "demo");
         let result = evaluate(
             &rule(),
             &hint,
@@ -446,7 +446,7 @@ mod unit {
     #[test]
     fn config_forwarded_as_second_arg() {
         let runner = FakeRunner::new("", 0);
-        let hint = hint_with_config(HintKind::Extension, "demo", Some(json!({ "max": 3 })));
+        let hint = hint_with_config(HintKind::Tool, "demo", Some(json!({ "max": 3 })));
         evaluate(&rule(), &hint, &candidates(&["a.md"]), Path::new("/tmp"), &runner, &mut 1)
             .expect("evaluate");
         let calls = runner.calls.lock().expect("calls lock").clone();

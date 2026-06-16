@@ -25,7 +25,7 @@ fn seed_vectis_adapter(root: &Path) {
     fs::create_dir_all(&briefs).expect("mkdir briefs");
     fs::write(
         adapter.join("adapter.yaml"),
-        "name: vectis\nversion: 1\naxis: target\nexecution: agent\nbriefs:\n  shape: briefs/shape.md\n  build: briefs/build.md\n  merge: briefs/merge.md\ndescription: Test vectis adapter\n",
+        "name: vectis\nversion: 1.0.0\naxis: target\nexecution: agent\nbriefs:\n  shape: briefs/shape.md\n  build: briefs/build.md\n  merge: briefs/merge.md\ndescription: Test vectis adapter\n",
     )
     .expect("write adapter.yaml");
     for op in ["shape", "build", "merge"] {

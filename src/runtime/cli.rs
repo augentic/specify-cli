@@ -9,6 +9,7 @@ use clap_complete::Shell;
 use specify_model::evidence::ClaimKind;
 
 pub use crate::output::Format;
+use crate::runtime::commands::adapter::cli::AdapterAction;
 use crate::runtime::commands::archive::cli::ArchiveAction;
 use crate::runtime::commands::catalog::cli::CatalogAction;
 use crate::runtime::commands::contract::cli::ContractAction;
@@ -128,6 +129,16 @@ pub enum Commands {
     Target {
         #[command(subcommand)]
         action: TargetAction,
+    },
+
+    /// Adapter packaging operations (RFC-48). `build` packs an adapter
+    /// directory into a self-contained, byte-deterministic layer
+    /// (dereferencing shared symlinks, excluding the `extension/`
+    /// source); `publish` pushes it as an immutable, content-addressed
+    /// OCI artifact and verifies the recorded digest on pull-back.
+    Adapter {
+        #[command(subcommand)]
+        action: AdapterAction,
     },
 
     /// Rules resolution operations. Read-only: no

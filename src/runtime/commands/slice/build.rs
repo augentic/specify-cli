@@ -128,7 +128,7 @@ pub(super) fn run(ctx: &Ctx, name: &str, phase: Phase) -> Result<()> {
     let resolved = TargetAdapter::resolve(&target_ref, &ctx.project_dir)?;
 
     match resolved.manifest.execution {
-        Some(Execution::Extension) => run_tool(ctx, name, &slice_dir, &resolved.manifest),
+        Some(Execution::Tool) => run_tool(ctx, name, &slice_dir, &resolved.manifest),
         _ => match phase {
             Phase::Prepare => prepare(ctx, name, &slice_dir, &resolved),
             Phase::Finalize => finalize(ctx, name, &slice_dir),

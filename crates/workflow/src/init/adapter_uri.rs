@@ -1,13 +1,21 @@
 //! Parsing the `<adapter>` argument: first-party shorthand
-//! (`omnia`, `omnia@1.0.0`), bare local paths, `file://` URIs, and
+//! (`omnia`, `omnia@1.0.0`), package references
+//! (`specify:<name>@<semver>`), bare local paths, `file://` URIs, and
 //! `https://github.com/...` URIs (with optional `@ref` or
 //! `tree/<ref>` discriminators).
 //!
 //! First-party shorthand resolves a bare adapter name to the canonical
 //! published adapter on GitHub. The shorthand carries the RFC-47 semver
 //! identity (`omnia@1.0.0`); the git checkout ref is derived as
-//! `v<major>` while `project.yaml.adapter` records the full semver pin
-//! (transport stays git until RFC-48).
+//! `v<major>` while `project.yaml.adapter` records the full semver pin.
+//!
+//! A package reference (`<namespace>:<name>@<semver>`, e.g.
+//! `specify:omnia@1.2.0`) is the RFC-48 D2 registry locator: an
+//! *immutable*, content-addressed identity with a mandatory exact
+//! SemVer pin and no branch or tag defaulting. The recorded registry
+//! content digest (D4) backstops a moved tag as `adapter-digest-mismatch`
+//! at read time. Registry transport (fetch + verify-on-read) lands in
+//! the RFC-48 Step 4 loop; this module owns the locator parse.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -31,10 +39,30 @@ impl AdapterUri {
         if is_github_url(adapter) {
             return Self::from_github(adapter);
         }
+        if let Some(package) = AdapterPackageRef::recognize(adapter) {
+            return Self::from_package(package?);
+        }
         if let Some((name, version)) = parse_first_party_shorthand(adapter) {
             return Self::from_shorthand(name, version.as_ref());
         }
         Self::from_local(adapter, project_dir)
+    }
+
+    /// Resolve an immutable [`AdapterPackageRef`] registry locator.
+    ///
+    /// The locator parse is complete here; the registry transport
+    /// (fetch → verify-on-read against the recorded content digest)
+    /// lands in the RFC-48 Step 4 loop, so a recognised package
+    /// reference is reported as not-yet-fetchable rather than silently
+    /// falling back to a mutable git checkout.
+    fn from_package(package: AdapterPackageRef) -> Result<Self, Error> {
+        Err(Error::Diag {
+            code: "adapter-package-transport-unavailable",
+            detail: format!(
+                "adapter package reference `{}` resolves to an immutable registry locator, but registry transport is not yet wired (RFC-48 Step 4)",
+                package.wire_value()
+            ),
+        })
     }
 
     fn from_local(adapter: &str, project_dir: &Path) -> Result<Self, Error> {
@@ -162,6 +190,76 @@ impl GithubAdapterUri {
     }
 }
 
+/// An immutable, content-addressed adapter package reference of the
+/// form `<namespace>:<name>@<semver>` (e.g. `specify:omnia@1.2.0`) — the
+/// RFC-48 D2 registry locator.
+///
+/// The exact SemVer pin is mandatory: there is no branch or tag
+/// defaulting, so a reference always names one immutable artifact. The
+/// recorded registry content digest (RFC-48 D4) backstops a moved tag
+/// as `adapter-digest-mismatch` at read time.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct AdapterPackageRef {
+    namespace: String,
+    name: String,
+    version: semver::Version,
+}
+
+impl AdapterPackageRef {
+    /// Recognise an adapter package reference `<namespace>:<name>@<semver>`.
+    ///
+    /// Returns `None` when `adapter` is not a package-ref shape — so
+    /// URL schemes (`https://`, `file://`), Windows drive paths
+    /// (`C:\…`), bare names, and local paths keep flowing through the
+    /// GitHub / shorthand / local branches. Returns `Some(Err(_))` when
+    /// the shape *is* a package reference but the version pin is missing
+    /// or not exact SemVer (RFC-48 D2 forbids branch/tag defaulting).
+    fn recognize(adapter: &str) -> Option<Result<Self, Error>> {
+        let (namespace, rest) = adapter.split_once(':')?;
+        // `//` after the colon is a URL authority (`https://`,
+        // `file://`); a non-kebab namespace (e.g. the `C` of `C:\`) is a
+        // drive path. Neither is a package reference.
+        if rest.starts_with('/') || !is_first_party_name(namespace) {
+            return None;
+        }
+        Some(Self::parse_validated(namespace, rest, adapter))
+    }
+
+    fn parse_validated(namespace: &str, rest: &str, original: &str) -> Result<Self, Error> {
+        let (name, version) = rest.split_once('@').ok_or_else(|| Error::Diag {
+            code: "adapter-package-ref-version-required",
+            detail: format!(
+                "adapter package reference `{original}` must pin an exact SemVer version (`{namespace}:<name>@<version>`); there is no branch or tag defaulting"
+            ),
+        })?;
+        if name.is_empty() {
+            return Err(Error::Diag {
+                code: "adapter-package-ref-malformed",
+                detail: format!(
+                    "adapter package reference `{original}` is missing a package name before `@`"
+                ),
+            });
+        }
+        let version = semver::Version::parse(version).map_err(|err| Error::Diag {
+            code: "adapter-package-ref-version-required",
+            detail: format!(
+                "adapter package reference `{original}` must pin an exact SemVer version, not `{version}`: {err}"
+            ),
+        })?;
+        Ok(Self {
+            namespace: namespace.to_string(),
+            name: name.to_string(),
+            version,
+        })
+    }
+
+    /// The canonical `<namespace>:<name>@<version>` wire form recorded
+    /// as `project.yaml.adapter`.
+    fn wire_value(&self) -> String {
+        format!("{}:{}@{}", self.namespace, self.name, self.version)
+    }
+}
+
 fn is_github_url(adapter: &str) -> bool {
     adapter.starts_with("https://github.com/")
 }
@@ -233,6 +331,8 @@ fn adapter_name_from_dir(path: &Path) -> Result<String, Error> {
 /// value. Accepts:
 ///
 /// - bare kebab names (`omnia`) — returned unchanged,
+/// - package references (`specify:omnia@1.2.0`) — the `<name>` between
+///   `:` and `@`,
 /// - `file://` URIs — last path component,
 /// - `https://...` URIs — last path component (suffix `@ref` stripped),
 /// - bare local paths — last path component.
@@ -241,7 +341,16 @@ pub fn adapter_name_from_value(value: &str) -> &str {
     let stripped = strip_at_ref_suffix(value);
     let stripped = stripped.strip_prefix("file://").unwrap_or(stripped);
     let stripped = stripped.strip_suffix('/').unwrap_or(stripped);
+    let stripped = package_ref_name(stripped).unwrap_or(stripped);
     stripped.rsplit('/').next().unwrap_or(stripped)
+}
+
+/// If `value` is a bare package reference `<namespace>:<name>` (kebab
+/// namespace, no `//` URL authority), return the `<name>`. Otherwise
+/// `None`, so URLs and drive paths keep their path-component handling.
+fn package_ref_name(value: &str) -> Option<&str> {
+    let (namespace, rest) = value.split_once(':')?;
+    (!rest.starts_with('/') && is_first_party_name(namespace)).then_some(rest)
 }
 
 /// Build an [`AdapterRef`] identity from a `project.yaml.adapter` (or

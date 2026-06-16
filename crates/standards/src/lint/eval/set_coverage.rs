@@ -315,7 +315,6 @@ mod unit {
             path: format!("adapters/{axis_dir}/{name}/adapter.yaml"),
             version: None,
             brief_keys: briefs.iter().map(|b| (*b).to_string()).collect(),
-            tools: vec![],
         }
     }
 

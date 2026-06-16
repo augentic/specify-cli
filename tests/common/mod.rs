@@ -214,7 +214,9 @@ pub fn scaffold_tool_project(
     .expect("write project.yaml");
     fs::write(
         adapter.join("adapter.yaml"),
-        "name: test-adp\nversion: 1.0.0\naxis: target\nexecution: agent\nbriefs:\n  shape: briefs/shape.md\n  build: briefs/build.md\n  merge: briefs/merge.md\ndescription: Test adapter\n",
+        format!(
+            "name: test-adp\nversion: 1.0.0\naxis: target\nexecution: agent\nbriefs:\n  shape: briefs/shape.md\n  build: briefs/build.md\n  merge: briefs/merge.md\ndescription: Test adapter\nextension:\n  name: {tool_name}\n"
+        ),
     )
     .expect("write adapter.yaml");
     for op in ["shape", "build", "merge"] {
@@ -225,15 +227,10 @@ pub fn scaffold_tool_project(
         .expect("write brief");
     }
 
-    let source = format!("file://{}", wasm_path.display());
-    let sha256 = sha256_hex(wasm_path);
-    fs::write(
-        adapter.join("tools.yaml"),
-        format!(
-            "tools:\n  - name: {tool_name}\n    version: 0.1.0\n    source: \"{source}\"\n    sha256: \"{sha256}\"\n    permissions:\n      read: []\n      write: []\n"
-        ),
-    )
-    .expect("write tools.yaml");
+    // The installed adapter tree carries its WASI component as the
+    // committed `adapter.wasm` (RFC-48 D11); `specify extension run`
+    // resolves the binary from there, not a retired `tools.yaml`.
+    fs::copy(wasm_path, adapter.join("adapter.wasm")).expect("commit adapter.wasm");
 
     (project, cache)
 }

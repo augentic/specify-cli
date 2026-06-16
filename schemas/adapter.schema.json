@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/augentic/specify-cli/schemas/adapter.schema.json",
   "title": "Specify adapter manifest",
-  "description": "Shared shape for source and target adapter manifests (`adapter.yaml`) per workflow §Adapter implementation shape. Carries the kebab-case `name`, semver `version`, the `axis` discriminator (`source` or `target`), the `briefs.<operation>` map of relative brief paths, and an optional `tools[]` declaration. The set of operations is closed by the per-axis `briefs` constraints in `source.schema.json` and `target.schema.json` — `briefs.keys()` is the canonical operation iterator.",
+  "description": "Shared shape for source and target adapter manifests (`adapter.yaml`) per workflow §Adapter implementation shape. Carries the kebab-case `name`, semver `version`, the `axis` discriminator (`source` or `target`), the `briefs.<operation>` map of relative brief paths, and an optional singular `extension` declaration (RFC-48 D11). The set of operations is closed by the per-axis `briefs` constraints in `source.schema.json` and `target.schema.json` — `briefs.keys()` is the canonical operation iterator.",
   "type": "object",
   "additionalProperties": false,
   "required": ["name", "version", "axis", "description", "briefs"],
@@ -30,11 +30,9 @@
       },
       "description": "Map from operation name to a relative path to the brief markdown file. Absolute paths and URIs are rejected. The per-axis schemas (`source.schema.json`, `target.schema.json`) close the legal key set."
     },
-    "tools": {
-      "type": "array",
-      "uniqueItems": true,
-      "items": { "$ref": "#/$defs/toolDeclaration" },
-      "description": "Optional WASI tool declarations for declared WASI tools. Tools resolve into the out-of-tree per-project cache under `manifests/{sources,targets}/<name>/`."
+    "extension": {
+      "$ref": "#/$defs/extensionDeclaration",
+      "description": "Optional singular WASI extension declaration (RFC-48 D11). An adapter ships at most one binary built from the co-located `extension/` crate; the wasm rides the adapter's own semver identity (RFC-47) and content digest (D4), so a per-extension `version` / `source` / `sha256` is rejected."
     },
     "inputs": {
       "type": "array",
@@ -79,27 +77,33 @@
         }
       }
     },
-    "toolDeclaration": {
+    "extensionDeclaration": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "version"],
       "properties": {
         "name": {
           "$ref": "#/$defs/kebabName",
-          "description": "WASI tool identifier; resolves under the out-of-tree per-project cache at `manifests/{sources,targets}/<adapter>/<name>/`."
+          "description": "Optional run handle for `specify extension run <name>`. Defaults to the adapter name when omitted."
         },
-        "version": {
-          "type": "string",
-          "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$",
-          "description": "Required semver pin (`x.y.z` with optional `-prerelease`). Tools without a release must cut one before being declared, so every dispatched tool carries an auditable version."
-        },
-        "permissions": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": { "type": "string", "minLength": 1 },
-          "description": "Optional permission grants (e.g. `read:source-dir`)."
-        }
+        "permissions": { "$ref": "#/$defs/extensionPermissions" }
       }
+    },
+    "extensionPermissions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "read": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Read-only preopen path templates (e.g. `$PROJECT_DIR/.specify`)."
+        },
+        "write": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Read-write preopen path templates."
+        }
+      },
+      "description": "Structured WASI filesystem permissions in the `{read, write}` shape the runner already speaks."
     }
   }
 }

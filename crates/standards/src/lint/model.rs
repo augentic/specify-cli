@@ -37,7 +37,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 mod facts;
 
 pub use facts::{
-    AdapterDir, AdapterManifest, AdapterTool, Brief, BriefScope, FencedBlock, File, Frontmatter,
+    AdapterDir, AdapterManifest, Brief, BriefScope, FencedBlock, File, Frontmatter,
     IgnoreDirective, MarkdownLink, MarkdownSection, Scenario, Skill, Symlink,
 };
 

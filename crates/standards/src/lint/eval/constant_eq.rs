@@ -263,7 +263,6 @@ mod unit {
             path: format!("adapters/targets/{name}/adapter.yaml"),
             version: version.map(str::to_string),
             brief_keys: vec![],
-            tools: vec![],
         }
     }
 

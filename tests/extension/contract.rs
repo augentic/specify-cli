@@ -56,7 +56,7 @@ impl ContractToolFixture {
         .expect("write project.yaml");
         fs::write(
             adapter.join("adapter.yaml"),
-            "name: contracts\nversion: 1.0.0\naxis: target\nexecution: agent\nbriefs:\n  shape: briefs/shape.md\n  build: briefs/build.md\n  merge: briefs/merge.md\ndescription: Test contracts adapter\n",
+            "name: contracts\nversion: 1.0.0\naxis: target\nexecution: agent\nbriefs:\n  shape: briefs/shape.md\n  build: briefs/build.md\n  merge: briefs/merge.md\ndescription: Test contracts adapter\nextension:\n  name: contract\n  permissions:\n    read:\n      - \"$PROJECT_DIR/contracts\"\n    write: []\n",
         )
         .expect("write adapter.yaml");
         for op in ["shape", "build", "merge"] {
@@ -67,16 +67,10 @@ impl ContractToolFixture {
             .expect("write brief");
         }
 
-        let wasm = contract_wasm();
-        let source = format!("file://{}", wasm.display());
-        let sha256 = sha256_hex(&wasm);
-        fs::write(
-            adapter.join("tools.yaml"),
-            format!(
-                "tools:\n  - name: contract\n    version: 0.2.0\n    source: \"{source}\"\n    sha256: \"{sha256}\"\n    permissions:\n      read:\n        - \"$PROJECT_DIR/contracts\"\n      write: []\n"
-            ),
-        )
-        .expect("write tools.yaml");
+        // Commit the contract WASI component as the adapter's
+        // `adapter.wasm`; the run handler resolves it from the installed
+        // adapter tree (RFC-48 D11).
+        fs::copy(contract_wasm(), adapter.join("adapter.wasm")).expect("commit adapter.wasm");
 
         let cache = tmp.path().join("tools-cache");
         fs::create_dir_all(&cache).expect("create cache");
@@ -109,7 +103,7 @@ fn preserves_validator_json_for_clean() {
     let assert = specify_cmd()
         .current_dir(&fixture.project)
         .env("SPECIFY_EXTENSIONS_CACHE", &fixture.cache)
-        .arg("tool")
+        .arg("extension")
         .arg("run")
         .arg("contract")
         .arg("--")
@@ -135,7 +129,7 @@ fn preserves_validator_findings_exit_code() {
     let assert = specify_cmd()
         .current_dir(&fixture.project)
         .env("SPECIFY_EXTENSIONS_CACHE", &fixture.cache)
-        .arg("tool")
+        .arg("extension")
         .arg("run")
         .arg("contract")
         .arg("--")

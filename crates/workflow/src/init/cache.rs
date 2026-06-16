@@ -88,10 +88,6 @@ const UNIVERSAL_RULES_REL: &str = "adapters/shared/rules/universal";
 /// Project-relative path to the framework `core/` pack (distributed
 /// only under `--include-framework`).
 const CORE_RULES_REL: &str = "adapters/shared/rules/core";
-/// Shared spec-runtime mirror (symlinks to plugin canonical references).
-const SHARED_RUNTIME_REL: &str = "adapters/shared/references/runtime";
-/// Vendored into each cached target adapter for brief-local links.
-const SPEC_RUNTIME_REL: &str = "references/spec-runtime";
 
 /// Absolute path to the project codex cache root,
 /// `<project-cache>/codex/` (out-of-tree). Shared/core packs land
@@ -198,84 +194,11 @@ fn refresh_cached_adapter(source: &Path, target: &Path) -> Result<(), Error> {
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent)?;
     }
-    copy_dir_recursive(source, target)?;
-    vendor_spec_runtime(source, target)
-}
-
-/// Walk up from a resolved adapter `source_dir` to the nearest ancestor that
-/// carries the shared spec-runtime mirror tree.
-fn repo_root_with_runtime(source_dir: &Path) -> Option<PathBuf> {
-    source_dir.ancestors().find(|dir| dir.join(SHARED_RUNTIME_REL).is_dir()).map(Path::to_path_buf)
-}
-
-/// Materialise dereferenced runtime reference files under
-/// `<cached-adapter>/references/spec-runtime/` so adapter briefs can link
-/// with `../references/spec-runtime/…` without escaping the cached tree.
-fn vendor_spec_runtime(source_adapter_dir: &Path, cached_adapter_dir: &Path) -> Result<(), Error> {
-    let Some(repo_root) = repo_root_with_runtime(source_adapter_dir) else {
-        return Ok(());
-    };
-    let dest = cached_adapter_dir.join(SPEC_RUNTIME_REL);
-    if dest.exists() {
-        fs::remove_dir_all(&dest)?;
-    }
-    let prebuilt = source_adapter_dir.join(SPEC_RUNTIME_REL);
-    if prebuilt.is_dir() {
-        copy_dir_recursive(&prebuilt, &dest)?;
-        return Ok(());
-    }
-    vendor_runtime_tree(&repo_root.join(SHARED_RUNTIME_REL), &dest)
-}
-
-fn vendor_runtime_tree(src: &Path, dest: &Path) -> Result<(), Error> {
-    fs::create_dir_all(dest)?;
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
-        let name = entry.file_name();
-        if name == "README.md" {
-            continue;
-        }
-        let source_path = entry.path();
-        let target_path = dest.join(&name);
-        let file_type = entry.file_type()?;
-        if file_type.is_dir() {
-            vendor_runtime_tree(&source_path, &target_path)?;
-            continue;
-        }
-        if file_type.is_symlink() {
-            let link_target = fs::read_link(&source_path).map_err(|err| Error::Diag {
-                code: "adapter-runtime-symlink-read-failed",
-                detail: format!(
-                    "failed to read spec-runtime symlink {}: {err}",
-                    source_path.display()
-                ),
-            })?;
-            let resolved = if link_target.is_absolute() {
-                link_target
-            } else {
-                source_path.parent().unwrap_or(src).join(link_target)
-            };
-            let resolved = fs::canonicalize(&resolved).map_err(|err| Error::Diag {
-                code: "adapter-runtime-symlink-unresolved",
-                detail: format!(
-                    "spec-runtime symlink {} does not resolve to a regular file: {err}",
-                    source_path.display()
-                ),
-            })?;
-            if let Some(parent) = target_path.parent() {
-                fs::create_dir_all(parent)?;
-            }
-            fs::copy(&resolved, &target_path)?;
-            continue;
-        }
-        if file_type.is_file() {
-            if let Some(parent) = target_path.parent() {
-                fs::create_dir_all(parent)?;
-            }
-            fs::copy(&source_path, &target_path)?;
-        }
-    }
-    Ok(())
+    // `copy_dir_recursive` dereferences the adapter's own symlinks into
+    // real bytes. The former `vendor_spec_runtime` ancestor-walk is
+    // retired (RFC-48 D9/D12): published adapters are self-contained, so
+    // the consumer cache vendors no shared content of its own.
+    copy_dir_recursive(source, target)
 }
 
 fn copy_dir_recursive(source: &Path, target: &Path) -> Result<(), Error> {

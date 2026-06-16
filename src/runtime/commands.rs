@@ -1,3 +1,4 @@
+pub mod adapter;
 pub mod agents;
 pub mod archive;
 pub mod catalog;
@@ -69,6 +70,16 @@ pub fn run(cli: Cli) -> Exit {
         Commands::Target { action } => match action {
             TargetAction::Resolve { value, project_dir } => {
                 dispatch(format, || resolve_adapter(format, Axis::Target, &value, &project_dir))
+            }
+        },
+        Commands::Adapter { action } => match action {
+            adapter::cli::AdapterAction::Build {
+                path,
+                dry_run,
+                refresh_extension,
+            } => dispatch(format, || adapter::build(format, &path, dry_run, refresh_extension)),
+            adapter::cli::AdapterAction::Publish { path, reference } => {
+                dispatch(format, || adapter::publish(format, &path, &reference))
             }
         },
         Commands::Rules { action } => match action {
@@ -251,22 +262,6 @@ fn run_tool_with(format: Format, name: &str, args: Vec<String>) -> Exit {
         Err(err) => return report(format, &err),
     };
     match extension::run(&ctx, name, args) {
-        Ok(0) => Exit::Success,
-        Ok(code) => Exit::Code(code),
-        Err(err) => report(format, &err),
-    }
-}
-
-/// `specify plan lock -- <cmd>` runs a child under the plan lock and
-/// passes its exit code through. Like [`run_tool_with`] it sits outside
-/// the `Result<()>` channel so the success branch can carry the child's
-/// own exit code rather than collapsing to `Success`.
-fn run_plan_lock_with(format: Format, plan_dir: Option<PathBuf>, command: &[String]) -> Exit {
-    let ctx = match Ctx::load(format, plan_dir) {
-        Ok(ctx) => ctx,
-        Err(err) => return report(format, &err),
-    };
-    match plan::lock::run(&ctx, command) {
         Ok(0) => Exit::Success,
         Ok(code) => Exit::Code(code),
         Err(err) => report(format, &err),

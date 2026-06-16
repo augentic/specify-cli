@@ -78,6 +78,85 @@ briefs:
     assert_eq!(manifest, reparsed);
 }
 
+// RFC-48 D11: the singular `extension` object carries an optional run
+// `name` plus structured `{read, write}` permissions, round-trips
+// through serde, and rejects the retired array / version / source /
+// sha256 shapes.
+#[test]
+fn extension_parses_name_and_perms() {
+    let yaml = r#"name: contracts
+version: 1.0.0
+axis: target
+execution: agent
+briefs:
+  shape: briefs/shape.md
+  build: briefs/build.md
+  merge: briefs/merge.md
+extension:
+  name: contract
+  permissions:
+    read: ["$PROJECT_DIR/contracts"]
+    write: []
+"#;
+    let manifest: TargetAdapter = serde_saphyr::from_str(yaml).expect("parse");
+    let extension = manifest.extension.as_ref().expect("extension declared");
+    assert_eq!(extension.name.as_deref(), Some("contract"));
+    assert_eq!(extension.permissions.read, vec!["$PROJECT_DIR/contracts".to_string()]);
+    assert!(extension.permissions.write.is_empty());
+    let reparsed: TargetAdapter =
+        serde_saphyr::from_str(&serde_saphyr::to_string(&manifest).expect("serialise"))
+            .expect("reparse");
+    assert_eq!(manifest, reparsed);
+}
+
+#[test]
+fn extension_name_is_optional() {
+    let yaml = r"name: omnia
+version: 1.0.0
+axis: target
+execution: agent
+briefs:
+  shape: briefs/shape.md
+  build: briefs/build.md
+  merge: briefs/merge.md
+extension: {}
+";
+    let manifest: TargetAdapter = serde_saphyr::from_str(yaml).expect("parse");
+    let extension = manifest.extension.as_ref().expect("extension declared");
+    assert!(extension.name.is_none(), "omitted name defaults to the adapter name at run time");
+}
+
+#[test]
+fn extension_rejects_retired_fields() {
+    // The plural `tools[]` array, a per-extension `version`, and a
+    // `source` are all retired by D11; `deny_unknown_fields` must
+    // reject each.
+    let array_form = r"name: omnia
+version: 1.0.0
+axis: target
+execution: agent
+briefs:
+  shape: briefs/shape.md
+  build: briefs/build.md
+  merge: briefs/merge.md
+tools:
+  - name: contract
+    version: 1.0.0
+";
+    serde_saphyr::from_str::<TargetAdapter>(array_form)
+        .expect_err("the plural tools[] array no longer parses");
+
+    for retired in ["version: 1.0.0", "source: https://example.com/x.wasm", "sha256: abc"] {
+        let yaml = format!(
+            "name: omnia\nversion: 1.0.0\naxis: target\nexecution: agent\nbriefs:\n  shape: briefs/shape.md\n  build: briefs/build.md\n  merge: briefs/merge.md\nextension:\n  name: contract\n  {retired}\n",
+        );
+        assert!(
+            serde_saphyr::from_str::<TargetAdapter>(&yaml).is_err(),
+            "extension must reject retired field `{retired}`",
+        );
+    }
+}
+
 #[test]
 fn execution_tool_parses() {
     let yaml = r"name: omnia
@@ -90,7 +169,7 @@ briefs:
   merge: briefs/merge.md
 ";
     let manifest: TargetAdapter = serde_saphyr::from_str(yaml).expect("parse");
-    assert_eq!(manifest.execution, Some(Execution::Extension));
+    assert_eq!(manifest.execution, Some(Execution::Tool));
 }
 
 #[test]
@@ -109,7 +188,7 @@ fn check_execution_rejects_missing_mode() {
 fn check_execution_accepts_declared_mode() {
     check_execution(Some(Execution::Agent), Path::new("adapter.yaml"))
         .expect("agent execution passes");
-    check_execution(Some(Execution::Extension), Path::new("adapter.yaml"))
+    check_execution(Some(Execution::Tool), Path::new("adapter.yaml"))
         .expect("tool execution passes (target axis)");
 }
 

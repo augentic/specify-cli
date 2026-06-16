@@ -25,6 +25,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use specify_error::Error;
+use specify_extension_manifest::ExtensionPermissions;
 
 use crate::Platform;
 use crate::adapter::operation::{SourceOperation, TargetOperation};
@@ -36,6 +37,14 @@ use crate::adapter::operation::{SourceOperation, TargetOperation};
 /// `adapters/sources/` or `adapters/targets/`) and the manifest's
 /// `axis:` field disambiguate.
 pub const ADAPTER_FILENAME: &str = "adapter.yaml";
+
+/// Committed WASI extension binary at an adapter's root (RFC-48 D3/D10).
+///
+/// When an adapter declares an `extension`, its WASI component is the
+/// committed `adapter.wasm` beside `adapter.yaml`; `specify extension
+/// run <name>` resolves the binary from the installed adapter tree
+/// rather than a `tools.yaml` sidecar (RFC-48 D11).
+pub const ADAPTER_WASM_FILENAME: &str = "adapter.wasm";
 
 /// Parent directory for in-repo adapter trees.
 pub const ADAPTERS_DIR: &str = "adapters";
@@ -100,21 +109,29 @@ pub fn adapter_axis_dir(project_dir: &Path, axis: Axis) -> PathBuf {
     project_dir.join(ADAPTERS_DIR).join(axis.dir_segment())
 }
 
-/// One declared WASI tool inside an adapter manifest.
+/// The singular WASI extension declared inside an adapter manifest
+/// (RFC-48 D11).
 ///
-/// Decoupled from [`specify_extension_manifest::Extension`] so adapter loading
-/// does not pull in the WASI runtime surface; sidecar `tools.yaml`
-/// continues to be the authoritative source for tool resolution.
+/// An adapter ships at most one binary, so the manifest carries one
+/// `extension` object rather than a `tools[]` array. Decoupled from
+/// [`specify_extension_manifest::Extension`] so adapter loading does not
+/// pull in the WASI runtime surface; the wasm builds from the co-located
+/// `extension/` crate (D10) and rides the adapter's own semver identity
+/// (RFC-47), so a per-extension `version` / `source` / `sha256` is
+/// rejected by the schema. `permissions` reuses
+/// [`ExtensionPermissions`] — the `{read, write}` shape the WASI runner
+/// already speaks.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct AdapterExtensionDeclaration {
-    /// Kebab-case tool name.
-    pub name: String,
-    /// Optional semver or `sha256:<digest>` version pin.
+    /// Optional run handle for `specify extension run <name>`; defaults
+    /// to the adapter name when omitted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub version: Option<String>,
-    /// Optional permission grants forwarded to the WASI runner.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub permissions: Vec<String>,
+    pub name: Option<String>,
+    /// Structured WASI filesystem permissions in the `{read, write}`
+    /// shape.
+    #[serde(default, skip_serializing_if = "ExtensionPermissions::is_default")]
+    pub permissions: ExtensionPermissions,
 }
 
 /// One adapter-declared build input inside a target manifest.
@@ -231,9 +248,9 @@ pub enum Execution {
     /// non-deterministic, so nothing is memoized.
     Agent,
     /// `execution: tool` — target-axis only: `build` / `merge` are
-    /// dispatched through a declared WASI tool or a built-in
+    /// dispatched through a declared WASI extension or a built-in
     /// deterministic Rust path. Source adapters are agent-only.
-    Extension,
+    Tool,
 }
 
 /// Where an adapter manifest was located on disk.
@@ -404,9 +421,9 @@ pub struct SourceAdapter {
     /// canonical operation iterator — exposed via
     /// [`SourceAdapter::operations`].
     pub briefs: BTreeMap<SourceOperation, String>,
-    /// Optional declared WASI tools for declared WASI tools.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub tools: Vec<AdapterExtensionDeclaration>,
+    /// Optional singular declared WASI extension (RFC-48 D11).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extension: Option<AdapterExtensionDeclaration>,
     /// Optional human-readable summary.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
@@ -458,9 +475,9 @@ pub struct TargetAdapter {
     /// canonical operation iterator — exposed via
     /// [`TargetAdapter::operations`].
     pub briefs: BTreeMap<TargetOperation, String>,
-    /// Optional declared WASI tools for declared WASI tools.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub tools: Vec<AdapterExtensionDeclaration>,
+    /// Optional singular declared WASI extension (RFC-48 D11).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extension: Option<AdapterExtensionDeclaration>,
     /// Optional adapter-declared build inputs. Each entry is
     /// a path relative to the build request's `inputs.root`, flagged
     /// `required`; the CLI assembles `inputs.artifacts.additional[]`

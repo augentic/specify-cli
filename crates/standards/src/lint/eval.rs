@@ -3,7 +3,7 @@
 //!
 //! v1 (Phase 2) ships the four executable hint kinds the contract lists
 //! ([`HintKind::PathPattern`], [`HintKind::Schema`], [`HintKind::Regex`],
-//! [`HintKind::Extension`]). The framework-convergence
+//! [`HintKind::Tool`]). The framework-convergence
 //! family adds [`HintKind::ReferenceResolves`], [`HintKind::Unique`],
 //! [`HintKind::SetCoverage`], [`HintKind::Cardinality`], and
 //! [`HintKind::ConstantEq`] in the same family. Each rule's
@@ -254,7 +254,7 @@ impl<'a> PartitionedHints<'a> {
                 HintKind::CrossReference => partition.cross_reference.push(hint),
                 HintKind::CliContract => partition.cli_contract.push(hint),
                 HintKind::Regex => partition.regex.push(hint),
-                HintKind::Extension => partition.tool.push(hint),
+                HintKind::Tool => partition.tool.push(hint),
             }
         }
         partition

@@ -258,7 +258,11 @@ pub struct ExtensionPermissions {
 }
 
 impl ExtensionPermissions {
-    const fn is_default(&self) -> bool {
+    /// True when no read or write preopen paths are requested — the
+    /// serde `skip_serializing_if` predicate for an omitted permissions
+    /// block.
+    #[must_use]
+    pub const fn is_default(&self) -> bool {
         self.read.is_empty() && self.write.is_empty()
     }
 }

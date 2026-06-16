@@ -554,34 +554,12 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["target"],
-      "description": "`kind: cross-reference` hint configuration. `target` names the target fact family the source (the hint `value`) is joined against; the required `target` key disambiguates the oneOf. With a fact-family source (e.g. `value: adapter-dir`) the join is presence-only: source items with no corresponding target item are flagged. With the `value: expected-set` source the rule supplies the optional `entries` table (each `{ key, value }`) and the join is value-equality against the target on `key`. The source / target selectors and the join keys are mechanism; which family is which, and the expected entries / values, are policy supplied by the rule, not the engine.",
+      "description": "`kind: cross-reference` hint configuration. `target` names the target fact family the source (the hint `value`) is joined against. With a fact-family source (e.g. `value: adapter-dir`) the join is presence-only: source items with no corresponding target item are flagged. The source / target selectors and the join keys are mechanism; which family is which is policy supplied by the rule, not the engine.",
       "properties": {
         "target": {
           "type": "string",
           "minLength": 1,
-          "description": "Target fact-family selector the source is joined against (e.g. `adapter-manifest` for a presence join, `adapter-tool` for a value-equality join)."
-        },
-        "entries": {
-          "type": "array",
-          "minItems": 1,
-          "description": "Expected-set rows for the `value: expected-set` source. Each row's `key` is joined against the target family; the matched target value must equal `value`. Absent for fact-family sources.",
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["key", "value"],
-            "properties": {
-              "key": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Join key composed against the target family's documented key mechanism (e.g. `<adapter-dir>/<tool>` for `adapter-tool`)."
-              },
-              "value": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Value the matched target entry must equal (e.g. the pinned tool version)."
-              }
-            }
-          }
+          "description": "Target fact-family selector the source is joined against (e.g. `adapter-manifest` for a presence join)."
         }
       }
     },

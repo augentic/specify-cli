@@ -231,30 +231,6 @@ pub struct AdapterManifest {
     /// not match the rule-supplied expected operation set.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub brief_keys: Vec<String>,
-    /// Well-formed `tools[]` declarations from the manifest body, in
-    /// declared order. Only entries carrying both a string `name` and a
-    /// string `version` are recorded; malformed entries are dropped here
-    /// (their shape is enforced separately by the `adapter` registered
-    /// schema). Empty when the manifest omits the field. Consumed by the
-    /// `kind: cross-reference` `adapter-tool` target selector, which keys
-    /// each tool by its containing adapter directory name and tool name.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub tools: Vec<AdapterTool>,
-}
-
-/// One well-formed `tools[]` entry on an [`AdapterManifest`].
-///
-/// Mirrors the `toolDeclaration` shape `adapter.schema.json` pins
-/// (`{ name, version }`); the optional `permissions` grant the schema
-/// also admits is not modelled here because no fact-iterating rule
-/// joins on it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
-pub struct AdapterTool {
-    /// Declared WASI tool name (kebab-case identifier).
-    pub name: String,
-    /// Declared semver-pinned tool version (e.g. `0.4.0`).
-    pub version: String,
 }
 
 /// `adapter_dir` fact per the `WorkspaceModel` entity families.

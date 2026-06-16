@@ -32,7 +32,8 @@ mod resolve;
 mod validate_manifest;
 
 pub use core::{
-    ADAPTER_FILENAME, ADAPTERS_DIR, AdapterLocation, AdapterRef, Axis, BuildInputDeclaration,
+    ADAPTER_FILENAME, ADAPTER_WASM_FILENAME, ADAPTERS_DIR, AdapterExtensionDeclaration,
+    AdapterLocation, AdapterRef, Axis, BuildInputDeclaration,
     Execution, PlatformsCapability, PlatformsViolation, ResolvedTargetAdapter, SourceAdapter,
     TargetAdapter, adapter_axis_dir, cache_axis_dir, cache_dir, scratch_dir,
 };
