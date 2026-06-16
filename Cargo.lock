@@ -4644,9 +4644,9 @@ dependencies = [
  "specify-diagnostics",
  "specify-error",
  "specify-model",
+ "specify-registry",
  "specify-schema",
  "specify-standards",
- "specify-tool",
  "specify-workflow",
  "strum 0.28.0",
  "tempfile",
@@ -4679,6 +4679,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "specify-extension-manifest"
+version = "0.2.0"
+dependencies = [
+ "jsonschema",
+ "semver",
+ "serde",
+ "serde-saphyr",
+ "serde_json",
+ "specify-diagnostics",
+ "specify-schema",
+ "strum 0.28.0",
+]
+
+[[package]]
 name = "specify-model"
 version = "0.2.0"
 dependencies = [
@@ -4691,6 +4705,29 @@ dependencies = [
  "specify-error",
  "strum 0.28.0",
  "tempfile",
+]
+
+[[package]]
+name = "specify-registry"
+version = "0.2.0"
+dependencies = [
+ "futures-util",
+ "jiff",
+ "jsonschema",
+ "serde",
+ "serde-saphyr",
+ "serde_json",
+ "specify-error",
+ "specify-extension-manifest",
+ "specify-schema",
+ "strum 0.28.0",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "ureq",
+ "wasm-pkg-client",
+ "wasmtime",
+ "wasmtime-wasi",
 ]
 
 [[package]]
@@ -4729,43 +4766,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "specify-tool"
-version = "0.2.0"
-dependencies = [
- "futures-util",
- "jiff",
- "jsonschema",
- "serde",
- "serde-saphyr",
- "serde_json",
- "specify-error",
- "specify-schema",
- "specify-tool-manifest",
- "strum 0.28.0",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "ureq",
- "wasm-pkg-client",
- "wasmtime",
- "wasmtime-wasi",
-]
-
-[[package]]
-name = "specify-tool-manifest"
-version = "0.2.0"
-dependencies = [
- "jsonschema",
- "semver",
- "serde",
- "serde-saphyr",
- "serde_json",
- "specify-diagnostics",
- "specify-schema",
- "strum 0.28.0",
-]
-
-[[package]]
 name = "specify-vectis-shell-detect"
 version = "0.2.0"
 dependencies = [
@@ -4789,9 +4789,9 @@ dependencies = [
  "serde_json",
  "specify-diagnostics",
  "specify-error",
+ "specify-extension-manifest",
  "specify-model",
  "specify-schema",
- "specify-tool-manifest",
  "specify-vectis-shell-detect",
  "strum 0.28.0",
  "tempfile",

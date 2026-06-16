@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use tempfile::Builder;
 
 use super::SIDECAR_FILENAME;
-use crate::error::ToolError;
-use crate::manifest::{ToolPermissions, looks_like_sha256_hex};
+use crate::error::ExtensionError;
+use crate::manifest::{ExtensionPermissions, looks_like_sha256_hex};
 use crate::package::PackageMetadata;
 
 /// Currently supported sidecar schema version. Bumped on any breaking
@@ -25,9 +25,9 @@ pub struct Sidecar {
     pub schema_version: u32,
     /// Scope segment, for example `project--my-app`.
     pub scope: String,
-    /// Tool name from the declaration.
+    /// Extension name from the declaration.
     pub tool_name: String,
-    /// Tool version from the declaration.
+    /// Extension version from the declaration.
     pub tool_version: String,
     /// Literal source string from the declaration.
     pub source: String,
@@ -35,7 +35,7 @@ pub struct Sidecar {
     #[serde(with = "specify_error::serde_rfc3339")]
     pub fetched_at: Timestamp,
     /// Fetch-time permissions snapshot. Informational only.
-    pub permissions_snapshot: ToolPermissions,
+    pub permissions_snapshot: ExtensionPermissions,
     /// Optional lower-case hex SHA-256 digest copied from the declaration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sha256: Option<String>,
@@ -57,14 +57,14 @@ pub struct Sidecar {
 /// `tool-sidecar-schema` diagnostic when the parsed document violates a
 /// schema invariant (`schema-version != 1`, an empty required field, or a
 /// malformed `sha256` digest).
-pub fn read_sidecar(path: &Path) -> Result<Option<Sidecar>, ToolError> {
+pub fn read_sidecar(path: &Path) -> Result<Option<Sidecar>, ExtensionError> {
     let contents = match fs::read_to_string(path) {
         Ok(contents) => contents,
         Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
-        Err(err) => return Err(ToolError::cache_io("read sidecar", path, err)),
+        Err(err) => return Err(ExtensionError::cache_io("read sidecar", path, err)),
     };
-    let sidecar: Sidecar =
-        serde_saphyr::from_str(&contents).map_err(|err| ToolError::sidecar_parse(path, err))?;
+    let sidecar: Sidecar = serde_saphyr::from_str(&contents)
+        .map_err(|err| ExtensionError::sidecar_parse(path, err))?;
     validate_sidecar_schema(path, &sidecar)?;
     Ok(Some(sidecar))
 }
@@ -80,33 +80,37 @@ pub fn read_sidecar(path: &Path) -> Result<Option<Sidecar>, ToolError> {
 /// or the temp file cannot be written, and the `tool-atomic-move-failed`
 /// diagnostic when the final rename into place fails (a crash here
 /// leaves the destination untouched).
-pub fn write_sidecar(path: &Path, sidecar: &Sidecar) -> Result<(), ToolError> {
+pub fn write_sidecar(path: &Path, sidecar: &Sidecar) -> Result<(), ExtensionError> {
     validate_sidecar_schema(path, sidecar)?;
     let Some(parent) = path.parent() else {
-        return Err(ToolError::cache_root(format!(
+        return Err(ExtensionError::cache_root(format!(
             "sidecar path has no parent: {}",
             path.display()
         )));
     };
     fs::create_dir_all(parent)
-        .map_err(|err| ToolError::cache_io("create sidecar parent", parent, err))?;
+        .map_err(|err| ExtensionError::cache_io("create sidecar parent", parent, err))?;
     let contents = serde_saphyr::to_string(sidecar).map_err(|err| {
-        ToolError::sidecar_schema(path, format!("failed to serialize sidecar: {err}"))
+        ExtensionError::sidecar_schema(path, format!("failed to serialize sidecar: {err}"))
     })?;
     let prefix = format!(".{SIDECAR_FILENAME}.");
     let tmp = Builder::new()
         .prefix(&prefix)
         .suffix(".tmp")
         .tempfile_in(parent)
-        .map_err(|err| ToolError::cache_io("create sidecar temp", parent, err))?;
+        .map_err(|err| ExtensionError::cache_io("create sidecar temp", parent, err))?;
     fs::write(tmp.path(), contents)
-        .map_err(|err| ToolError::cache_io("write sidecar temp", tmp.path(), err))?;
+        .map_err(|err| ExtensionError::cache_io("write sidecar temp", tmp.path(), err))?;
     tmp.persist(path).map(|_| ()).map_err(|err| {
-        ToolError::atomic_move_failed(err.file.path().to_path_buf(), path.to_path_buf(), err.error)
+        ExtensionError::atomic_move_failed(
+            err.file.path().to_path_buf(),
+            path.to_path_buf(),
+            err.error,
+        )
     })
 }
 
-fn validate_sidecar_schema(path: &Path, sidecar: &Sidecar) -> Result<(), ToolError> {
+fn validate_sidecar_schema(path: &Path, sidecar: &Sidecar) -> Result<(), ExtensionError> {
     if sidecar.schema_version != SIDECAR_SCHEMA_VERSION {
         return sidecar_schema_error(path, "schema-version must be 1");
     }
@@ -139,6 +143,6 @@ fn validate_sidecar_schema(path: &Path, sidecar: &Sidecar) -> Result<(), ToolErr
     Ok(())
 }
 
-fn sidecar_schema_error(path: &Path, detail: impl Into<String>) -> Result<(), ToolError> {
-    Err(ToolError::sidecar_schema(path, detail))
+fn sidecar_schema_error(path: &Path, detail: impl Into<String>) -> Result<(), ExtensionError> {
+    Err(ExtensionError::sidecar_schema(path, detail))
 }

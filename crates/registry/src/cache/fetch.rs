@@ -9,7 +9,7 @@ use std::{fs, io};
 use tempfile::Builder;
 
 use super::sorted_dir_entries;
-use crate::error::ToolError;
+use crate::error::ExtensionError;
 
 /// Install a staged cache directory into `dest`.
 ///
@@ -31,22 +31,22 @@ use crate::error::ToolError;
 /// existing destination to a sibling backup or the rename of the new
 /// tree into place fails (in the latter case the previous tree is
 /// restored on a best-effort basis and the in-progress copy is removed).
-pub fn stage_and_install(staged: &Path, dest: &Path) -> Result<(), ToolError> {
+pub fn stage_and_install(staged: &Path, dest: &Path) -> Result<(), ExtensionError> {
     if !staged.is_dir() {
-        return Err(ToolError::cache_io(
+        return Err(ExtensionError::cache_io(
             "inspect staged directory",
             staged,
             io::Error::new(io::ErrorKind::InvalidInput, "staged path is not a directory"),
         ));
     }
     let Some(parent) = dest.parent() else {
-        return Err(ToolError::cache_root(format!(
+        return Err(ExtensionError::cache_root(format!(
             "destination path has no parent: {}",
             dest.display()
         )));
     };
     fs::create_dir_all(parent)
-        .map_err(|err| ToolError::cache_io("create cache parent", parent, err))?;
+        .map_err(|err| ExtensionError::cache_io("create cache parent", parent, err))?;
 
     let install_dir =
         unique_sibling_dir(parent, dest.file_name().unwrap_or_else(|| OsStr::new("tool")))?;
@@ -55,7 +55,7 @@ pub fn stage_and_install(staged: &Path, dest: &Path) -> Result<(), ToolError> {
     let backup = if dest.exists() {
         let backup = unique_sibling_backup(parent)?;
         fs::rename(dest, &backup).map_err(|err| {
-            ToolError::atomic_move_failed(dest.to_path_buf(), backup.clone(), err)
+            ExtensionError::atomic_move_failed(dest.to_path_buf(), backup.clone(), err)
         })?;
         Some(backup)
     } else {
@@ -66,7 +66,7 @@ pub fn stage_and_install(staged: &Path, dest: &Path) -> Result<(), ToolError> {
         Ok(()) => {
             if let Some(backup) = backup {
                 fs::remove_dir_all(&backup).map_err(|err| {
-                    ToolError::cache_io("remove previous cache directory", backup, err)
+                    ExtensionError::cache_io("remove previous cache directory", backup, err)
                 })?;
             }
             Ok(())
@@ -76,51 +76,51 @@ pub fn stage_and_install(staged: &Path, dest: &Path) -> Result<(), ToolError> {
                 drop(fs::rename(backup, dest));
             }
             drop(fs::remove_dir_all(&install_dir));
-            Err(ToolError::atomic_move_failed(install_dir, dest.to_path_buf(), source))
+            Err(ExtensionError::atomic_move_failed(install_dir, dest.to_path_buf(), source))
         }
     }
 }
 
-fn unique_sibling_dir(parent: &Path, stem: impl AsRef<OsStr>) -> Result<PathBuf, ToolError> {
+fn unique_sibling_dir(parent: &Path, stem: impl AsRef<OsStr>) -> Result<PathBuf, ExtensionError> {
     let stem = stem.as_ref().to_string_lossy();
     let prefix = format!(".{stem}.");
     let temp = Builder::new()
         .prefix(&prefix)
         .suffix(".tmp")
         .tempdir_in(parent)
-        .map_err(|err| ToolError::cache_io("create cache temp directory", parent, err))?;
+        .map_err(|err| ExtensionError::cache_io("create cache temp directory", parent, err))?;
     Ok(temp.keep())
 }
 
-fn unique_sibling_backup(parent: &Path) -> Result<PathBuf, ToolError> {
-    let temp = Builder::new()
-        .prefix(".previous.")
-        .suffix(".tmp")
-        .tempdir_in(parent)
-        .map_err(|err| ToolError::cache_io("create cache backup directory", parent, err))?;
+fn unique_sibling_backup(parent: &Path) -> Result<PathBuf, ExtensionError> {
+    let temp =
+        Builder::new().prefix(".previous.").suffix(".tmp").tempdir_in(parent).map_err(|err| {
+            ExtensionError::cache_io("create cache backup directory", parent, err)
+        })?;
     let backup = temp.keep();
     // Remove the empty placeholder so the subsequent `fs::rename(dest, backup)` succeeds.
     fs::remove_dir(&backup)
-        .map_err(|err| ToolError::cache_io("clear cache backup placeholder", &backup, err))?;
+        .map_err(|err| ExtensionError::cache_io("clear cache backup placeholder", &backup, err))?;
     Ok(backup)
 }
 
-fn copy_dir_contents(src: &Path, dst: &Path) -> Result<(), ToolError> {
+fn copy_dir_contents(src: &Path, dst: &Path) -> Result<(), ExtensionError> {
     for entry in sorted_dir_entries(src)? {
         let src_path = entry.path();
         let dst_path = dst.join(entry.file_name());
         let file_type = entry
             .file_type()
-            .map_err(|err| ToolError::cache_io("inspect staged entry", &src_path, err))?;
+            .map_err(|err| ExtensionError::cache_io("inspect staged entry", &src_path, err))?;
         if file_type.is_dir() {
-            fs::create_dir_all(&dst_path)
-                .map_err(|err| ToolError::cache_io("create staged subdirectory", &dst_path, err))?;
+            fs::create_dir_all(&dst_path).map_err(|err| {
+                ExtensionError::cache_io("create staged subdirectory", &dst_path, err)
+            })?;
             copy_dir_contents(&src_path, &dst_path)?;
         } else if file_type.is_file() {
             fs::copy(&src_path, &dst_path)
-                .map_err(|err| ToolError::cache_io("copy staged file", &src_path, err))?;
+                .map_err(|err| ExtensionError::cache_io("copy staged file", &src_path, err))?;
         } else {
-            return Err(ToolError::cache_io(
+            return Err(ExtensionError::cache_io(
                 "copy staged entry",
                 &src_path,
                 io::Error::new(

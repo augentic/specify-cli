@@ -999,7 +999,7 @@ fn screen_footer_component(root: &Path, screen: &str) -> Option<String> {
 fn infer_report(root: &Path, cache: &Path) -> Value {
     let out = specify_cmd()
         .current_dir(root)
-        .env("SPECIFY_TOOLS_CACHE", cache)
+        .env("SPECIFY_EXTENSIONS_CACHE", cache)
         .args(["--format", "json", "catalog", "infer", "--phase", "report"])
         .assert()
         .success();
@@ -1078,7 +1078,7 @@ fn infer_and_bind_shared_nav(root: &Path, cache: &Path) {
         .expect("write bindings");
     specify_cmd()
         .current_dir(root)
-        .env("SPECIFY_TOOLS_CACHE", cache)
+        .env("SPECIFY_EXTENSIONS_CACHE", cache)
         .args(["catalog", "infer", "--phase", "bind"])
         .arg("--bindings")
         .arg(&bindings_path)

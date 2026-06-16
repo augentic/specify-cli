@@ -3,7 +3,7 @@
 use std::fs;
 
 use specify_error::{Error, Result};
-use specify_tool::cache;
+use specify_registry::cache;
 
 use super::dto::{GcBody, write_gc_text};
 use super::{build_inventory, kept_by_scope};

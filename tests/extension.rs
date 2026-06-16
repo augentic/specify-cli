@@ -1,14 +1,14 @@
-//! Integration tests for the `specify tool` surface (WASI tool dispatch,
-//! tool-schema validation, and the contract tool). Shared helpers live in
-//! [`common`].
+//! Integration tests for the `specify extension` surface (WASI extension
+//! dispatch, extension-schema validation, and the contract extension).
+//! Shared helpers live in [`common`].
 
 mod common;
 
-#[path = "tool/run.rs"]
+#[path = "extension/run.rs"]
 mod run;
 
-#[path = "tool/schema.rs"]
+#[path = "extension/schema.rs"]
 mod schema;
 
-#[path = "tool/contract.rs"]
+#[path = "extension/contract.rs"]
 mod contract;

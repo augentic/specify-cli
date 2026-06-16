@@ -3,13 +3,15 @@
 use std::collections::HashSet;
 use std::path::Path;
 
-use crate::error::ToolError;
-use crate::manifest::{Axis, Tool, ToolManifest, ToolScope};
+use crate::error::ExtensionError;
+use crate::manifest::{Axis, Extension, ExtensionManifest, ExtensionScope};
 
 /// Attach a project scope to tools parsed by the binary from `ProjectConfig`.
 #[must_use]
-pub fn project_tools(project_name: impl Into<String>, tools: Vec<Tool>) -> Vec<(ToolScope, Tool)> {
-    let scope = ToolScope::Project {
+pub fn project_tools(
+    project_name: impl Into<String>, tools: Vec<Extension>,
+) -> Vec<(ExtensionScope, Extension)> {
+    let scope = ExtensionScope::Project {
         project_name: project_name.into(),
     };
     tools.into_iter().map(|tool| (scope.clone(), tool)).collect()
@@ -26,17 +28,17 @@ pub fn project_tools(project_name: impl Into<String>, tools: Vec<Tool>) -> Vec<(
 /// Returns an error when the sidecar exists but cannot be read or parsed.
 pub fn plugin_sidecar(
     plugin_dir: &Path, plugin_slug: &str, axis: Axis,
-) -> Result<Vec<(ToolScope, Tool)>, ToolError> {
+) -> Result<Vec<(ExtensionScope, Extension)>, ExtensionError> {
     let sidecar_path = plugin_dir.join("tools.yaml");
     let text = match std::fs::read_to_string(&sidecar_path) {
         Ok(text) => text,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(err) => return Err(ToolError::manifest_read(sidecar_path, err)),
+        Err(err) => return Err(ExtensionError::manifest_read(sidecar_path, err)),
     };
 
-    let manifest: ToolManifest = serde_saphyr::from_str(&text)
-        .map_err(|err| ToolError::manifest_parse(sidecar_path.clone(), err))?;
-    let scope = ToolScope::Plugin {
+    let manifest: ExtensionManifest = serde_saphyr::from_str(&text)
+        .map_err(|err| ExtensionError::manifest_parse(sidecar_path.clone(), err))?;
+    let scope = ExtensionScope::Plugin {
         axis,
         plugin_slug: plugin_slug.to_string(),
         capability_dir: plugin_dir.to_path_buf(),
@@ -48,9 +50,10 @@ pub fn plugin_sidecar(
 /// name collision so operators can override plugin-shipped declarations.
 #[must_use]
 pub fn merge_scoped(
-    project: Vec<(ToolScope, Tool)>, plugin: Vec<(ToolScope, Tool)>,
-) -> (Vec<(ToolScope, Tool)>, Vec<String>) {
-    let mut merged: Vec<(ToolScope, Tool)> = Vec::with_capacity(project.len() + plugin.len());
+    project: Vec<(ExtensionScope, Extension)>, plugin: Vec<(ExtensionScope, Extension)>,
+) -> (Vec<(ExtensionScope, Extension)>, Vec<String>) {
+    let mut merged: Vec<(ExtensionScope, Extension)> =
+        Vec::with_capacity(project.len() + plugin.len());
     let mut project_names: HashSet<String> = HashSet::new();
     let mut warnings: Vec<String> = Vec::new();
 
@@ -77,15 +80,15 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
-    use crate::manifest::{ToolPermissions, ToolSource};
+    use crate::manifest::{ExtensionPermissions, ExtensionSource};
 
-    fn tool(name: &str, version: &str, source: ToolSource) -> Tool {
-        Tool {
+    fn tool(name: &str, version: &str, source: ExtensionSource) -> Extension {
+        Extension {
             name: name.to_string(),
             version: version.to_string(),
             source,
             sha256: None,
-            permissions: ToolPermissions::default(),
+            permissions: ExtensionPermissions::default(),
         }
     }
 
@@ -111,7 +114,7 @@ mod tests {
         assert!(
             matches!(
                 err,
-                ToolError::Diag {
+                ExtensionError::Diag {
                     code: "tool-manifest-parse",
                     ..
                 }
@@ -134,7 +137,7 @@ mod tests {
         assert_eq!(loaded[0].1.name, "contract");
         assert!(matches!(
             &loaded[0].0,
-            ToolScope::Plugin {
+            ExtensionScope::Plugin {
                 axis: Axis::Target,
                 plugin_slug,
                 capability_dir,
@@ -144,10 +147,10 @@ mod tests {
 
     #[test]
     fn merge_project_wins_and_warns() {
-        let project_scope = ToolScope::Project {
+        let project_scope = ExtensionScope::Project {
             project_name: "demo".to_string(),
         };
-        let plugin_scope = ToolScope::Plugin {
+        let plugin_scope = ExtensionScope::Plugin {
             axis: Axis::Target,
             plugin_slug: "contracts".to_string(),
             capability_dir: "/cap".into(),
@@ -155,14 +158,17 @@ mod tests {
 
         let project = vec![(
             project_scope,
-            tool("contract", "2.0.0", ToolSource::LocalPath("/project/contract.wasm".into())),
+            tool("contract", "2.0.0", ExtensionSource::LocalPath("/project/contract.wasm".into())),
         )];
         let plugin = vec![
             (
                 plugin_scope.clone(),
-                tool("contract", "1.0.0", ToolSource::LocalPath("/cap/contract.wasm".into())),
+                tool("contract", "1.0.0", ExtensionSource::LocalPath("/cap/contract.wasm".into())),
             ),
-            (plugin_scope, tool("other", "1.0.0", ToolSource::LocalPath("/cap/other.wasm".into()))),
+            (
+                plugin_scope,
+                tool("other", "1.0.0", ExtensionSource::LocalPath("/cap/other.wasm".into())),
+            ),
         ];
 
         let (merged, warnings) = merge_scoped(project, plugin);

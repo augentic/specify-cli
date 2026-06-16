@@ -3,24 +3,24 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::*;
-use crate::manifest::{Axis, ToolPermissions, ToolScope};
+use crate::manifest::{Axis, ExtensionPermissions, ExtensionScope};
 use crate::test_support::{EnvGuard, cache_env, env_lock, scratch_dir};
 
-fn project_scope() -> ToolScope {
-    ToolScope::Project {
+fn project_scope() -> ExtensionScope {
+    ExtensionScope::Project {
         project_name: "demo".to_string(),
     }
 }
 
-fn plugin_target_scope() -> ToolScope {
-    ToolScope::Plugin {
+fn plugin_target_scope() -> ExtensionScope {
+    ExtensionScope::Plugin {
         axis: Axis::Target,
         plugin_slug: "contracts".to_string(),
         capability_dir: PathBuf::from("/adapters/contracts"),
     }
 }
 
-fn fixed_sidecar(scope: &ToolScope, name: &str, version: &str, source: &str) -> Sidecar {
+fn fixed_sidecar(scope: &ExtensionScope, name: &str, version: &str, source: &str) -> Sidecar {
     Sidecar {
         schema_version: SIDECAR_SCHEMA_VERSION,
         scope: scope_segment(scope).expect("scope segment"),
@@ -28,7 +28,7 @@ fn fixed_sidecar(scope: &ToolScope, name: &str, version: &str, source: &str) -> 
         tool_version: version.to_string(),
         source: source.to_string(),
         fetched_at: "2026-05-07T00:00:00Z".parse().expect("fixed test stamp"),
-        permissions_snapshot: ToolPermissions {
+        permissions_snapshot: ExtensionPermissions {
             read: vec!["$PROJECT_DIR/contracts".to_string()],
             write: Vec::new(),
         },
@@ -39,7 +39,9 @@ fn fixed_sidecar(scope: &ToolScope, name: &str, version: &str, source: &str) -> 
     }
 }
 
-fn write_cached_version(scope: &ToolScope, name: &str, version: &str, source: &str) -> PathBuf {
+fn write_cached_version(
+    scope: &ExtensionScope, name: &str, version: &str, source: &str,
+) -> PathBuf {
     let dir = tool_dir(scope, name, version).expect("tool dir");
     fs::create_dir_all(&dir).expect("create version dir");
     fs::write(dir.join(MODULE_FILENAME), b"wasm").expect("write module");
@@ -54,7 +56,7 @@ fn cache_root_honours_override_precedence() {
     let xdg_dir = scratch_dir("xdg");
     let home_dir = scratch_dir("home");
     let _g = env_lock();
-    let _cache = EnvGuard::scoped("SPECIFY_TOOLS_CACHE", Some(&override_dir));
+    let _cache = EnvGuard::scoped("SPECIFY_EXTENSIONS_CACHE", Some(&override_dir));
     let _xdg = EnvGuard::scoped("XDG_CACHE_HOME", Some(&xdg_dir));
     let _home = EnvGuard::scoped("HOME", Some(&home_dir));
     assert_eq!(root().expect("cache root"), override_dir);
@@ -65,7 +67,7 @@ fn cache_root_prefers_xdg() {
     let xdg_dir = scratch_dir("xdg-only");
     let home_dir = scratch_dir("home-only");
     let _g = env_lock();
-    let _cache = EnvGuard::scoped("SPECIFY_TOOLS_CACHE", None);
+    let _cache = EnvGuard::scoped("SPECIFY_EXTENSIONS_CACHE", None);
     let _xdg = EnvGuard::scoped("XDG_CACHE_HOME", Some(&xdg_dir));
     let _home = EnvGuard::scoped("HOME", Some(&home_dir));
     assert_eq!(root().expect("cache root"), xdg_dir.join("specify").join("tools"));
@@ -75,7 +77,7 @@ fn cache_root_prefers_xdg() {
 fn cache_root_falls_back_home() {
     let home_dir = scratch_dir("home-fallback");
     let _g = env_lock();
-    let _cache = EnvGuard::scoped("SPECIFY_TOOLS_CACHE", None);
+    let _cache = EnvGuard::scoped("SPECIFY_EXTENSIONS_CACHE", None);
     let _xdg = EnvGuard::scoped("XDG_CACHE_HOME", None);
     let _home = EnvGuard::scoped("HOME", Some(&home_dir));
     assert_eq!(root().expect("cache root"), home_dir.join(".cache").join("specify").join("tools"));
@@ -88,12 +90,12 @@ fn scope_segment_rejects_empty() {
         scope_segment(&plugin_target_scope()).expect("plugin segment"),
         "adapter--target--contracts"
     );
-    let empty = ToolScope::Project {
+    let empty = ExtensionScope::Project {
         project_name: String::new(),
     };
     assert!(matches!(
         scope_segment(&empty),
-        Err(ToolError::Diag {
+        Err(ExtensionError::Diag {
             code: "tool-resolver",
             ..
         })
@@ -117,14 +119,14 @@ fn sidecar_round_trips_rejects_invalid() {
     .expect("write invalid sidecar");
     assert!(matches!(
         read_sidecar(&path),
-        Err(ToolError::Diag {
+        Err(ExtensionError::Diag {
             code: "tool-sidecar-schema",
             ..
         })
     ));
 
     let schema: serde_json::Value =
-        serde_json::from_str(TOOL_SIDECAR_JSON_SCHEMA).expect("sidecar schema parses");
+        serde_json::from_str(EXTENSION_SIDECAR_JSON_SCHEMA).expect("sidecar schema parses");
     jsonschema::validator_for(&schema).expect("sidecar schema compiles");
 }
 
@@ -249,7 +251,7 @@ fn tool_dir_rejects_traversal_segments() {
         assert!(
             matches!(
                 tool_dir(&scope, bad, "1.0.0"),
-                Err(ToolError::Diag {
+                Err(ExtensionError::Diag {
                     code: "tool-resolver",
                     ..
                 })
@@ -259,7 +261,7 @@ fn tool_dir_rejects_traversal_segments() {
         assert!(
             matches!(
                 tool_dir(&scope, "contract", bad),
-                Err(ToolError::Diag {
+                Err(ExtensionError::Diag {
                     code: "tool-resolver",
                     ..
                 })
@@ -278,7 +280,7 @@ fn cache_root_rejects_unusable_env() {
         assert!(
             matches!(
                 root(),
-                Err(ToolError::Diag {
+                Err(ExtensionError::Diag {
                     code: "tool-cache-root",
                     ..
                 })
@@ -289,17 +291,17 @@ fn cache_root_rejects_unusable_env() {
 
     let _g = env_lock();
 
-    let relative = EnvGuard::scoped("SPECIFY_TOOLS_CACHE", Some(Path::new("relative/dir")));
+    let relative = EnvGuard::scoped("SPECIFY_EXTENSIONS_CACHE", Some(Path::new("relative/dir")));
     rejected("a relative override must be rejected");
     drop(relative);
 
-    let empty = EnvGuard::scoped("SPECIFY_TOOLS_CACHE", Some(Path::new("")));
+    let empty = EnvGuard::scoped("SPECIFY_EXTENSIONS_CACHE", Some(Path::new("")));
     rejected("an empty override must be rejected");
     drop(empty);
 
     // The remaining cases clear the explicit override so the XDG / HOME
     // fallbacks are the ones under test.
-    let _cache = EnvGuard::scoped("SPECIFY_TOOLS_CACHE", None);
+    let _cache = EnvGuard::scoped("SPECIFY_EXTENSIONS_CACHE", None);
     let _xdg = EnvGuard::scoped("XDG_CACHE_HOME", None);
 
     let relative_home = EnvGuard::scoped("HOME", Some(Path::new("relative-home")));

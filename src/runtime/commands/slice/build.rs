@@ -61,8 +61,8 @@ use specify_workflow::slice::{
     enforce_report_outputs_exist, evaluate_ui_surface_coherence,
 };
 
+use crate::runtime::commands::extension;
 use crate::runtime::commands::source::cli::Phase;
-use crate::runtime::commands::tool;
 use crate::runtime::context::Ctx;
 
 const VECTIS_TARGET: &str = "vectis";
@@ -128,7 +128,7 @@ pub(super) fn run(ctx: &Ctx, name: &str, phase: Phase) -> Result<()> {
     let resolved = TargetAdapter::resolve(&target_ref, &ctx.project_dir)?;
 
     match resolved.manifest.execution {
-        Some(Execution::Tool) => run_tool(ctx, name, &slice_dir, &resolved.manifest),
+        Some(Execution::Extension) => run_tool(ctx, name, &slice_dir, &resolved.manifest),
         _ => match phase {
             Phase::Prepare => prepare(ctx, name, &slice_dir, &resolved),
             Phase::Finalize => finalize(ctx, name, &slice_dir),
@@ -218,7 +218,7 @@ fn run_materialize_assets(
         args.push(materialize_platform_csv(shell_platforms));
     }
 
-    let captured = tool::run_captured(ctx, VECTIS_TOOL, args)?;
+    let captured = extension::run_captured(ctx, VECTIS_TOOL, args)?;
     if captured.exit_code != 0 {
         let stderr = String::from_utf8_lossy(&captured.stderr);
         let stdout = String::from_utf8_lossy(&captured.stdout);

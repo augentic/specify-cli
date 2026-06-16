@@ -5,8 +5,8 @@
 use std::path::{Component, Path, PathBuf};
 use std::{env, fs, io};
 
-use crate::error::ToolError;
-use crate::manifest::ToolScope;
+use crate::error::ExtensionError;
+use crate::manifest::ExtensionScope;
 
 pub mod fetch;
 pub mod gc;
@@ -28,7 +28,7 @@ pub const SIDECAR_FILENAME: &str = "meta.yaml";
 
 /// Embedded JSON Schema for cache sidecars, re-exported from the
 /// central [`specify_schema`] embed.
-pub use specify_schema::TOOL_SIDECAR_JSON_SCHEMA;
+pub use specify_schema::EXTENSION_SIDECAR_JSON_SCHEMA;
 
 /// Cache reuse state for a declared tool.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, serde::Serialize, strum::Display)]
@@ -45,19 +45,19 @@ pub enum Status {
 
 /// Resolve the global tool cache root.
 ///
-/// Precedence is `SPECIFY_TOOLS_CACHE`, then `XDG_CACHE_HOME/specify/tools`,
-/// then `$HOME/.cache/specify/tools`.
+/// Precedence is `SPECIFY_EXTENSIONS_CACHE`, then `XDG_CACHE_HOME/specify/extensions`,
+/// then `$HOME/.cache/specify/extensions`.
 ///
 /// # Errors
 ///
 /// Returns the `tool-cache-root` diagnostic when an explicit
-/// `SPECIFY_TOOLS_CACHE` or `XDG_CACHE_HOME` override is set but empty or
+/// `SPECIFY_EXTENSIONS_CACHE` or `XDG_CACHE_HOME` override is set but empty or
 /// relative, when `HOME` is set but empty or relative, or when none of
 /// the three precedence variables is set and so no fallback root can be
 /// selected.
-pub fn root() -> Result<PathBuf, ToolError> {
-    if let Some(value) = env::var_os("SPECIFY_TOOLS_CACHE") {
-        return env_path("SPECIFY_TOOLS_CACHE", value);
+pub fn root() -> Result<PathBuf, ExtensionError> {
+    if let Some(value) = env::var_os("SPECIFY_EXTENSIONS_CACHE") {
+        return env_path("SPECIFY_EXTENSIONS_CACHE", value);
     }
 
     if let Some(value) = env::var_os("XDG_CACHE_HOME") {
@@ -69,8 +69,8 @@ pub fn root() -> Result<PathBuf, ToolError> {
         return Ok(home.join(".cache").join("specify").join("tools"));
     }
 
-    Err(ToolError::cache_root(
-        "could not determine a cache directory from SPECIFY_TOOLS_CACHE, XDG_CACHE_HOME, or HOME",
+    Err(ExtensionError::cache_root(
+        "could not determine a cache directory from SPECIFY_EXTENSIONS_CACHE, XDG_CACHE_HOME, or HOME",
     ))
 }
 
@@ -81,13 +81,13 @@ pub fn root() -> Result<PathBuf, ToolError> {
 /// Returns the `tool-resolver` diagnostic when the project name or
 /// plugin slug is empty, contains a path separator, equals `.` or `..`,
 /// or contains a component that would escape the scope directory.
-pub fn scope_segment(scope: &ToolScope) -> Result<String, ToolError> {
+pub fn scope_segment(scope: &ExtensionScope) -> Result<String, ExtensionError> {
     match scope {
-        ToolScope::Project { project_name } => {
+        ExtensionScope::Project { project_name } => {
             validate_segment("project name", project_name)?;
             Ok(format!("project--{project_name}"))
         }
-        ToolScope::Plugin {
+        ExtensionScope::Plugin {
             axis, plugin_slug, ..
         } => {
             validate_segment("plugin slug", plugin_slug)?;
@@ -104,7 +104,9 @@ pub fn scope_segment(scope: &ToolScope) -> Result<String, ToolError> {
 /// selected from the environment, and the `tool-resolver` diagnostic
 /// when `name`, `version`, or the scope's project/plugin slug fails
 /// segment validation.
-pub fn tool_dir(scope: &ToolScope, name: &str, version: &str) -> Result<PathBuf, ToolError> {
+pub fn tool_dir(
+    scope: &ExtensionScope, name: &str, version: &str,
+) -> Result<PathBuf, ExtensionError> {
     validate_segment("tool name", name)?;
     validate_segment("tool version", version)?;
     Ok(root()?.join(scope_segment(scope)?).join(name).join(version))
@@ -115,7 +117,9 @@ pub fn tool_dir(scope: &ToolScope, name: &str, version: &str) -> Result<PathBuf,
 /// # Errors
 ///
 /// Forwards every error returned by [`tool_dir`].
-pub fn module_path(scope: &ToolScope, name: &str, version: &str) -> Result<PathBuf, ToolError> {
+pub fn module_path(
+    scope: &ExtensionScope, name: &str, version: &str,
+) -> Result<PathBuf, ExtensionError> {
     Ok(tool_dir(scope, name, version)?.join(MODULE_FILENAME))
 }
 
@@ -124,7 +128,9 @@ pub fn module_path(scope: &ToolScope, name: &str, version: &str) -> Result<PathB
 /// # Errors
 ///
 /// Forwards every error returned by [`tool_dir`].
-pub fn sidecar_path(scope: &ToolScope, name: &str, version: &str) -> Result<PathBuf, ToolError> {
+pub fn sidecar_path(
+    scope: &ExtensionScope, name: &str, version: &str,
+) -> Result<PathBuf, ExtensionError> {
     Ok(tool_dir(scope, name, version)?.join(SIDECAR_FILENAME))
 }
 
@@ -138,8 +144,8 @@ pub fn sidecar_path(scope: &ToolScope, name: &str, version: &str) -> Result<Path
 /// existing `meta.yaml` is unreadable or malformed (a missing sidecar is
 /// reported as [`Status::MissNotFound`] rather than as an error).
 pub fn status(
-    scope: &ToolScope, tool_name: &str, tool_version: &str, source: &str, sha256: Option<&str>,
-) -> Result<Status, ToolError> {
+    scope: &ExtensionScope, tool_name: &str, tool_version: &str, source: &str, sha256: Option<&str>,
+) -> Result<Status, ExtensionError> {
     let module = module_path(scope, tool_name, tool_version)?;
     if !module.is_file() {
         return Ok(Status::MissNotFound);
@@ -157,9 +163,9 @@ pub fn status(
 /// Returns the `tool-resolver` diagnostic when the live scope cannot be
 /// converted into a valid cache segment.
 pub fn sidecar_status(
-    scope: &ToolScope, tool_name: &str, tool_version: &str, source: &str, sha256: Option<&str>,
-    sidecar: &Sidecar,
-) -> Result<Status, ToolError> {
+    scope: &ExtensionScope, tool_name: &str, tool_version: &str, source: &str,
+    sha256: Option<&str>, sidecar: &Sidecar,
+) -> Result<Status, ExtensionError> {
     let live_scope = scope_segment(scope)?;
     if sidecar.scope == live_scope
         && sidecar.tool_name == tool_name
@@ -173,13 +179,13 @@ pub fn sidecar_status(
     }
 }
 
-fn env_path(name: &'static str, value: std::ffi::OsString) -> Result<PathBuf, ToolError> {
+fn env_path(name: &'static str, value: std::ffi::OsString) -> Result<PathBuf, ExtensionError> {
     if value.is_empty() {
-        return Err(ToolError::cache_root(format!("{name} is set but empty")));
+        return Err(ExtensionError::cache_root(format!("{name} is set but empty")));
     }
     let path = PathBuf::from(value);
     if !path.is_absolute() {
-        return Err(ToolError::cache_root(format!(
+        return Err(ExtensionError::cache_root(format!(
             "{name} must be an absolute path: {}",
             path.display()
         )));
@@ -187,7 +193,7 @@ fn env_path(name: &'static str, value: std::ffi::OsString) -> Result<PathBuf, To
     Ok(path)
 }
 
-fn validate_segment(field: &'static str, value: &str) -> Result<(), ToolError> {
+fn validate_segment(field: &'static str, value: &str) -> Result<(), ExtensionError> {
     if value.is_empty() {
         return Err(invalid_segment(field, value, "must not be empty"));
     }
@@ -205,18 +211,18 @@ fn validate_segment(field: &'static str, value: &str) -> Result<(), ToolError> {
     Ok(())
 }
 
-fn invalid_segment(field: &'static str, value: &str, reason: &'static str) -> ToolError {
-    ToolError::Diag {
+fn invalid_segment(field: &'static str, value: &str, reason: &'static str) -> ExtensionError {
+    ExtensionError::Diag {
         code: "tool-resolver",
         detail: format!("invalid tool cache segment `{value}` for {field}: {reason}"),
     }
 }
 
-fn sorted_dir_entries(path: &Path) -> Result<Vec<fs::DirEntry>, ToolError> {
+fn sorted_dir_entries(path: &Path) -> Result<Vec<fs::DirEntry>, ExtensionError> {
     let mut entries: Vec<fs::DirEntry> = fs::read_dir(path)
-        .map_err(|err| ToolError::cache_io("read cache directory", path, err))?
+        .map_err(|err| ExtensionError::cache_io("read cache directory", path, err))?
         .collect::<Result<Vec<_>, io::Error>>()
-        .map_err(|err| ToolError::cache_io("read cache directory entry", path, err))?;
+        .map_err(|err| ExtensionError::cache_io("read cache directory entry", path, err))?;
     entries.sort_by_key(fs::DirEntry::path);
     Ok(entries)
 }

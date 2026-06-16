@@ -157,11 +157,11 @@ fn rule_overrides(config: &ProjectConfig) -> Vec<render::Rule> {
     overrides
 }
 
-fn declared_tools(config: &ProjectConfig) -> Vec<render::Tool> {
-    let mut tools: Vec<render::Tool> = config
+fn declared_tools(config: &ProjectConfig) -> Vec<render::Extension> {
+    let mut tools: Vec<render::Extension> = config
         .tools
         .iter()
-        .map(|tool| render::Tool {
+        .map(|tool| render::Extension {
             name: tool.name.clone(),
             version: tool.version.clone(),
         })

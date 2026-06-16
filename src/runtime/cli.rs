@@ -12,6 +12,7 @@ pub use crate::output::Format;
 use crate::runtime::commands::archive::cli::ArchiveAction;
 use crate::runtime::commands::catalog::cli::CatalogAction;
 use crate::runtime::commands::contract::cli::ContractAction;
+use crate::runtime::commands::extension::cli::ExtensionAction;
 use crate::runtime::commands::journal::cli::JournalAction;
 use crate::runtime::commands::lint::cli::LintAction;
 use crate::runtime::commands::plan::cli::PlanAction;
@@ -21,7 +22,6 @@ use crate::runtime::commands::rules::cli::RulesAction;
 use crate::runtime::commands::slice::cli::SliceAction;
 use crate::runtime::commands::source::cli::SourceAction;
 use crate::runtime::commands::target::cli::TargetAction;
-use crate::runtime::commands::tool::cli::ToolAction;
 use crate::runtime::commands::workspace::cli::WorkspaceAction;
 
 #[derive(Parser)]
@@ -139,10 +139,10 @@ pub enum Commands {
         action: RulesAction,
     },
 
-    /// WASI tool runner.
-    Tool {
+    /// WASI extension runner.
+    Extension {
         #[command(subcommand)]
-        action: ToolAction,
+        action: ExtensionAction,
     },
 
     /// Deterministic lint (`specify lint` v1). Resolves applicable codex

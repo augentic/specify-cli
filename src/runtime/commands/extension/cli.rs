@@ -1,10 +1,10 @@
-//! Clap derive surface for `specify tool *`. The umbrella `cli.rs`
-//! re-exports `ToolAction`.
+//! Clap derive surface for `specify extension *`. The umbrella `cli.rs`
+//! re-exports `ExtensionAction`.
 
 use clap::Subcommand;
 
 #[derive(Subcommand)]
-pub enum ToolAction {
+pub enum ExtensionAction {
     /// Fetch if needed, then run a declared WASI tool.
     Run {
         /// Declared tool name.

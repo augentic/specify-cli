@@ -10,10 +10,10 @@ use wasmtime_wasi::p2::bindings::sync::Command;
 use wasmtime_wasi::p2::pipe::MemoryOutputPipe;
 use wasmtime_wasi::{DirPerms, FilePerms, I32Exit, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
-use crate::error::ToolError;
-use crate::manifest::ToolScope;
+use crate::error::ExtensionError;
+use crate::manifest::ExtensionScope;
 use crate::permissions::{canonicalise_under, deny_lifecycle_write, substitute};
-use crate::resolver::ResolvedTool;
+use crate::resolver::ResolvedExtension;
 
 /// Host-side context for running a resolved tool.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -63,13 +63,13 @@ impl WasiRunner {
     /// # Errors
     ///
     /// Returns a runtime error when the engine configuration cannot be built.
-    pub fn new() -> Result<Self, ToolError> {
+    pub fn new() -> Result<Self, ExtensionError> {
         let mut config = Config::new();
         config.wasm_component_model(true);
         if let Some(cache) = compilation_cache() {
             config.cache(Some(cache));
         }
-        let engine = Engine::new(&config).map_err(|err| ToolError::Diag {
+        let engine = Engine::new(&config).map_err(|err| ExtensionError::Diag {
             code: "tool-runtime",
             detail: format!("failed to create Wasmtime engine: {err}"),
         })?;
@@ -82,7 +82,9 @@ impl WasiRunner {
     ///
     /// Returns permission errors before instantiation, or runtime errors when
     /// Wasmtime cannot compile, link, instantiate, or execute the component.
-    pub fn run(&self, resolved: &ResolvedTool, ctx: &RunContext) -> Result<i32, ToolError> {
+    pub fn run(
+        &self, resolved: &ResolvedExtension, ctx: &RunContext,
+    ) -> Result<i32, ExtensionError> {
         self.invoke(resolved, ctx, Stdio::Inherit).map(|outcome| outcome.exit_code)
     }
 
@@ -99,8 +101,8 @@ impl WasiRunner {
     /// Same failure modes as [`Self::run`]; the captured buffers are
     /// dropped on error.
     pub fn run_captured(
-        &self, resolved: &ResolvedTool, ctx: &RunContext,
-    ) -> Result<CapturedOutput, ToolError> {
+        &self, resolved: &ResolvedExtension, ctx: &RunContext,
+    ) -> Result<CapturedOutput, ExtensionError> {
         let stdout = MemoryOutputPipe::new(CAPTURE_BUFFER_BYTES);
         let stderr = MemoryOutputPipe::new(CAPTURE_BUFFER_BYTES);
         let outcome =
@@ -113,8 +115,8 @@ impl WasiRunner {
     }
 
     fn invoke(
-        &self, resolved: &ResolvedTool, ctx: &RunContext, stdio: Stdio,
-    ) -> Result<Outcome, ToolError> {
+        &self, resolved: &ResolvedExtension, ctx: &RunContext, stdio: Stdio,
+    ) -> Result<Outcome, ExtensionError> {
         let project_dir = canonical_project_dir(&ctx.project_dir)?;
         let capability_dir =
             canonical_capability_dir(&resolved.scope, ctx.capability_dir.as_deref())?;
@@ -130,7 +132,7 @@ impl WasiRunner {
 
         let component =
             Component::from_file(&self.engine, &resolved.bytes_path).map_err(|err| {
-                ToolError::Diag {
+                ExtensionError::Diag {
                     code: "tool-runtime",
                     detail: format!("failed to compile component: {err}"),
                 }
@@ -139,7 +141,7 @@ impl WasiRunner {
         let mut link_options = wasmtime_wasi::p2::bindings::sync::LinkOptions::default();
         link_options.cli_exit_with_code(true);
         wasmtime_wasi::p2::add_to_linker_with_options_sync(&mut linker, &link_options).map_err(
-            |err| ToolError::Diag {
+            |err| ExtensionError::Diag {
                 code: "tool-runtime",
                 detail: format!("failed to link WASI Preview 2: {err}"),
             },
@@ -152,7 +154,7 @@ impl WasiRunner {
             },
         );
         let command = Command::instantiate(&mut store, &component, &linker).map_err(|err| {
-            ToolError::Diag {
+            ExtensionError::Diag {
                 code: "tool-runtime",
                 detail: format!("failed to instantiate command: {err}"),
             }
@@ -219,7 +221,7 @@ struct Preopen {
 /// `SPECIFY_WASMTIME_CACHE` overrides the cache directory (absolute
 /// path required; any other value disables caching). Otherwise the
 /// cache lives at `<tool cache root>/wasmtime/`, beside the per-scope
-/// tool directories, so it follows the `SPECIFY_TOOLS_CACHE` → XDG →
+/// tool directories, so it follows the `SPECIFY_EXTENSIONS_CACHE` → XDG →
 /// HOME precedence rather than wasmtime's default `~/.cache/wasmtime`.
 /// Failure to resolve or initialise the cache disables it — the engine
 /// still runs, it just recompiles.
@@ -236,9 +238,9 @@ fn compilation_cache() -> Option<Cache> {
     Cache::new(cache_config).ok()
 }
 
-fn canonical_project_dir(project_dir: &Path) -> Result<PathBuf, ToolError> {
+fn canonical_project_dir(project_dir: &Path) -> Result<PathBuf, ExtensionError> {
     project_dir.canonicalize().map_err(|err| {
-        ToolError::permission_denied(
+        ExtensionError::permission_denied(
             project_dir,
             format!("PROJECT_DIR must exist and be canonicalisable: {err}"),
         )
@@ -246,14 +248,14 @@ fn canonical_project_dir(project_dir: &Path) -> Result<PathBuf, ToolError> {
 }
 
 fn canonical_capability_dir(
-    scope: &ToolScope, ctx_capability_dir: Option<&Path>,
-) -> Result<Option<PathBuf>, ToolError> {
+    scope: &ExtensionScope, ctx_capability_dir: Option<&Path>,
+) -> Result<Option<PathBuf>, ExtensionError> {
     match scope {
-        ToolScope::Project { .. } => Ok(None),
-        ToolScope::Plugin { capability_dir, .. } => {
+        ExtensionScope::Project { .. } => Ok(None),
+        ExtensionScope::Plugin { capability_dir, .. } => {
             let path = ctx_capability_dir.unwrap_or(capability_dir);
             let canonical = path.canonicalize().map_err(|err| {
-                ToolError::permission_denied(
+                ExtensionError::permission_denied(
                     path,
                     format!("CAPABILITY_DIR must exist and be canonicalisable: {err}"),
                 )
@@ -264,8 +266,8 @@ fn canonical_capability_dir(
 }
 
 fn prepare_preopens(
-    resolved: &ResolvedTool, project_dir: &Path, capability_dir: Option<&Path>,
-) -> Result<Vec<Preopen>, ToolError> {
+    resolved: &ResolvedExtension, project_dir: &Path, capability_dir: Option<&Path>,
+) -> Result<Vec<Preopen>, ExtensionError> {
     let mut roots = vec![project_dir];
     if let Some(capability_dir) = capability_dir {
         roots.push(capability_dir);
@@ -298,9 +300,9 @@ fn prepare_preopens(
 }
 
 fn build_wasi_ctx(
-    resolved: &ResolvedTool, ctx: &RunContext, project_dir: &Path, capability_dir: Option<&Path>,
-    preopens: &[Preopen], stdio: Stdio,
-) -> Result<WasiCtx, ToolError> {
+    resolved: &ResolvedExtension, ctx: &RunContext, project_dir: &Path,
+    capability_dir: Option<&Path>, preopens: &[Preopen], stdio: Stdio,
+) -> Result<WasiCtx, ExtensionError> {
     let mut builder = WasiCtxBuilder::new();
     builder
         .allow_blocking_current_thread(true)
@@ -326,7 +328,7 @@ fn build_wasi_ctx(
     builder.env(
         "PROJECT_DIR",
         project_dir.to_str().ok_or_else(|| {
-            ToolError::invalid_permission(
+            ExtensionError::invalid_permission(
                 "PROJECT_DIR",
                 "PROJECT_DIR contains non-UTF-8 bytes and cannot be exposed to WASI",
             )
@@ -336,7 +338,7 @@ fn build_wasi_ctx(
         builder.env(
             "CAPABILITY_DIR",
             capability_dir.to_str().ok_or_else(|| {
-                ToolError::invalid_permission(
+                ExtensionError::invalid_permission(
                     "CAPABILITY_DIR",
                     "CAPABILITY_DIR contains non-UTF-8 bytes and cannot be exposed to WASI",
                 )
@@ -353,7 +355,7 @@ fn build_wasi_ctx(
         builder
             .preopened_dir(&preopen.host_path, &preopen.guest_path, dir_perms, file_perms)
             .map_err(|err| {
-                ToolError::permission_denied(
+                ExtensionError::permission_denied(
                     &preopen.host_path,
                     format!("failed to preopen directory for WASI: {err}"),
                 )
@@ -363,20 +365,20 @@ fn build_wasi_ctx(
     Ok(builder.build())
 }
 
-fn guest_path(path: &Path) -> Result<String, ToolError> {
+fn guest_path(path: &Path) -> Result<String, ExtensionError> {
     path.to_str().map(ToOwned::to_owned).ok_or_else(|| {
-        ToolError::permission_denied(
+        ExtensionError::permission_denied(
             path,
             "preopen path contains non-UTF-8 bytes and cannot be exposed to WASI",
         )
     })
 }
 
-fn map_guest_error(err: &wasmtime::Error) -> Result<i32, ToolError> {
+fn map_guest_error(err: &wasmtime::Error) -> Result<i32, ExtensionError> {
     if let Some(exit) = err.downcast_ref::<I32Exit>() {
         return Ok(exit.0.clamp(0, 255));
     }
-    Err(ToolError::Diag {
+    Err(ExtensionError::Diag {
         code: "tool-runtime",
         detail: format!("guest trapped or failed at runtime: {err}"),
     })
@@ -389,20 +391,22 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
-    use crate::manifest::{Tool, ToolPermissions, ToolScope, ToolSource};
+    use crate::manifest::{Extension, ExtensionPermissions, ExtensionScope, ExtensionSource};
 
-    fn tool_with_permissions(read: Vec<String>, write: Vec<String>) -> Tool {
-        Tool {
+    fn tool_with_permissions(read: Vec<String>, write: Vec<String>) -> Extension {
+        Extension {
             name: "probe".to_string(),
             version: "1.0.0".to_string(),
-            source: ToolSource::LocalPath(PathBuf::from("/tmp/probe.wasm")),
+            source: ExtensionSource::LocalPath(PathBuf::from("/tmp/probe.wasm")),
             sha256: None,
-            permissions: ToolPermissions { read, write },
+            permissions: ExtensionPermissions { read, write },
         }
     }
 
-    const fn resolved(scope: ToolScope, tool: Tool, bytes_path: PathBuf) -> ResolvedTool {
-        ResolvedTool {
+    const fn resolved(
+        scope: ExtensionScope, tool: Extension, bytes_path: PathBuf,
+    ) -> ResolvedExtension {
+        ResolvedExtension {
             bytes_path,
             scope,
             tool,
@@ -418,7 +422,7 @@ mod tests {
         let project = project.canonicalize().expect("project");
 
         let resolved = resolved(
-            ToolScope::Project {
+            ExtensionScope::Project {
                 project_name: "demo".to_string(),
             },
             tool_with_permissions(
@@ -440,7 +444,7 @@ mod tests {
         let project = tmp.path().join("project");
         fs::create_dir_all(&project).expect("project");
         let resolved = resolved(
-            ToolScope::Project {
+            ExtensionScope::Project {
                 project_name: "demo".to_string(),
             },
             tool_with_permissions(vec!["$CAPABILITY_DIR/templates".to_string()], Vec::new()),
@@ -451,7 +455,7 @@ mod tests {
         let err = runner
             .run(&resolved, &RunContext::new(&project, Vec::new()))
             .expect_err("permission preparation must fail before component load");
-        assert!(matches!(err, ToolError::InvalidPermission { .. }), "{err}");
+        assert!(matches!(err, ExtensionError::InvalidPermission { .. }), "{err}");
     }
 
     #[test]
@@ -460,7 +464,7 @@ mod tests {
         let project = tmp.path().join("project");
         fs::create_dir_all(project.join(".specify")).expect("specify");
         let resolved = resolved(
-            ToolScope::Project {
+            ExtensionScope::Project {
                 project_name: "demo".to_string(),
             },
             tool_with_permissions(Vec::new(), vec!["$PROJECT_DIR/.specify".to_string()]),
@@ -471,7 +475,7 @@ mod tests {
         let err = runner
             .run(&resolved, &RunContext::new(&project, Vec::new()))
             .expect_err("lifecycle permission must fail before component load");
-        assert!(matches!(err, ToolError::PermissionDenied { .. }), "{err}");
+        assert!(matches!(err, ExtensionError::PermissionDenied { .. }), "{err}");
         assert!(err.to_string().contains("tool.lifecycle-state-write-denied"), "{err}");
     }
 
@@ -495,7 +499,7 @@ mod tests {
         assert!(
             matches!(
                 err,
-                ToolError::Diag {
+                ExtensionError::Diag {
                     code: "tool-runtime",
                     ..
                 }
@@ -517,7 +521,7 @@ mod tests {
         let project = project.canonicalize().expect("project");
 
         let resolved = resolved(
-            ToolScope::Project {
+            ExtensionScope::Project {
                 project_name: "demo".to_string(),
             },
             tool_with_permissions(
@@ -551,7 +555,7 @@ mod tests {
         let wasm = tmp.path().join("not-a-component.wasm");
         fs::write(&wasm, b"not wasm").expect("write wasm");
         let resolved = resolved(
-            ToolScope::Project {
+            ExtensionScope::Project {
                 project_name: "demo".to_string(),
             },
             tool_with_permissions(Vec::new(), Vec::new()),
@@ -565,7 +569,7 @@ mod tests {
         assert!(
             matches!(
                 err,
-                ToolError::Diag {
+                ExtensionError::Diag {
                     code: "tool-runtime",
                     ..
                 }

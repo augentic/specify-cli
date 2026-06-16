@@ -8,8 +8,8 @@ use std::hash::BuildHasher;
 use std::path::PathBuf;
 
 use super::{SIDECAR_FILENAME, read_sidecar, root, scope_segment, sorted_dir_entries};
-use crate::error::ToolError;
-use crate::manifest::ToolScope;
+use crate::error::ExtensionError;
+use crate::manifest::ExtensionScope;
 
 /// Return version directories under `scope` not referenced by `kept`.
 ///
@@ -29,8 +29,8 @@ use crate::manifest::ToolScope;
 /// diagnostics when an existing `meta.yaml` is malformed (a missing
 /// sidecar marks the directory as unreferenced rather than erroring).
 pub fn scan<S: BuildHasher>(
-    scope: &ToolScope, kept: &HashSet<(String, String, String), S>,
-) -> Result<Vec<PathBuf>, ToolError> {
+    scope: &ExtensionScope, kept: &HashSet<(String, String, String), S>,
+) -> Result<Vec<PathBuf>, ExtensionError> {
     let scope_dir = root()?.join(scope_segment(scope)?);
     if !scope_dir.exists() {
         return Ok(Vec::new());
@@ -62,12 +62,14 @@ pub fn scan<S: BuildHasher>(
     Ok(unreferenced)
 }
 
-fn file_name_string(path: &std::path::Path, field: &'static str) -> Result<String, ToolError> {
-    path.file_name().and_then(OsStr::to_str).map(ToOwned::to_owned).ok_or_else(|| ToolError::Diag {
-        code: "tool-resolver",
-        detail: format!(
-            "invalid tool cache segment `{}` for {field}: must be valid UTF-8",
-            path.display()
-        ),
+fn file_name_string(path: &std::path::Path, field: &'static str) -> Result<String, ExtensionError> {
+    path.file_name().and_then(OsStr::to_str).map(ToOwned::to_owned).ok_or_else(|| {
+        ExtensionError::Diag {
+            code: "tool-resolver",
+            detail: format!(
+                "invalid tool cache segment `{}` for {field}: must be valid UTF-8",
+                path.display()
+            ),
+        }
     })
 }

@@ -10,7 +10,7 @@ use std::{fs, io};
 use tempfile::NamedTempFile;
 use ureq::ResponseExt;
 
-use crate::error::ToolError;
+use crate::error::ExtensionError;
 use crate::package::AcquiredBytes;
 
 /// Whole-call cap; covers DNS + connect + headers + body.
@@ -32,9 +32,9 @@ pub(super) const STREAM_CHUNK_BYTES: usize = 64 * 1024;
 const USER_AGENT: &str =
     concat!("specify-tool/", env!("CARGO_PKG_VERSION"), " (+https://github.com/augentic/specify)");
 
-pub(super) fn download_https(url: &str, dest_hint: &Path) -> Result<AcquiredBytes, ToolError> {
+pub(super) fn download_https(url: &str, dest_hint: &Path) -> Result<AcquiredBytes, ExtensionError> {
     if !url.starts_with("https://") {
-        return Err(ToolError::Diag {
+        return Err(ExtensionError::Diag {
             code: "tool-resolver",
             detail: format!(
                 "tool source `{url}` is invalid: production network sources must use https://; http:// is not supported"
@@ -45,7 +45,7 @@ pub(super) fn download_https(url: &str, dest_hint: &Path) -> Result<AcquiredByte
     let mut response = https_agent().get(url).call().map_err(|err| map_network_error(url, err))?;
     let final_uri = response.get_uri().to_string();
     if !final_uri.starts_with("https://") {
-        return Err(ToolError::Diag {
+        return Err(ExtensionError::Diag {
             code: "tool-resolver",
             detail: format!(
                 "tool source `{url}` is invalid: redirect target must remain https://, got `{final_uri}`"
@@ -55,7 +55,7 @@ pub(super) fn download_https(url: &str, dest_hint: &Path) -> Result<AcquiredByte
 
     let status = response.status().as_u16();
     if status != 200 {
-        return Err(ToolError::network_status(url, status));
+        return Err(ExtensionError::network_status(url, status));
     }
 
     // Fail fast when the server advertises a body larger than the cap. Without
@@ -63,19 +63,20 @@ pub(super) fn download_https(url: &str, dest_hint: &Path) -> Result<AcquiredByte
     if let Some(length) = response.body().content_length()
         && length > MAX_RESPONSE_BYTES
     {
-        return Err(ToolError::network_too_large(url, MAX_RESPONSE_BYTES, Some(length)));
+        return Err(ExtensionError::network_too_large(url, MAX_RESPONSE_BYTES, Some(length)));
     }
 
     let temp_parent = dest_hint.parent().ok_or_else(|| {
-        ToolError::cache_root(format!(
+        ExtensionError::cache_root(format!(
             "tool download destination has no parent: {}",
             dest_hint.display()
         ))
     })?;
-    fs::create_dir_all(temp_parent)
-        .map_err(|err| ToolError::cache_io("create download staging parent", temp_parent, err))?;
+    fs::create_dir_all(temp_parent).map_err(|err| {
+        ExtensionError::cache_io("create download staging parent", temp_parent, err)
+    })?;
     let temp = NamedTempFile::new_in(temp_parent)
-        .map_err(|err| ToolError::cache_io("create download tempfile", temp_parent, err))?;
+        .map_err(|err| ExtensionError::cache_io("create download tempfile", temp_parent, err))?;
 
     let mut reader = response.body_mut().with_config().limit(MAX_RESPONSE_BYTES + 1).reader();
     let sha256 = stream_to_tempfile(url, &mut reader, &temp)?;
@@ -88,7 +89,7 @@ pub(super) fn download_https(url: &str, dest_hint: &Path) -> Result<AcquiredByte
 
 fn stream_to_tempfile<R: Read>(
     url: &str, reader: &mut R, temp: &NamedTempFile,
-) -> Result<String, ToolError> {
+) -> Result<String, ExtensionError> {
     let mut hasher = specify_schema::digest::Hasher::new();
     let mut writer = io::BufWriter::with_capacity(STREAM_CHUNK_BYTES, temp.as_file());
     let mut buf = vec![0_u8; STREAM_CHUNK_BYTES];
@@ -102,25 +103,25 @@ fn stream_to_tempfile<R: Read>(
                 {
                     return Err(map_streamed_body_error(url, ureq_err));
                 }
-                return Err(ToolError::network_other(url, err.to_string()));
+                return Err(ExtensionError::network_other(url, err.to_string()));
             }
         };
         total = total.saturating_add(n as u64);
         if total > MAX_RESPONSE_BYTES {
-            return Err(ToolError::network_too_large(url, MAX_RESPONSE_BYTES, Some(total)));
+            return Err(ExtensionError::network_too_large(url, MAX_RESPONSE_BYTES, Some(total)));
         }
         hasher.update(&buf[..n]);
         writer
             .write_all(&buf[..n])
-            .map_err(|err| ToolError::cache_io("write download tempfile", temp.path(), err))?;
+            .map_err(|err| ExtensionError::cache_io("write download tempfile", temp.path(), err))?;
     }
     writer
         .flush()
-        .map_err(|err| ToolError::cache_io("flush download tempfile", temp.path(), err))?;
+        .map_err(|err| ExtensionError::cache_io("flush download tempfile", temp.path(), err))?;
     drop(writer);
     temp.as_file()
         .sync_all()
-        .map_err(|err| ToolError::cache_io("sync download tempfile", temp.path(), err))?;
+        .map_err(|err| ExtensionError::cache_io("sync download tempfile", temp.path(), err))?;
     Ok(hasher.finalize_hex())
 }
 
@@ -139,30 +140,30 @@ fn https_agent() -> ureq::Agent {
         .into()
 }
 
-fn map_network_error(url: &str, err: ureq::Error) -> ToolError {
+fn map_network_error(url: &str, err: ureq::Error) -> ExtensionError {
     match err {
-        ureq::Error::StatusCode(status) => ToolError::network_status(url, status),
-        ureq::Error::Timeout(timeout) => ToolError::network_timeout(url, timeout.to_string()),
-        ureq::Error::BadUri(detail) => ToolError::network_malformed(url, detail),
-        ureq::Error::Http(err) => ToolError::network_malformed(url, err.to_string()),
+        ureq::Error::StatusCode(status) => ExtensionError::network_status(url, status),
+        ureq::Error::Timeout(timeout) => ExtensionError::network_timeout(url, timeout.to_string()),
+        ureq::Error::BadUri(detail) => ExtensionError::network_malformed(url, detail),
+        ureq::Error::Http(err) => ExtensionError::network_malformed(url, err.to_string()),
         ureq::Error::BodyExceedsLimit(limit) => {
-            ToolError::network_too_large(url, MAX_RESPONSE_BYTES, Some(limit))
+            ExtensionError::network_too_large(url, MAX_RESPONSE_BYTES, Some(limit))
         }
-        ureq::Error::RequireHttpsOnly(detail) => ToolError::Diag {
+        ureq::Error::RequireHttpsOnly(detail) => ExtensionError::Diag {
             code: "tool-resolver",
             detail: format!("tool source `{url}` is invalid: {detail}"),
         },
-        err => ToolError::network_other(url, err.to_string()),
+        err => ExtensionError::network_other(url, err.to_string()),
     }
 }
 
-fn map_streamed_body_error(url: &str, err: &ureq::Error) -> ToolError {
+fn map_streamed_body_error(url: &str, err: &ureq::Error) -> ExtensionError {
     match err {
-        ureq::Error::Timeout(timeout) => ToolError::network_timeout(url, timeout.to_string()),
+        ureq::Error::Timeout(timeout) => ExtensionError::network_timeout(url, timeout.to_string()),
         ureq::Error::BodyExceedsLimit(limit) => {
-            ToolError::network_too_large(url, MAX_RESPONSE_BYTES, Some(*limit))
+            ExtensionError::network_too_large(url, MAX_RESPONSE_BYTES, Some(*limit))
         }
-        err => ToolError::network_other(url, err.to_string()),
+        err => ExtensionError::network_other(url, err.to_string()),
     }
 }
 
@@ -172,8 +173,8 @@ mod tests {
 
     use super::super::resolve;
     use super::*;
-    use crate::error::ToolError;
-    use crate::manifest::ToolSource;
+    use crate::error::ExtensionError;
+    use crate::manifest::ExtensionSource;
     use crate::test_support::{cache_env, fixed_now, project_scope, scratch_dir, tool};
 
     #[test]
@@ -181,14 +182,15 @@ mod tests {
         let cache_dir = scratch_dir("resolver-http-cache");
         let project_dir = scratch_dir("resolver-http-project");
         let scope = project_scope();
-        let declared = tool(ToolSource::HttpsUri("http://127.0.0.1/tool.wasm".to_string()), None);
+        let declared =
+            tool(ExtensionSource::HttpsUri("http://127.0.0.1/tool.wasm".to_string()), None);
 
         let _env = cache_env(&cache_dir);
 
         let err = resolve(&scope, &declared, fixed_now(), &project_dir)
             .expect_err("http must be rejected");
         assert!(
-            matches!(&err, ToolError::Diag { code: "tool-resolver", detail } if detail.contains("https://")),
+            matches!(&err, ExtensionError::Diag { code: "tool-resolver", detail } if detail.contains("https://")),
             "{err}"
         );
     }
@@ -200,7 +202,7 @@ mod tests {
         assert!(
             matches!(
                 err,
-                ToolError::Diag {
+                ExtensionError::Diag {
                     code: "tool-network-malformed",
                     ..
                 }
@@ -221,7 +223,7 @@ mod tests {
         assert!(
             matches!(
                 err,
-                ToolError::Diag {
+                ExtensionError::Diag {
                     code: "tool-network-other" | "tool-network-timeout" | "tool-network-malformed",
                     ..
                 }
@@ -239,7 +241,7 @@ mod tests {
         assert!(
             matches!(
                 timeout,
-                ToolError::Diag {
+                ExtensionError::Diag {
                     code: "tool-network-timeout",
                     ..
                 }
@@ -254,7 +256,7 @@ mod tests {
         assert!(
             matches!(
                 too_large,
-                ToolError::Diag {
+                ExtensionError::Diag {
                     code: "tool-network-too-large",
                     ..
                 }
@@ -279,7 +281,7 @@ mod tests {
         ];
         for (err, expected_code) in cases {
             let mapped = map_network_error(url, err);
-            let ToolError::Diag { code, .. } = mapped else {
+            let ExtensionError::Diag { code, .. } = mapped else {
                 panic!("expected a Diag, got {mapped}");
             };
             assert_eq!(code, expected_code);

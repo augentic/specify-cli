@@ -15,19 +15,19 @@ pub mod local;
 use specify_schema::digest::sha256_hex;
 
 use crate::cache::{self, MODULE_FILENAME, SIDECAR_FILENAME, SIDECAR_SCHEMA_VERSION, Sidecar};
-use crate::error::ToolError;
-use crate::manifest::{PackageRequest, Tool, ToolScope, ToolSource};
+use crate::error::ExtensionError;
+use crate::manifest::{Extension, ExtensionScope, ExtensionSource, PackageRequest};
 use crate::package::{self, AcquiredBytes, persist_temp};
 
 /// Cached component bytes plus the live declaration data needed to run them.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ResolvedTool {
+pub struct ResolvedExtension {
     /// Path to the cached WASI component bytes.
     pub bytes_path: PathBuf,
     /// Declaration site that supplied the tool.
-    pub scope: ToolScope,
+    pub scope: ExtensionScope,
     /// Live manifest declaration used for argv and permission evaluation.
-    pub tool: Tool,
+    pub tool: Extension,
 }
 
 /// Resolve a declared tool source into the global immutable cache.
@@ -49,8 +49,8 @@ pub struct ResolvedTool {
 /// Returns cache errors, source read errors, digest mismatches, or typed network
 /// resolver errors.
 pub fn resolve(
-    scope: &ToolScope, tool: &Tool, now: jiff::Timestamp, project_dir: &Path,
-) -> Result<ResolvedTool, ToolError> {
+    scope: &ExtensionScope, tool: &Extension, now: jiff::Timestamp, project_dir: &Path,
+) -> Result<ResolvedExtension, ExtensionError> {
     resolve_with(scope, tool, now, project_dir, |request, dest_hint| {
         package::fetch(project_dir, request, dest_hint)
     })
@@ -65,9 +65,9 @@ pub fn resolve(
 ///
 /// Returns the same cache, source, digest, and resolver errors as [`resolve`].
 pub(crate) fn resolve_with(
-    scope: &ToolScope, tool: &Tool, now: jiff::Timestamp, project_dir: &Path,
-    package_fetch: impl Fn(&PackageRequest, &Path) -> Result<AcquiredBytes, ToolError>,
-) -> Result<ResolvedTool, ToolError> {
+    scope: &ExtensionScope, tool: &Extension, now: jiff::Timestamp, project_dir: &Path,
+    package_fetch: impl Fn(&PackageRequest, &Path) -> Result<AcquiredBytes, ExtensionError>,
+) -> Result<ResolvedExtension, ExtensionError> {
     let source = tool.source.to_wire_string().into_owned();
     let module = cache::module_path(scope, &tool.name, &tool.version)?;
     if cache::status(scope, &tool.name, &tool.version, &source, tool.sha256.as_deref())?
@@ -79,27 +79,27 @@ pub(crate) fn resolve_with(
 
     let dest = cache::tool_dir(scope, &tool.name, &tool.version)?;
     let Some(parent) = dest.parent() else {
-        return Err(ToolError::cache_root(format!(
+        return Err(ExtensionError::cache_root(format!(
             "tool cache destination has no parent: {}",
             dest.display()
         )));
     };
     fs::create_dir_all(parent)
-        .map_err(|err| ToolError::cache_io("create resolver staging parent", parent, err))?;
+        .map_err(|err| ExtensionError::cache_io("create resolver staging parent", parent, err))?;
     let stem = dest.file_name().unwrap_or_else(|| OsStr::new("tool")).to_string_lossy();
     let prefix = format!(".resolver-{stem}.");
     let staged = Builder::new()
         .prefix(&prefix)
         .suffix(".tmp")
         .tempdir_in(parent)
-        .map_err(|err| ToolError::cache_io("create resolver staging directory", parent, err))?
+        .map_err(|err| ExtensionError::cache_io("create resolver staging directory", parent, err))?
         .keep();
     let capability_dir = match scope {
-        ToolScope::Plugin { capability_dir, .. } => Some(capability_dir.as_path()),
-        ToolScope::Project { .. } => None,
+        ExtensionScope::Plugin { capability_dir, .. } => Some(capability_dir.as_path()),
+        ExtensionScope::Project { .. } => None,
     };
     let expanded_source =
-        tool.source.expand(project_dir, capability_dir).map_err(|reason| ToolError::Diag {
+        tool.source.expand(project_dir, capability_dir).map_err(|reason| ExtensionError::Diag {
             code: "tool-resolver",
             detail: format!("tool source `{}` is invalid: {reason}", tool.source.to_wire_string()),
         })?;
@@ -125,7 +125,7 @@ pub(crate) fn resolve_with(
     match (install_result, cleanup_result) {
         (Ok(()), Ok(())) => Ok(resolved(scope, tool, dest.join(MODULE_FILENAME))),
         (Ok(()), Err(err)) => {
-            Err(ToolError::cache_io("remove resolver staging directory", staged, err))
+            Err(ExtensionError::cache_io("remove resolver staging directory", staged, err))
         }
         (Err(err), _) => Err(err),
     }
@@ -135,19 +135,19 @@ pub(crate) fn resolve_with(
 /// pipeline's resolution-time facts so the function stays a two-argument
 /// (request + fetch closure) boundary.
 struct StageRequest<'a> {
-    scope: &'a ToolScope,
-    tool: &'a Tool,
+    scope: &'a ExtensionScope,
+    tool: &'a Extension,
     source: &'a str,
     staged: &'a Path,
     dest: &'a Path,
     now: jiff::Timestamp,
-    expanded_source: &'a ToolSource,
+    expanded_source: &'a ExtensionSource,
 }
 
 fn stage_and_install(
     req: &StageRequest<'_>,
-    package_fetch: impl Fn(&PackageRequest, &Path) -> Result<AcquiredBytes, ToolError>,
-) -> Result<(), ToolError> {
+    package_fetch: impl Fn(&PackageRequest, &Path) -> Result<AcquiredBytes, ExtensionError>,
+) -> Result<(), ExtensionError> {
     let module_dest = req.staged.join(MODULE_FILENAME);
     let acquired = acquire_source_bytes(req.expanded_source, &module_dest, package_fetch)?;
     digest::validate(req.source, &acquired, req.tool.sha256.as_deref())?;
@@ -172,8 +172,8 @@ fn stage_and_install(
     cache::stage_and_install(req.staged, req.dest)
 }
 
-fn resolved(scope: &ToolScope, tool: &Tool, bytes_path: PathBuf) -> ResolvedTool {
-    ResolvedTool {
+fn resolved(scope: &ExtensionScope, tool: &Extension, bytes_path: PathBuf) -> ResolvedExtension {
+    ResolvedExtension {
         bytes_path,
         scope: scope.clone(),
         tool: tool.clone(),
@@ -181,18 +181,20 @@ fn resolved(scope: &ToolScope, tool: &Tool, bytes_path: PathBuf) -> ResolvedTool
 }
 
 fn acquire_source_bytes(
-    source: &ToolSource, dest_hint: &Path,
-    package_fetch: impl Fn(&PackageRequest, &Path) -> Result<AcquiredBytes, ToolError>,
-) -> Result<AcquiredBytes, ToolError> {
+    source: &ExtensionSource, dest_hint: &Path,
+    package_fetch: impl Fn(&PackageRequest, &Path) -> Result<AcquiredBytes, ExtensionError>,
+) -> Result<AcquiredBytes, ExtensionError> {
     match source {
-        ToolSource::LocalPath(path) => buffered_into_acquired(
+        ExtensionSource::LocalPath(path) => buffered_into_acquired(
             &local::read_local_path(path, &path.to_string_lossy())?,
             dest_hint,
         ),
-        ToolSource::FileUri(uri) => buffered_into_acquired(&local::read_file_uri(uri)?, dest_hint),
-        ToolSource::HttpsUri(url) => http::download_https(url, dest_hint),
-        ToolSource::Package(package) => package_fetch(package, dest_hint),
-        ToolSource::TemplatePath(t) => Err(ToolError::Diag {
+        ExtensionSource::FileUri(uri) => {
+            buffered_into_acquired(&local::read_file_uri(uri)?, dest_hint)
+        }
+        ExtensionSource::HttpsUri(url) => http::download_https(url, dest_hint),
+        ExtensionSource::Package(package) => package_fetch(package, dest_hint),
+        ExtensionSource::TemplatePath(t) => Err(ExtensionError::Diag {
             code: "tool-resolver",
             detail: format!(
                 "tool source `{t}` is invalid: template source was not expanded before resolution"
@@ -201,20 +203,21 @@ fn acquire_source_bytes(
     }
 }
 
-fn buffered_into_acquired(bytes: &[u8], dest_hint: &Path) -> Result<AcquiredBytes, ToolError> {
+fn buffered_into_acquired(bytes: &[u8], dest_hint: &Path) -> Result<AcquiredBytes, ExtensionError> {
     let parent = dest_hint.parent().ok_or_else(|| {
-        ToolError::cache_root(format!(
+        ExtensionError::cache_root(format!(
             "tool staging destination has no parent: {}",
             dest_hint.display()
         ))
     })?;
     fs::create_dir_all(parent)
-        .map_err(|err| ToolError::cache_io("create local staging parent", parent, err))?;
+        .map_err(|err| ExtensionError::cache_io("create local staging parent", parent, err))?;
     let temp = NamedTempFile::new_in(parent)
-        .map_err(|err| ToolError::cache_io("create local staging tempfile", parent, err))?;
+        .map_err(|err| ExtensionError::cache_io("create local staging tempfile", parent, err))?;
     let sha256 = sha256_hex(bytes);
-    fs::write(temp.path(), bytes)
-        .map_err(|err| ToolError::cache_io("write local staging tempfile", temp.path(), err))?;
+    fs::write(temp.path(), bytes).map_err(|err| {
+        ExtensionError::cache_io("write local staging tempfile", temp.path(), err)
+    })?;
     Ok(AcquiredBytes {
         temp,
         sha256,
@@ -230,7 +233,7 @@ mod tests {
     use std::path::Path;
 
     use super::*;
-    use crate::manifest::{PackageRequest, ToolSource};
+    use crate::manifest::{ExtensionSource, PackageRequest};
     use crate::package::PackageMetadata;
     use crate::test_support::{
         cache_env, cached_bytes, fixed_now, plugin_target_scope, project_scope, scratch_dir, tool,
@@ -245,7 +248,7 @@ mod tests {
         let first = write_source(&source_dir, "first.wasm", b"first");
         let second = write_source(&source_dir, "second.wasm", b"second");
         let scope = project_scope();
-        let first_tool = tool(ToolSource::LocalPath(first.clone()), None);
+        let first_tool = tool(ExtensionSource::LocalPath(first.clone()), None);
 
         let _env = cache_env(&cache_dir);
 
@@ -259,7 +262,7 @@ mod tests {
         assert_eq!(hit.bytes_path, resolved.bytes_path);
         assert_eq!(cached_bytes(&scope, &first_tool), b"first");
 
-        let changed_tool = tool(ToolSource::LocalPath(second), None);
+        let changed_tool = tool(ExtensionSource::LocalPath(second), None);
         let changed = resolve(&scope, &changed_tool, fixed_now(), &project_dir)
             .expect("changed source re-stages");
         assert_eq!(changed.bytes_path, resolved.bytes_path);
@@ -275,7 +278,7 @@ mod tests {
         let source = write_source(&source_dir, "module.wasm", b"same");
         let project = project_scope();
         let adapter = plugin_target_scope(&capability_dir);
-        let declared = tool(ToolSource::LocalPath(source), None);
+        let declared = tool(ExtensionSource::LocalPath(source), None);
 
         let _env = cache_env(&cache_dir);
 
@@ -300,7 +303,7 @@ mod tests {
             name: "contract".to_string(),
             version: "1.0.0".to_string(),
         };
-        let declared = tool(ToolSource::Package(package), None);
+        let declared = tool(ExtensionSource::Package(package), None);
 
         let bytes: &[u8] = b"package-bytes";
         let calls = Cell::new(0_u32);
@@ -354,7 +357,7 @@ mod tests {
 
         let scope = project_scope();
         let declared =
-            tool(ToolSource::TemplatePath("$PROJECT_DIR/tools/vectis.wasm".to_string()), None);
+            tool(ExtensionSource::TemplatePath("$PROJECT_DIR/tools/vectis.wasm".to_string()), None);
 
         let _env = cache_env(&cache_dir);
 
@@ -373,7 +376,7 @@ mod tests {
 
         let scope = project_scope();
         let declared = tool(
-            ToolSource::TemplatePath("$PROJECT_DIR/../sibling-cli/vectis.wasm".to_string()),
+            ExtensionSource::TemplatePath("$PROJECT_DIR/../sibling-cli/vectis.wasm".to_string()),
             None,
         );
 

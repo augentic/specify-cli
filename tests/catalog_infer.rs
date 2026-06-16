@@ -171,7 +171,7 @@ fn report_clusters_repeated_group() {
     let (tmp, cache) = report_project(REPEATED_GROUP_BASELINE);
     let assert = specify_cmd()
         .current_dir(tmp.path())
-        .env("SPECIFY_TOOLS_CACHE", &cache)
+        .env("SPECIFY_EXTENSIONS_CACHE", &cache)
         .args(["--format", "json", "catalog", "infer", "--phase", "report"])
         .assert()
         .success();
@@ -218,7 +218,7 @@ screens:
     // Without the cache, the lone baseline group is below threshold.
     let assert = specify_cmd()
         .current_dir(tmp.path())
-        .env("SPECIFY_TOOLS_CACHE", &cache)
+        .env("SPECIFY_EXTENSIONS_CACHE", &cache)
         .args(["--format", "json", "catalog", "infer", "--phase", "report"])
         .assert()
         .success();
@@ -244,7 +244,7 @@ group:
 
     let assert = specify_cmd()
         .current_dir(tmp.path())
-        .env("SPECIFY_TOOLS_CACHE", &cache)
+        .env("SPECIFY_EXTENSIONS_CACHE", &cache)
         .args(["--format", "json", "catalog", "infer", "--phase", "report"])
         .assert()
         .success();
@@ -385,7 +385,7 @@ fn report_echoes_bound_slug_after_bind() {
     // name it here; the test stands in with a fixed slug).
     let first = specify_cmd()
         .current_dir(tmp.path())
-        .env("SPECIFY_TOOLS_CACHE", &cache)
+        .env("SPECIFY_EXTENSIONS_CACHE", &cache)
         .args(["--format", "json", "catalog", "infer", "--phase", "report"])
         .assert()
         .success();
@@ -407,7 +407,7 @@ fn report_echoes_bound_slug_after_bind() {
     // Second report: the same cluster now echoes the bound slug.
     let second = specify_cmd()
         .current_dir(tmp.path())
-        .env("SPECIFY_TOOLS_CACHE", &cache)
+        .env("SPECIFY_EXTENSIONS_CACHE", &cache)
         .args(["--format", "json", "catalog", "infer", "--phase", "report"])
         .assert()
         .success();
@@ -524,7 +524,7 @@ fn bind_projects_matched_pin() {
 
     specify_cmd()
         .current_dir(tmp.path())
-        .env("SPECIFY_TOOLS_CACHE", &cache)
+        .env("SPECIFY_EXTENSIONS_CACHE", &cache)
         .args(["catalog", "infer", "--phase", "bind"])
         .assert()
         .success();
@@ -571,7 +571,7 @@ parts:
 
     let assert = specify_cmd()
         .current_dir(tmp.path())
-        .env("SPECIFY_TOOLS_CACHE", &cache)
+        .env("SPECIFY_EXTENSIONS_CACHE", &cache)
         .args(["--format", "json", "catalog", "infer", "--phase", "bind"])
         .assert()
         .success();
@@ -611,7 +611,7 @@ fn bind_part_does_not_override_rejected() {
 
     specify_cmd()
         .current_dir(tmp.path())
-        .env("SPECIFY_TOOLS_CACHE", &cache)
+        .env("SPECIFY_EXTENSIONS_CACHE", &cache)
         .args(["catalog", "infer", "--phase", "bind"])
         .assert()
         .success();
@@ -676,7 +676,7 @@ parts:
     // the skill will (deliberately) try to also name `card-row`.
     let assert = specify_cmd()
         .current_dir(tmp.path())
-        .env("SPECIFY_TOOLS_CACHE", &cache)
+        .env("SPECIFY_EXTENSIONS_CACHE", &cache)
         .args(["--format", "json", "catalog", "infer", "--phase", "report"])
         .assert()
         .success();
@@ -692,7 +692,7 @@ parts:
     let bindings = write_bindings(tmp.path(), &format!("bindings:\n  {body_fp}: card-row\n"));
     specify_cmd()
         .current_dir(tmp.path())
-        .env("SPECIFY_TOOLS_CACHE", &cache)
+        .env("SPECIFY_EXTENSIONS_CACHE", &cache)
         .args(["catalog", "infer", "--phase", "bind"])
         .arg("--bindings")
         .arg(&bindings)

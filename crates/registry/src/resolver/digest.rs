@@ -5,24 +5,26 @@ use std::path::Path;
 
 use specify_schema::digest::sha256_hex;
 
-use crate::error::ToolError;
+use crate::error::ExtensionError;
 use crate::package::AcquiredBytes;
 
-pub(super) fn cached_matches(module: &Path, expected: Option<&str>) -> Result<bool, ToolError> {
+pub(super) fn cached_matches(
+    module: &Path, expected: Option<&str>,
+) -> Result<bool, ExtensionError> {
     let Some(expected) = expected else {
         return Ok(true);
     };
     let bytes = fs::read(module).map_err(|err| {
-        ToolError::cache_io("read cached module for sha256 verification", module, err)
+        ExtensionError::cache_io("read cached module for sha256 verification", module, err)
     })?;
     Ok(sha256_hex(&bytes) == expected)
 }
 
 pub(super) fn validate(
     source: &str, acquired: &AcquiredBytes, expected_sha256: Option<&str>,
-) -> Result<(), ToolError> {
+) -> Result<(), ExtensionError> {
     if acquired.len()? == 0 {
-        return Err(ToolError::Diag {
+        return Err(ExtensionError::Diag {
             code: "tool-resolver",
             detail: format!("tool source `{source}` produced empty bytes"),
         });
@@ -31,7 +33,7 @@ pub(super) fn validate(
     if let Some(expected) = expected_sha256
         && acquired.sha256 != expected
     {
-        return Err(ToolError::Diag {
+        return Err(ExtensionError::Diag {
             code: "tool-resolver",
             detail: format!(
                 "tool source `{source}` sha256 mismatch: expected {expected}, got {}",
@@ -50,8 +52,8 @@ mod tests {
 
     use super::super::resolve;
     use super::*;
-    use crate::error::ToolError;
-    use crate::manifest::ToolSource;
+    use crate::error::ExtensionError;
+    use crate::manifest::ExtensionSource;
     use crate::test_support::{
         cache_env, cached_bytes, fixed_now, project_scope, scratch_dir, tool, write_source,
     };
@@ -76,8 +78,8 @@ mod tests {
         let wrong_sha =
             "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff".to_string();
         let scope = project_scope();
-        let old_tool = tool(ToolSource::LocalPath(old_source), Some(old_sha));
-        let wrong_tool = tool(ToolSource::LocalPath(new_source.clone()), Some(wrong_sha));
+        let old_tool = tool(ExtensionSource::LocalPath(old_source), Some(old_sha));
+        let wrong_tool = tool(ExtensionSource::LocalPath(new_source.clone()), Some(wrong_sha));
 
         let _env = cache_env(&cache_dir);
 
@@ -85,13 +87,14 @@ mod tests {
         let err = resolve(&scope, &wrong_tool, fixed_now(), &project_dir)
             .expect_err("wrong digest must fail");
         assert!(
-            matches!(&err, ToolError::Diag { code: "tool-resolver", detail }
+            matches!(&err, ExtensionError::Diag { code: "tool-resolver", detail }
                 if detail.contains("sha256 mismatch")),
             "{err}"
         );
         assert_eq!(cached_bytes(&scope, &old_tool), b"old-good");
 
-        let correct_tool = tool(ToolSource::LocalPath(new_source), Some(sha256_hex(b"new-good")));
+        let correct_tool =
+            tool(ExtensionSource::LocalPath(new_source), Some(sha256_hex(b"new-good")));
         resolve(&scope, &correct_tool, fixed_now(), &project_dir)
             .expect("correct digest updates cache");
         assert_eq!(cached_bytes(&scope, &correct_tool), b"new-good");
@@ -121,7 +124,7 @@ mod tests {
 
         let empty_err = validate("src", &empty, None).expect_err("empty bytes are rejected");
         assert!(
-            matches!(&empty_err, ToolError::Diag { code: "tool-resolver", detail }
+            matches!(&empty_err, ExtensionError::Diag { code: "tool-resolver", detail }
                 if detail.contains("produced empty bytes")),
             "{empty_err}"
         );
@@ -129,7 +132,7 @@ mod tests {
         let mismatch =
             validate("src", &good, Some(&wrong)).expect_err("pinned mismatch is rejected");
         assert!(
-            matches!(&mismatch, ToolError::Diag { code: "tool-resolver", detail }
+            matches!(&mismatch, ExtensionError::Diag { code: "tool-resolver", detail }
                 if detail.contains("sha256 mismatch")),
             "{mismatch}"
         );
@@ -148,7 +151,7 @@ mod tests {
 
         let err =
             cached_matches(absent, Some(&"a".repeat(64))).expect_err("pinned miss must read bytes");
-        assert!(matches!(err, ToolError::Diag { code: "tool-io", .. }), "{err}");
+        assert!(matches!(err, ExtensionError::Diag { code: "tool-io", .. }), "{err}");
     }
 
     #[test]
@@ -158,7 +161,7 @@ mod tests {
         let source_dir = scratch_dir("resolver-hit-digest-source");
         let source = write_source(&source_dir, "module.wasm", b"trusted");
         let scope = project_scope();
-        let pinned = tool(ToolSource::LocalPath(source), Some(sha256_hex(b"trusted")));
+        let pinned = tool(ExtensionSource::LocalPath(source), Some(sha256_hex(b"trusted")));
 
         let _env = cache_env(&cache_dir);
 

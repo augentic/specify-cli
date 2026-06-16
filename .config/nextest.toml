@@ -16,7 +16,7 @@ retries = 0
 wasm-compile = { max-threads = 1 }
 
 [[profile.default.overrides]]
-filter = 'binary(catalog_infer) or (binary(plan) and test(end_to_end)) or (binary(tool) and test(schema_vectis))'
+filter = 'binary(catalog_infer) or (binary(plan) and test(end_to_end)) or (binary(extension) and test(schema_vectis))'
 test-group = 'wasm-compile'
 
 [profile.ci]

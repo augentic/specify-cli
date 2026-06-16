@@ -2,7 +2,7 @@
 
 use std::path::{Component, Path, PathBuf};
 
-use crate::error::ToolError;
+use crate::error::ExtensionError;
 use crate::manifest::looks_like_windows_absolute;
 
 const PROJECT_DIR_VAR: &str = "PROJECT_DIR";
@@ -18,9 +18,9 @@ const LIFECYCLE_RULE_ID: &str = "tool.lifecycle-state-write-denied";
 /// segment, expands to a relative path, or uses a non-UTF-8 root path.
 pub fn substitute(
     template: &str, project_dir: &Path, capability_dir: Option<&Path>,
-) -> Result<String, ToolError> {
+) -> Result<String, ExtensionError> {
     if has_parent_segment(template) {
-        return Err(ToolError::invalid_permission(
+        return Err(ExtensionError::invalid_permission(
             template,
             "permission paths must not contain `..` segments",
         ));
@@ -31,13 +31,13 @@ pub fn substitute(
             PROJECT_DIR_VAR => {}
             CAPABILITY_DIR_VAR if capability_dir.is_some() => {}
             CAPABILITY_DIR_VAR => {
-                return Err(ToolError::invalid_permission(
+                return Err(ExtensionError::invalid_permission(
                     template,
                     "$CAPABILITY_DIR is only available to plugin-scope tools",
                 ));
             }
             _ => {
-                return Err(ToolError::invalid_permission(
+                return Err(ExtensionError::invalid_permission(
                     template,
                     format!("unsupported variable `${variable}`"),
                 ));
@@ -53,13 +53,13 @@ pub fn substitute(
     }
 
     if has_parent_segment(&expanded) {
-        return Err(ToolError::invalid_permission(
+        return Err(ExtensionError::invalid_permission(
             template,
             "expanded permission path must not contain `..` segments",
         ));
     }
     if !path_is_absolute(&expanded) {
-        return Err(ToolError::invalid_permission(
+        return Err(ExtensionError::invalid_permission(
             template,
             format!("expanded permission path must be absolute: {expanded}"),
         ));
@@ -78,16 +78,18 @@ pub fn substitute(
 ///
 /// Returns an error when the target or roots cannot be canonicalised, or when
 /// the canonical target is outside every allowed root.
-pub fn canonicalise_under(target: &Path, allowed_roots: &[&Path]) -> Result<PathBuf, ToolError> {
+pub fn canonicalise_under(
+    target: &Path, allowed_roots: &[&Path],
+) -> Result<PathBuf, ExtensionError> {
     if allowed_roots.is_empty() {
-        return Err(ToolError::permission_denied(
+        return Err(ExtensionError::permission_denied(
             target,
             "no allowed roots were supplied for permission canonicalisation",
         ));
     }
 
     let canonical_target = target.canonicalize().map_err(|err| {
-        ToolError::permission_denied(
+        ExtensionError::permission_denied(
             target,
             format!("permission path must already exist and be canonicalisable: {err}"),
         )
@@ -95,7 +97,7 @@ pub fn canonicalise_under(target: &Path, allowed_roots: &[&Path]) -> Result<Path
 
     for root in allowed_roots {
         let canonical_root = root.canonicalize().map_err(|err| {
-            ToolError::permission_denied(
+            ExtensionError::permission_denied(
                 root,
                 format!("allowed root must be canonicalisable: {err}"),
             )
@@ -105,7 +107,7 @@ pub fn canonicalise_under(target: &Path, allowed_roots: &[&Path]) -> Result<Path
         }
     }
 
-    Err(ToolError::permission_denied(
+    Err(ExtensionError::permission_denied(
         canonical_target,
         "canonical permission path escapes PROJECT_DIR/CAPABILITY_DIR",
     ))
@@ -115,23 +117,23 @@ pub fn canonicalise_under(target: &Path, allowed_roots: &[&Path]) -> Result<Path
 ///
 /// # Errors
 ///
-/// Returns [`ToolError::PermissionDenied`] when `target` is `.specify` or a
+/// Returns [`ExtensionError::PermissionDenied`] when `target` is `.specify` or a
 /// descendant of `.specify` inside `project_dir`.
-pub fn deny_lifecycle_write(target: &Path, project_dir: &Path) -> Result<(), ToolError> {
+pub fn deny_lifecycle_write(target: &Path, project_dir: &Path) -> Result<(), ExtensionError> {
     let canonical_project = project_dir.canonicalize().map_err(|err| {
-        ToolError::permission_denied(
+        ExtensionError::permission_denied(
             project_dir,
             format!("project root must be canonicalisable: {err}"),
         )
     })?;
     let lifecycle_root = canonical_project.join(".specify");
     if target == lifecycle_root || target.starts_with(&lifecycle_root) {
-        return Err(ToolError::permission_denied(target, LIFECYCLE_RULE_ID));
+        return Err(ExtensionError::permission_denied(target, LIFECYCLE_RULE_ID));
     }
     Ok(())
 }
 
-fn variables(template: &str) -> Result<Vec<String>, ToolError> {
+fn variables(template: &str) -> Result<Vec<String>, ExtensionError> {
     let mut variables = Vec::new();
     let mut chars = template.char_indices().peekable();
     while let Some((_, ch)) = chars.next() {
@@ -148,7 +150,7 @@ fn variables(template: &str) -> Result<Vec<String>, ToolError> {
             }
         }
         if name.is_empty() {
-            return Err(ToolError::invalid_permission(
+            return Err(ExtensionError::invalid_permission(
                 template,
                 "permission variables must be named, for example $PROJECT_DIR",
             ));
@@ -158,9 +160,11 @@ fn variables(template: &str) -> Result<Vec<String>, ToolError> {
     Ok(variables)
 }
 
-fn utf8_path<'a>(path: &'a Path, variable: &str, template: &str) -> Result<&'a str, ToolError> {
+fn utf8_path<'a>(
+    path: &'a Path, variable: &str, template: &str,
+) -> Result<&'a str, ExtensionError> {
     path.to_str().ok_or_else(|| {
-        ToolError::invalid_permission(
+        ExtensionError::invalid_permission(
             template,
             format!("{variable} contains non-UTF-8 bytes and cannot be exposed to WASI"),
         )
@@ -203,7 +207,7 @@ mod tests {
     fn substitute_rejects_out_of_scope() {
         let err = substitute("$CAPABILITY_DIR/templates", Path::new("/tmp/project"), None)
             .expect_err("project-scope capability dir must fail");
-        assert!(matches!(err, ToolError::InvalidPermission { .. }), "{err}");
+        assert!(matches!(err, ExtensionError::InvalidPermission { .. }), "{err}");
         assert!(err.to_string().contains("$CAPABILITY_DIR"), "{err}");
     }
 
@@ -212,7 +216,7 @@ mod tests {
         for template in ["$HOME/contracts", "$PROJECT_DIR/../contracts", "contracts"] {
             let err = substitute(template, Path::new("/tmp/project"), None)
                 .expect_err("invalid template must fail");
-            assert!(matches!(err, ToolError::InvalidPermission { .. }), "{err}");
+            assert!(matches!(err, ExtensionError::InvalidPermission { .. }), "{err}");
         }
     }
 
@@ -229,7 +233,7 @@ mod tests {
             std::os::unix::fs::symlink(&outside, project.join("escape")).expect("symlink");
             let err = canonicalise_under(&project.join("escape"), &[&project])
                 .expect_err("symlink escape must fail");
-            assert!(matches!(err, ToolError::PermissionDenied { .. }), "{err}");
+            assert!(matches!(err, ExtensionError::PermissionDenied { .. }), "{err}");
         }
     }
 
@@ -253,7 +257,7 @@ mod tests {
 
         let err = deny_lifecycle_write(&specify.canonicalize().expect("canonical"), &project)
             .expect_err("lifecycle write must fail");
-        assert!(matches!(err, ToolError::PermissionDenied { .. }), "{err}");
+        assert!(matches!(err, ExtensionError::PermissionDenied { .. }), "{err}");
         assert!(err.to_string().contains(LIFECYCLE_RULE_ID), "{err}");
     }
 
@@ -271,7 +275,7 @@ mod tests {
         fs::create_dir_all(&nested).expect("nested");
 
         let no_roots = canonicalise_under(&nested, &[]).expect_err("empty roots must deny");
-        assert!(matches!(no_roots, ToolError::PermissionDenied { .. }), "{no_roots}");
+        assert!(matches!(no_roots, ExtensionError::PermissionDenied { .. }), "{no_roots}");
 
         let canonical =
             canonicalise_under(&nested, &[first.as_path(), second.as_path()]).expect("second root");
@@ -289,12 +293,12 @@ mod tests {
 
         let bare_dollar = substitute("$/contracts", project, Some(adapter))
             .expect_err("bare `$` is not a named variable");
-        assert!(matches!(bare_dollar, ToolError::InvalidPermission { .. }), "{bare_dollar}");
+        assert!(matches!(bare_dollar, ExtensionError::InvalidPermission { .. }), "{bare_dollar}");
 
         let trailing_dollar =
             substitute("$PROJECT_DIR/sub$", project, Some(adapter)).expect_err("trailing bare `$`");
         assert!(
-            matches!(trailing_dollar, ToolError::InvalidPermission { .. }),
+            matches!(trailing_dollar, ExtensionError::InvalidPermission { .. }),
             "{trailing_dollar}"
         );
 

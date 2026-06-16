@@ -1,8 +1,8 @@
-//! Tool-specific errors and conversions into the shared Specify error surface.
+//! Extension-specific errors and conversions into the shared Specify error surface.
 
 #![allow(
     clippy::needless_pass_by_value,
-    reason = "Diag-helper constructors take owned errors so callers can `.map_err(|err| ToolError::cache_io(..., err))` without an extra `&` at every site."
+    reason = "Diag-helper constructors take owned errors so callers can `.map_err(|err| ExtensionError::cache_io(..., err))` without an extra `&` at every site."
 )]
 
 use std::path::PathBuf;
@@ -13,14 +13,14 @@ use std::path::PathBuf;
 /// Variants follow the Diag-first policy from `DECISIONS.md` §"Diag-first
 /// error policy": a typed variant exists only when (a) a test or skill
 /// destructures the payload, (b) the variant routes to a non-default
-/// `Exit` slot via `From<ToolError> for Error`, or (c) three or more call
+/// `Exit` slot via `From<ExtensionError> for Error`, or (c) three or more call
 /// sites share the exact shape. Everything else lands on [`Self::Diag`]
 /// with a kebab-case `code` carried at the constructor site (see the
 /// `sidecar_*` / `network_*` helpers below).
 #[derive(Debug, thiserror::Error)]
-pub enum ToolError {
+pub enum ExtensionError {
     /// Catch-all diagnostic. The `code` becomes the `error` field of the
-    /// JSON envelope after [`From<ToolError> for specify_error::Error`];
+    /// JSON envelope after [`From<ExtensionError> for specify_error::Error`];
     /// `detail` is the human-readable message.
     #[error("{detail}")]
     Diag {
@@ -32,7 +32,7 @@ pub enum ToolError {
     /// The requested tool name was not present in merged declarations.
     #[error("tool not declared: {name}")]
     ToolNotDeclared {
-        /// Tool name absent from the merged declaration set.
+        /// Extension name absent from the merged declaration set.
         name: String,
     },
     /// A tool permission template or expanded permission path is invalid.
@@ -53,7 +53,7 @@ pub enum ToolError {
     },
 }
 
-impl ToolError {
+impl ExtensionError {
     /// Build a cache or local-source I/O error. The single named helper
     /// keeps call sites readable across cache writes, resolver staging,
     /// and local-source reads.
@@ -218,22 +218,21 @@ impl ToolError {
     }
 }
 
-impl From<ToolError> for specify_error::Error {
-    fn from(value: ToolError) -> Self {
+impl From<ExtensionError> for specify_error::Error {
+    fn from(value: ExtensionError) -> Self {
         match value {
-            ToolError::Diag { code, detail } => Self::Diag { code, detail },
-            err @ ToolError::ToolNotDeclared { .. } => Self::validation_failed(
+            ExtensionError::Diag { code, detail } => Self::Diag { code, detail },
+            err @ ExtensionError::ToolNotDeclared { .. } => Self::validation_failed(
                 "tool-not-declared",
                 "tool must be declared in tools.yaml",
                 err.to_string(),
             ),
-            err @ (ToolError::InvalidPermission { .. } | ToolError::PermissionDenied { .. }) => {
-                Self::validation_failed(
-                    "tool-permission-denied",
-                    "tool must request permitted resources",
-                    err.to_string(),
-                )
-            }
+            err @ (ExtensionError::InvalidPermission { .. }
+            | ExtensionError::PermissionDenied { .. }) => Self::validation_failed(
+                "tool-permission-denied",
+                "tool must request permitted resources",
+                err.to_string(),
+            ),
         }
     }
 }

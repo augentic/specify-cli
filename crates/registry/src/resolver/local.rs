@@ -3,11 +3,11 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::error::ToolError;
+use crate::error::ExtensionError;
 
-pub(super) fn read_file_uri(uri: &str) -> Result<Vec<u8>, ToolError> {
+pub(super) fn read_file_uri(uri: &str) -> Result<Vec<u8>, ExtensionError> {
     let Some(rest) = uri.strip_prefix("file://") else {
-        return Err(ToolError::Diag {
+        return Err(ExtensionError::Diag {
             code: "tool-resolver",
             detail: format!(
                 "tool source `{uri}` is invalid: file URI sources must start with file://"
@@ -15,7 +15,7 @@ pub(super) fn read_file_uri(uri: &str) -> Result<Vec<u8>, ToolError> {
         });
     };
     if rest.is_empty() {
-        return Err(ToolError::Diag {
+        return Err(ExtensionError::Diag {
             code: "tool-resolver",
             detail: format!(
                 "tool source `{uri}` is invalid: file URI source path must not be empty"
@@ -25,33 +25,33 @@ pub(super) fn read_file_uri(uri: &str) -> Result<Vec<u8>, ToolError> {
     read_local_path(&PathBuf::from(rest), uri)
 }
 
-pub(super) fn read_local_path(path: &Path, source: &str) -> Result<Vec<u8>, ToolError> {
+pub(super) fn read_local_path(path: &Path, source: &str) -> Result<Vec<u8>, ExtensionError> {
     if !path.is_absolute() {
-        return Err(ToolError::Diag {
+        return Err(ExtensionError::Diag {
             code: "tool-resolver",
             detail: format!(
                 "tool source `{source}` is invalid: local source path must be absolute"
             ),
         });
     }
-    let metadata =
-        fs::metadata(path).map_err(|err| ToolError::cache_io("inspect local source", path, err))?;
+    let metadata = fs::metadata(path)
+        .map_err(|err| ExtensionError::cache_io("inspect local source", path, err))?;
     if !metadata.is_file() {
-        return Err(ToolError::Diag {
+        return Err(ExtensionError::Diag {
             code: "tool-resolver",
             detail: format!(
                 "tool source `{source}` is invalid: local source path must resolve to a regular file"
             ),
         });
     }
-    fs::read(path).map_err(|err| ToolError::cache_io("read local source", path, err))
+    fs::read(path).map_err(|err| ExtensionError::cache_io("read local source", path, err))
 }
 
 #[cfg(test)]
 mod tests {
     use super::super::resolve;
-    use crate::error::ToolError;
-    use crate::manifest::ToolSource;
+    use crate::error::ExtensionError;
+    use crate::manifest::ExtensionSource;
     use crate::test_support::{
         cache_env, fixed_now, named_tool, project_scope, scratch_dir, tool, write_source,
     };
@@ -63,10 +63,10 @@ mod tests {
         let source_dir = scratch_dir("resolver-file-source");
         let source = write_source(&source_dir, "module.wasm", b"file-uri");
         let scope = project_scope();
-        let local = named_tool("local", ToolSource::LocalPath(source.clone()), None);
+        let local = named_tool("local", ExtensionSource::LocalPath(source.clone()), None);
         let file_uri = named_tool(
             "file-uri",
-            ToolSource::FileUri(format!("file://{}", source.display())),
+            ExtensionSource::FileUri(format!("file://{}", source.display())),
             None,
         );
 
@@ -90,22 +90,26 @@ mod tests {
 
         let dir_err = resolve(
             &scope,
-            &tool(ToolSource::LocalPath(source_dir), None),
+            &tool(ExtensionSource::LocalPath(source_dir), None),
             fixed_now(),
             &project_dir,
         )
         .expect_err("directory source must fail");
         assert!(
-            matches!(&dir_err, ToolError::Diag { code: "tool-resolver", detail }
+            matches!(&dir_err, ExtensionError::Diag { code: "tool-resolver", detail }
                 if detail.contains("must resolve to a regular file")),
             "{dir_err}"
         );
 
-        let empty_err =
-            resolve(&scope, &tool(ToolSource::LocalPath(empty), None), fixed_now(), &project_dir)
-                .expect_err("empty file");
+        let empty_err = resolve(
+            &scope,
+            &tool(ExtensionSource::LocalPath(empty), None),
+            fixed_now(),
+            &project_dir,
+        )
+        .expect_err("empty file");
         assert!(
-            matches!(&empty_err, ToolError::Diag { code: "tool-resolver", detail }
+            matches!(&empty_err, ExtensionError::Diag { code: "tool-resolver", detail }
                 if detail.contains("produced empty bytes")),
             "{empty_err}"
         );
@@ -121,7 +125,7 @@ mod tests {
         let link = source_dir.join("link.wasm");
         std::os::unix::fs::symlink(&target, &link).expect("create symlink");
         let scope = project_scope();
-        let symlink_tool = tool(ToolSource::LocalPath(link), None);
+        let symlink_tool = tool(ExtensionSource::LocalPath(link), None);
 
         let _env = cache_env(&cache_dir);
 

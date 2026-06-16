@@ -1,23 +1,23 @@
 use serde_json::json;
 
 use super::*;
-use crate::{PackageRequest, ToolPermissions, ToolSource};
+use crate::{ExtensionPermissions, ExtensionSource, PackageRequest};
 
-fn project_scope() -> ToolScope {
-    ToolScope::Project {
+fn project_scope() -> ExtensionScope {
+    ExtensionScope::Project {
         project_name: "demo".to_string(),
     }
 }
 
-fn valid_tool(name: &str) -> Tool {
-    Tool {
+fn valid_tool(name: &str) -> Extension {
+    Extension {
         name: name.to_string(),
         version: "1.0.0".to_string(),
-        source: ToolSource::HttpsUri("https://example.com/tool.wasm".to_string()),
+        source: ExtensionSource::HttpsUri("https://example.com/tool.wasm".to_string()),
         sha256: Some(
             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string(),
         ),
-        permissions: ToolPermissions {
+        permissions: ExtensionPermissions {
             read: vec!["$PROJECT_DIR/contracts".to_string()],
             write: vec!["$PROJECT_DIR/generated".to_string()],
         },
@@ -30,12 +30,12 @@ fn fail_rule_ids(results: &[Diagnostic]) -> Vec<&str> {
 
 #[test]
 fn validate_reports_chunk_one_rules() {
-    let tool = Tool {
+    let tool = Extension {
         name: "BadName".to_string(),
         version: "not-semver".to_string(),
-        source: ToolSource::HttpsUri("oci://registry/tool.wasm".to_string()),
+        source: ExtensionSource::HttpsUri("oci://registry/tool.wasm".to_string()),
         sha256: Some("ABC".to_string()),
-        permissions: ToolPermissions {
+        permissions: ExtensionPermissions {
             read: vec!["relative/../*.txt".to_string(), "$CAPABILITY_DIR/templates".to_string()],
             write: vec!["$PROJECT_DIR/.specify/project.yaml".to_string()],
         },
@@ -54,16 +54,16 @@ fn validate_reports_chunk_one_rules() {
 
 #[test]
 fn package_validation_reports_rules() {
-    let tool = Tool {
+    let tool = Extension {
         name: "contract".to_string(),
         version: "v1".to_string(),
-        source: ToolSource::Package(PackageRequest {
+        source: ExtensionSource::Package(PackageRequest {
             namespace: "other".to_string(),
             name: "contract".to_string(),
             version: "v1".to_string(),
         }),
         sha256: None,
-        permissions: ToolPermissions::default(),
+        permissions: ExtensionPermissions::default(),
     };
 
     let results = tool.validate_structure(&project_scope());
@@ -76,8 +76,9 @@ fn package_validation_reports_rules() {
 
 #[test]
 fn scalar_package_passes_with_perms() {
-    let manifest: ToolManifest = serde_saphyr::from_str("tools:\n  - \"specify:contract@1.2.3\"\n")
-        .expect("parse scalar package");
+    let manifest: ExtensionManifest =
+        serde_saphyr::from_str("tools:\n  - \"specify:contract@1.2.3\"\n")
+            .expect("parse scalar package");
     let results = manifest.validate_structure(&project_scope());
     assert!(results.is_empty(), "{results:?}");
 }
@@ -93,7 +94,7 @@ fn root_write_valid_for_root_outputs() {
 
 #[test]
 fn validate_rejects_duplicate_names() {
-    let manifest = ToolManifest {
+    let manifest = ExtensionManifest {
         tools: vec![valid_tool("contract"), valid_tool("contract")],
     };
     let results = manifest.validate_structure(&project_scope());
@@ -117,7 +118,8 @@ fn valid_tool_passes_structure_validation() {
 
 #[test]
 fn schema_rejects_invalid_shapes() {
-    let schema: serde_json::Value = serde_json::from_str(TOOL_JSON_SCHEMA).expect("schema parses");
+    let schema: serde_json::Value =
+        serde_json::from_str(EXTENSION_JSON_SCHEMA).expect("schema parses");
     let validator = jsonschema::validator_for(&schema).expect("schema compiles");
     let cases = [
         json!({ "tools": [{ "name": "Bad", "version": "1.0.0", "source": "/tmp/a.wasm" }] }),
@@ -144,7 +146,8 @@ fn schema_rejects_invalid_shapes() {
 
 #[test]
 fn schema_accepts_root_write() {
-    let schema: serde_json::Value = serde_json::from_str(TOOL_JSON_SCHEMA).expect("schema parses");
+    let schema: serde_json::Value =
+        serde_json::from_str(EXTENSION_JSON_SCHEMA).expect("schema parses");
     let validator = jsonschema::validator_for(&schema).expect("schema compiles");
     let case = json!({
         "tools": [{
@@ -160,7 +163,8 @@ fn schema_accepts_root_write() {
 
 #[test]
 fn schema_accepts_scalar_and_object() {
-    let schema: serde_json::Value = serde_json::from_str(TOOL_JSON_SCHEMA).expect("schema parses");
+    let schema: serde_json::Value =
+        serde_json::from_str(EXTENSION_JSON_SCHEMA).expect("schema parses");
     let validator = jsonschema::validator_for(&schema).expect("schema compiles");
     for case in [
         json!({ "tools": ["specify:contract@1.2.3"] }),
@@ -172,7 +176,8 @@ fn schema_accepts_scalar_and_object() {
 
 #[test]
 fn schema_accepts_template_sources() {
-    let schema: serde_json::Value = serde_json::from_str(TOOL_JSON_SCHEMA).expect("schema parses");
+    let schema: serde_json::Value =
+        serde_json::from_str(EXTENSION_JSON_SCHEMA).expect("schema parses");
     let validator = jsonschema::validator_for(&schema).expect("schema compiles");
     for case in [
         json!({ "tools": [{ "name": "vectis", "version": "0.3.0", "source": "$PROJECT_DIR/../cli/target/vectis.wasm" }] }),
@@ -185,12 +190,12 @@ fn schema_accepts_template_sources() {
 
 #[test]
 fn template_source_passes_validation() {
-    let tool = Tool {
+    let tool = Extension {
         name: "vectis".to_string(),
         version: "0.3.0".to_string(),
-        source: ToolSource::TemplatePath("$PROJECT_DIR/../cli/target/vectis.wasm".to_string()),
+        source: ExtensionSource::TemplatePath("$PROJECT_DIR/../cli/target/vectis.wasm".to_string()),
         sha256: None,
-        permissions: ToolPermissions {
+        permissions: ExtensionPermissions {
             read: vec!["$PROJECT_DIR".to_string()],
             write: Vec::new(),
         },
@@ -216,12 +221,12 @@ fn lifecycle_state_boundary() {
 
 #[test]
 fn template_capability_dir_rejected() {
-    let tool = Tool {
+    let tool = Extension {
         name: "vectis".to_string(),
         version: "0.3.0".to_string(),
-        source: ToolSource::TemplatePath("$CAPABILITY_DIR/bin/vectis.wasm".to_string()),
+        source: ExtensionSource::TemplatePath("$CAPABILITY_DIR/bin/vectis.wasm".to_string()),
         sha256: None,
-        permissions: ToolPermissions::default(),
+        permissions: ExtensionPermissions::default(),
     };
     let results = tool.validate_structure(&project_scope());
     assert!(fail_rule_ids(&results).contains(&RULE_SOURCE_CAPABILITY_DIR_SCOPE));

@@ -25,7 +25,7 @@ specify-workflow.workspace = true
 specify-model.workspace = true
 specify-error.workspace = true
 specify-schema.workspace = true
-specify-tool.workspace = true
+specify-registry.workspace = true
 strum.workspace = true
 thiserror.workspace = true
 
@@ -44,8 +44,8 @@ members = [
     "crates/error",
     "crates/model",
     "crates/schema",
-    "crates/tool",
-    "crates/tool-manifest",
+    "crates/registry",
+    "crates/extension-manifest",
     "crates/vectis-shell-detect",
     "crates/workflow",
 ]
@@ -173,8 +173,8 @@ specify-model = { path = "crates/model" }
 specify-workflow = { path = "crates/workflow" }
 specify-error = { path = "crates/error" }
 specify-schema = { path = "crates/schema" }
-specify-tool = { path = "crates/tool" }
-specify-tool-manifest = { path = "crates/tool-manifest" }
+specify-registry = { path = "crates/registry" }
+specify-extension-manifest = { path = "crates/extension-manifest" }
 specify-vectis-shell-detect = { path = "crates/vectis-shell-detect" }
 strum = { version = "0.28", features = ["derive"] }
 tempfile = "3"

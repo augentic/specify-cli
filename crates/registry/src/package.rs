@@ -8,7 +8,7 @@ use tempfile::NamedTempFile;
 use tokio::io::AsyncWriteExt;
 use wasm_pkg_client::{Client, Config, PackageRef, Registry, RegistryMapping, Version};
 
-use crate::error::ToolError;
+use crate::error::ExtensionError;
 use crate::manifest::{PackageRequest, WASM_PKG_CONFIG_PATH};
 
 const MAX_PACKAGE_BYTES: u64 = 64 * 1024 * 1024;
@@ -40,12 +40,12 @@ pub struct AcquiredBytes {
 }
 
 impl AcquiredBytes {
-    pub fn len(&self) -> Result<u64, ToolError> {
+    pub fn len(&self) -> Result<u64, ExtensionError> {
         self.temp
             .as_file()
             .metadata()
             .map(|m| m.len())
-            .map_err(|err| ToolError::cache_io("stat staged tool body", self.temp.path(), err))
+            .map_err(|err| ExtensionError::cache_io("stat staged tool body", self.temp.path(), err))
     }
 }
 
@@ -54,9 +54,13 @@ impl AcquiredBytes {
 /// Free function (rather than a method on [`AcquiredBytes`]) so the
 /// resolver can destructure the bytes once and move `temp` and
 /// `package_metadata` independently without forcing a clone.
-pub fn persist_temp(temp: NamedTempFile, dest: &Path) -> Result<(), ToolError> {
+pub fn persist_temp(temp: NamedTempFile, dest: &Path) -> Result<(), ExtensionError> {
     temp.persist(dest).map(|_| ()).map_err(|err| {
-        ToolError::atomic_move_failed(err.file.path().to_path_buf(), dest.to_path_buf(), err.error)
+        ExtensionError::atomic_move_failed(
+            err.file.path().to_path_buf(),
+            dest.to_path_buf(),
+            err.error,
+        )
     })
 }
 
@@ -67,35 +71,36 @@ pub fn persist_temp(temp: NamedTempFile, dest: &Path) -> Result<(), ToolError> {
 /// Returns package resolution, registry, stream, or cache staging errors.
 pub fn fetch(
     project_dir: &Path, request: &PackageRequest, dest_hint: &Path,
-) -> Result<AcquiredBytes, ToolError> {
+) -> Result<AcquiredBytes, ExtensionError> {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
-        .map_err(|err| ToolError::package(request, format!("create tokio runtime: {err}")))?;
+        .map_err(|err| ExtensionError::package(request, format!("create tokio runtime: {err}")))?;
     runtime.block_on(fetch_async(request, dest_hint, Some(project_dir)))
 }
 
 async fn fetch_async(
     request: &PackageRequest, dest_hint: &Path, project_dir: Option<&Path>,
-) -> Result<AcquiredBytes, ToolError> {
+) -> Result<AcquiredBytes, ExtensionError> {
     let temp_parent = dest_hint.parent().ok_or_else(|| {
-        ToolError::cache_root(format!(
+        ExtensionError::cache_root(format!(
             "tool package destination has no parent: {}",
             dest_hint.display()
         ))
     })?;
     std::fs::create_dir_all(temp_parent).map_err(|err| {
-        ToolError::cache_io("create package download staging parent", temp_parent, err)
+        ExtensionError::cache_io("create package download staging parent", temp_parent, err)
     })?;
-    let temp = NamedTempFile::new_in(temp_parent)
-        .map_err(|err| ToolError::cache_io("create package download tempfile", temp_parent, err))?;
+    let temp = NamedTempFile::new_in(temp_parent).map_err(|err| {
+        ExtensionError::cache_io("create package download tempfile", temp_parent, err)
+    })?;
 
     let package: PackageRef = request
         .name_ref()
         .parse()
-        .map_err(|err| ToolError::package(request, format!("parse package name: {err}")))?;
+        .map_err(|err| ExtensionError::package(request, format!("parse package name: {err}")))?;
     let version = Version::parse(&request.version)
-        .map_err(|err| ToolError::package(request, format!("parse package version: {err}")))?;
+        .map_err(|err| ExtensionError::package(request, format!("parse package version: {err}")))?;
     let config = load_config(&package, project_dir).await?;
     let resolved_registry = match config.resolve_registry(&package).cloned() {
         Some(registry) => registry,
@@ -103,27 +108,25 @@ async fn fetch_async(
     };
     let registry_string = resolved_registry.to_string();
     let client = Client::new(config);
-    let release = client
-        .get_release(&package, &version)
-        .await
-        .map_err(|err| ToolError::package(request, format!("resolve package release: {err}")))?;
-    let mut stream = client.stream_content(&package, &release).await.map_err(|err| {
-        ToolError::package(request, format!("open package content stream: {err}"))
+    let release = client.get_release(&package, &version).await.map_err(|err| {
+        ExtensionError::package(request, format!("resolve package release: {err}"))
     })?;
-    let mut file =
-        tokio::fs::File::from_std(temp.reopen().map_err(|err| {
-            ToolError::cache_io("open package download tempfile", temp.path(), err)
-        })?);
+    let mut stream = client.stream_content(&package, &release).await.map_err(|err| {
+        ExtensionError::package(request, format!("open package content stream: {err}"))
+    })?;
+    let mut file = tokio::fs::File::from_std(temp.reopen().map_err(|err| {
+        ExtensionError::cache_io("open package download tempfile", temp.path(), err)
+    })?);
     let mut hasher = specify_schema::digest::Hasher::new();
     let mut total = 0_u64;
     while let Some(chunk) = stream
         .try_next()
         .await
-        .map_err(|err| ToolError::package(request, format!("stream package content: {err}")))?
+        .map_err(|err| ExtensionError::package(request, format!("stream package content: {err}")))?
     {
         total = total.saturating_add(chunk.len() as u64);
         if total > MAX_PACKAGE_BYTES {
-            return Err(ToolError::network_too_large(
+            return Err(ExtensionError::network_too_large(
                 request.to_wire_string(),
                 MAX_PACKAGE_BYTES,
                 Some(total),
@@ -131,15 +134,15 @@ async fn fetch_async(
         }
         hasher.update(&chunk);
         file.write_all(&chunk).await.map_err(|err| {
-            ToolError::cache_io("write package download tempfile", temp.path(), err)
+            ExtensionError::cache_io("write package download tempfile", temp.path(), err)
         })?;
     }
-    file.flush()
-        .await
-        .map_err(|err| ToolError::cache_io("flush package download tempfile", temp.path(), err))?;
-    file.sync_all()
-        .await
-        .map_err(|err| ToolError::cache_io("sync package download tempfile", temp.path(), err))?;
+    file.flush().await.map_err(|err| {
+        ExtensionError::cache_io("flush package download tempfile", temp.path(), err)
+    })?;
+    file.sync_all().await.map_err(|err| {
+        ExtensionError::cache_io("sync package download tempfile", temp.path(), err)
+    })?;
     drop(file);
 
     Ok(AcquiredBytes {
@@ -164,16 +167,16 @@ async fn fetch_async(
 ///    explicit `specify` mapping was supplied by any layer above.
 async fn load_config(
     package: &PackageRef, project_dir: Option<&Path>,
-) -> Result<Config, ToolError> {
+) -> Result<Config, ExtensionError> {
     let mut config = Config::global_defaults().await.map_err(|err| {
-        ToolError::package_label(package.to_string(), format!("load wasm-pkg config: {err}"))
+        ExtensionError::package_label(package.to_string(), format!("load wasm-pkg config: {err}"))
     })?;
 
     if let Some(dir) = project_dir {
         let project_config_path = dir.join(WASM_PKG_CONFIG_PATH);
         if project_config_path.is_file() {
             let project_config = Config::from_file(&project_config_path).await.map_err(|err| {
-                ToolError::package_label(
+                ExtensionError::package_label(
                     package.to_string(),
                     format!(
                         "load project wasm-pkg config {}: {err}",
@@ -187,7 +190,7 @@ async fn load_config(
 
     if let Some(path) = std::env::var_os("WKG_CONFIG") {
         let override_config = Config::from_file(&path).await.map_err(|err| {
-            ToolError::package_label(
+            ExtensionError::package_label(
                 package.to_string(),
                 format!("load WKG_CONFIG {}: {err}", Path::new(&path).display()),
             )
@@ -207,9 +210,9 @@ async fn load_config(
     Ok(config)
 }
 
-fn first_party_registry(package: &PackageRef) -> Result<Registry, ToolError> {
+fn first_party_registry(package: &PackageRef) -> Result<Registry, ExtensionError> {
     FIRST_PARTY_REGISTRY.parse().map_err(|err| {
-        ToolError::package_label(
+        ExtensionError::package_label(
             package.to_string(),
             format!("parse first-party registry default: {err}"),
         )

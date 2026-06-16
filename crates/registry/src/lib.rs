@@ -1,6 +1,6 @@
 //! Specify's declared WASI tool model, cache, resolver, and
 //! Wasmtime-backed execution host. See `DECISIONS.md`
-//! §"Tool architecture" for the canonical contract.
+//! §"Extension architecture" for the canonical contract.
 
 pub mod cache;
 pub mod error;
@@ -11,11 +11,11 @@ pub mod permissions;
 pub mod resolver;
 // The manifest DTOs and structural validation live in the wasmtime-free
 // `specify-tool-manifest` leaf; re-export them under their historical
-// module paths so `specify_tool::manifest::Tool` and
-// `specify_tool::validate` keep resolving.
+// module paths so `specify_registry::manifest::Extension` and
+// `specify_registry::validate` keep resolving.
 pub use package::PackageMetadata;
-pub use specify_tool_manifest as manifest;
-pub use specify_tool_manifest::{DEFAULT_WASM_PKG_CONFIG, WASM_PKG_CONFIG_FILENAME, validate};
+pub use specify_extension_manifest as manifest;
+pub use specify_extension_manifest::{DEFAULT_WASM_PKG_CONFIG, WASM_PKG_CONFIG_FILENAME, validate};
 
 #[cfg(test)]
 #[expect(unsafe_code, reason = "test helpers mutate process-wide env vars under env_lock")]
@@ -29,7 +29,7 @@ mod test_support {
     use jiff::Timestamp;
 
     use crate::cache;
-    use crate::manifest::{Axis, Tool, ToolPermissions, ToolScope, ToolSource};
+    use crate::manifest::{Axis, Extension, ExtensionPermissions, ExtensionScope, ExtensionSource};
 
     static SCRATCH_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -37,32 +37,32 @@ mod test_support {
         "2026-05-07T00:00:00Z".parse().expect("fixed test stamp")
     }
 
-    pub fn project_scope() -> ToolScope {
-        ToolScope::Project {
+    pub fn project_scope() -> ExtensionScope {
+        ExtensionScope::Project {
             project_name: "demo".to_string(),
         }
     }
 
-    pub fn plugin_target_scope(root: &Path) -> ToolScope {
-        ToolScope::Plugin {
+    pub fn plugin_target_scope(root: &Path) -> ExtensionScope {
+        ExtensionScope::Plugin {
             axis: Axis::Target,
             plugin_slug: "contracts".to_string(),
             capability_dir: root.to_path_buf(),
         }
     }
 
-    pub fn tool(source: ToolSource, sha256: Option<String>) -> Tool {
-        Tool {
+    pub fn tool(source: ExtensionSource, sha256: Option<String>) -> Extension {
+        Extension {
             name: "contract".to_string(),
             version: "1.0.0".to_string(),
             source,
             sha256,
-            permissions: ToolPermissions::default(),
+            permissions: ExtensionPermissions::default(),
         }
     }
 
-    pub fn named_tool(name: &str, source: ToolSource, sha256: Option<String>) -> Tool {
-        Tool {
+    pub fn named_tool(name: &str, source: ExtensionSource, sha256: Option<String>) -> Extension {
+        Extension {
             name: name.to_string(),
             ..tool(source, sha256)
         }
@@ -74,7 +74,7 @@ mod test_support {
         path
     }
 
-    pub fn cached_bytes(scope: &ToolScope, tool: &Tool) -> Vec<u8> {
+    pub fn cached_bytes(scope: &ExtensionScope, tool: &Extension) -> Vec<u8> {
         fs::read(cache::module_path(scope, &tool.name, &tool.version).expect("module path"))
             .expect("read cached module")
     }
@@ -88,14 +88,14 @@ mod test_support {
     }
 
     /// Acquire the env lock and pin the cache-root precedence to
-    /// `SPECIFY_TOOLS_CACHE = cache_dir`, ensuring `XDG_CACHE_HOME` and
+    /// `SPECIFY_EXTENSIONS_CACHE = cache_dir`, ensuring `XDG_CACHE_HOME` and
     /// `HOME` cannot leak from the host. Tuple fields drop in
     /// declaration order, so the `EnvGuard` array restores env vars
     /// first and the lock guard releases last.
     pub fn cache_env(cache_dir: &Path) -> ([EnvGuard; 3], MutexGuard<'static, ()>) {
         let lock = env_lock();
         let guards = [
-            EnvGuard::scoped("SPECIFY_TOOLS_CACHE", Some(cache_dir)),
+            EnvGuard::scoped("SPECIFY_EXTENSIONS_CACHE", Some(cache_dir)),
             EnvGuard::scoped("XDG_CACHE_HOME", None),
             EnvGuard::scoped("HOME", None),
         ];

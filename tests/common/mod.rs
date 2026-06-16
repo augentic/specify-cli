@@ -49,7 +49,7 @@ pub fn omnia_schema_dir() -> PathBuf {
 /// binary. Scrubs the ambient `SPECIFY_*` env overrides so an
 /// operator shell mid-workspace-run (exported `SPECIFY_PLAN_DIR`)
 /// cannot skew test plan resolution. Pins the wasmtime compilation
-/// cache to one repo-local directory: tests isolate `SPECIFY_TOOLS_CACHE`
+/// cache to one repo-local directory: tests isolate `SPECIFY_EXTENSIONS_CACHE`
 /// per test, which would otherwise defeat compiled-component reuse and
 /// make every WASI-dispatching test pay the full Cranelift compile.
 pub fn specify_cmd() -> Command {

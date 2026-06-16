@@ -2,6 +2,7 @@ pub mod agents;
 pub mod archive;
 pub mod catalog;
 pub mod contract;
+pub mod extension;
 mod init;
 pub mod journal;
 pub mod lint;
@@ -12,7 +13,6 @@ pub mod rules;
 pub mod slice;
 pub mod source;
 pub mod target;
-pub mod tool;
 mod upgrade;
 pub mod workspace;
 
@@ -31,12 +31,12 @@ use specify_workflow::init::adapter_ref_from_value;
 
 use crate::runtime::cli::{Cli, Commands, Format};
 use crate::runtime::commands::contract::cli::ContractAction;
+use crate::runtime::commands::extension::cli::ExtensionAction;
 use crate::runtime::commands::journal::cli::JournalAction;
 use crate::runtime::commands::lint::cli::LintAction;
 use crate::runtime::commands::rules::cli::RulesAction;
 use crate::runtime::commands::source::cli::SourceAction;
 use crate::runtime::commands::target::cli::TargetAction;
-use crate::runtime::commands::tool::cli::ToolAction;
 use crate::runtime::commands::workspace::cli::WorkspaceAction;
 use crate::runtime::context::Ctx;
 use crate::runtime::output::{self, Exit, report};
@@ -75,13 +75,13 @@ pub fn run(cli: Cli) -> Exit {
             RulesAction::Export(args) => dispatch(format, || rules::export::run(format, &args)),
             RulesAction::Sync(args) => scoped(format, plan_dir, |ctx| rules::sync::run(ctx, &args)),
         },
-        Commands::Tool { action } => match action {
-            ToolAction::Run { name, args } => run_tool_with(format, &name, args),
-            ToolAction::Fetch { name } => {
-                scoped(format, plan_dir, |ctx| tool::fetch(ctx, name.as_deref()))
+        Commands::Extension { action } => match action {
+            ExtensionAction::Run { name, args } => run_tool_with(format, &name, args),
+            ExtensionAction::Fetch { name } => {
+                scoped(format, plan_dir, |ctx| extension::fetch(ctx, name.as_deref()))
             }
-            ToolAction::Gc => scoped(format, plan_dir, tool::gc),
-            ToolAction::Schema { name, schema } => {
+            ExtensionAction::Gc => scoped(format, plan_dir, extension::gc),
+            ExtensionAction::Schema { name, schema } => {
                 run_tool_with(format, &name, vec!["schema".to_string(), schema])
             }
         },
@@ -240,7 +240,7 @@ where
     }
 }
 
-/// Tool execution is the only handler path that mints a [`Exit::Code`] exit;
+/// Extension execution is the only handler path that mints a [`Exit::Code`] exit;
 /// see [DECISIONS.md §"Exit codes"](../DECISIONS.md#exit-codes) for
 /// the rationale. Handled outside the `Result<()>` channel so the
 /// success branch can carry the guest's exit code rather than
@@ -250,7 +250,7 @@ fn run_tool_with(format: Format, name: &str, args: Vec<String>) -> Exit {
         Ok(ctx) => ctx,
         Err(err) => return report(format, &err),
     };
-    match tool::run(&ctx, name, args) {
+    match extension::run(&ctx, name, args) {
         Ok(0) => Exit::Success,
         Ok(code) => Exit::Code(code),
         Err(err) => report(format, &err),

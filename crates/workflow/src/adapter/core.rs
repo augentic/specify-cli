@@ -102,11 +102,11 @@ pub fn adapter_axis_dir(project_dir: &Path, axis: Axis) -> PathBuf {
 
 /// One declared WASI tool inside an adapter manifest.
 ///
-/// Decoupled from [`specify_tool_manifest::Tool`] so adapter loading
+/// Decoupled from [`specify_extension_manifest::Extension`] so adapter loading
 /// does not pull in the WASI runtime surface; sidecar `tools.yaml`
 /// continues to be the authoritative source for tool resolution.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-pub struct AdapterToolDeclaration {
+pub struct AdapterExtensionDeclaration {
     /// Kebab-case tool name.
     pub name: String,
     /// Optional semver or `sha256:<digest>` version pin.
@@ -233,7 +233,7 @@ pub enum Execution {
     /// `execution: tool` — target-axis only: `build` / `merge` are
     /// dispatched through a declared WASI tool or a built-in
     /// deterministic Rust path. Source adapters are agent-only.
-    Tool,
+    Extension,
 }
 
 /// Where an adapter manifest was located on disk.
@@ -406,7 +406,7 @@ pub struct SourceAdapter {
     pub briefs: BTreeMap<SourceOperation, String>,
     /// Optional declared WASI tools for declared WASI tools.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub tools: Vec<AdapterToolDeclaration>,
+    pub tools: Vec<AdapterExtensionDeclaration>,
     /// Optional human-readable summary.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
@@ -460,7 +460,7 @@ pub struct TargetAdapter {
     pub briefs: BTreeMap<TargetOperation, String>,
     /// Optional declared WASI tools for declared WASI tools.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub tools: Vec<AdapterToolDeclaration>,
+    pub tools: Vec<AdapterExtensionDeclaration>,
     /// Optional adapter-declared build inputs. Each entry is
     /// a path relative to the build request's `inputs.root`, flagged
     /// `required`; the CLI assembles `inputs.artifacts.additional[]`
@@ -588,7 +588,7 @@ pub(super) fn check_execution(
 /// `adapter-version-malformed` finding rather than the free-form
 /// `adapter-manifest-malformed` serde error.
 ///
-/// Mirrors `specify_tool_manifest`'s `tool.version-is-semver` rule:
+/// Mirrors `specify_extension_manifest`'s `tool.version-is-semver` rule:
 /// the per-axis JSON Schemas already mark `version` with the semver
 /// `pattern`, so this typed gate is the belt-and-suspenders for a
 /// manifest that reaches the loader through a path that bypassed

@@ -15,7 +15,7 @@ pub struct Input {
     pub description: Option<String>,
     pub adapter: Option<Adapter>,
     pub rule_overrides: Vec<Rule>,
-    pub declared_tools: Vec<Tool>,
+    pub declared_tools: Vec<Extension>,
     pub active_slices: Vec<String>,
     pub workspace_peers: Vec<Peer>,
     pub dependencies: Vec<Dep>,
@@ -48,7 +48,7 @@ pub struct Rule {
 
 /// One project-scoped WASI tool declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Tool {
+pub struct Extension {
     pub name: String,
     pub version: String,
 }
@@ -262,7 +262,7 @@ mod tests {
                 brief_id: "proposal".to_string(),
                 path: ".specify/rules/proposal.md".to_string(),
             }],
-            declared_tools: vec![Tool {
+            declared_tools: vec![Extension {
                 name: "contract".to_string(),
                 version: "1.0.0".to_string(),
             }],

@@ -4,25 +4,25 @@ use std::io::Write;
 
 use serde::Serialize;
 use specify_error::Result;
-use specify_tool::cache::{self, Status as CacheStatus};
-use specify_tool::manifest::{Tool, ToolScope, ToolScopeKind};
+use specify_registry::cache::{self, Status as CacheStatus};
+use specify_registry::manifest::{Extension, ExtensionScope, ExtensionScopeKind};
 
 #[derive(Debug, Clone)]
 pub struct ScopedTool {
-    pub(super) scope: ToolScope,
-    pub(super) tool: Tool,
+    pub(super) scope: ExtensionScope,
+    pub(super) tool: Extension,
 }
 
 impl ScopedTool {
     /// Borrow the resolved scope (project / plugin) the tool was
     /// declared in. Used by `commands::lint` to invoke a declared
     /// WASI tool with the right capability root.
-    pub const fn scope(&self) -> &ToolScope {
+    pub const fn scope(&self) -> &ExtensionScope {
         &self.scope
     }
 
     /// Borrow the tool record (name, version, source, permissions).
-    pub const fn tool(&self) -> &Tool {
+    pub const fn tool(&self) -> &Extension {
         &self.tool
     }
 }
@@ -31,14 +31,14 @@ impl ScopedTool {
 pub struct Inventory {
     pub(super) tools: Vec<ScopedTool>,
     pub(super) warnings: Vec<WarningRow>,
-    pub(super) scopes: Vec<ToolScope>,
+    pub(super) scopes: Vec<ExtensionScope>,
 }
 
 impl Inventory {
     /// Look up the declared tool with the given `name`, or return
     /// `None` if no declaration matches. Project-scope declarations
     /// shadow plugin-scope declarations per the merge contract in
-    /// [`specify_tool::load::merge_scoped`].
+    /// [`specify_registry::load::merge_scoped`].
     #[must_use]
     pub fn find(&self, name: &str) -> Option<&ScopedTool> {
         self.tools.iter().find(|scoped| scoped.tool.name == name)
@@ -59,7 +59,7 @@ pub(super) struct ToolRow {
     pub(super) name: String,
     pub(super) version: String,
     pub(super) source: String,
-    pub(super) scope: ToolScopeKind,
+    pub(super) scope: ExtensionScopeKind,
     pub(super) scope_detail: String,
     pub(super) cache_status: CacheStatus,
     pub(super) cached_path: String,
@@ -156,10 +156,14 @@ pub(super) fn cache_status_for(scoped: &ScopedTool) -> Result<CacheStatus> {
     )?)
 }
 
-fn scope_labels(scope: &ToolScope) -> (ToolScopeKind, String) {
+fn scope_labels(scope: &ExtensionScope) -> (ExtensionScopeKind, String) {
     match scope {
-        ToolScope::Project { project_name } => (ToolScopeKind::Project, project_name.clone()),
-        ToolScope::Plugin { plugin_slug, .. } => (ToolScopeKind::Plugin, plugin_slug.clone()),
+        ExtensionScope::Project { project_name } => {
+            (ExtensionScopeKind::Project, project_name.clone())
+        }
+        ExtensionScope::Plugin { plugin_slug, .. } => {
+            (ExtensionScopeKind::Plugin, plugin_slug.clone())
+        }
     }
 }
 

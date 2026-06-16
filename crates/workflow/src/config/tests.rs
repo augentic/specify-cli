@@ -184,7 +184,7 @@ fn tools_field_round_trips() {
     assert_eq!(cfg.tools[0].name, "contract");
     assert!(matches!(
         &cfg.tools[0].source,
-        specify_tool_manifest::ToolSource::HttpsUri(uri) if uri == "https://example.com/contract.wasm"
+        specify_extension_manifest::ExtensionSource::HttpsUri(uri) if uri == "https://example.com/contract.wasm"
     ));
 
     let yaml = serde_saphyr::to_string(&cfg).expect("serialise");

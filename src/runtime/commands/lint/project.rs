@@ -26,17 +26,17 @@ use std::time::Instant;
 use jiff::Timestamp;
 use specify_diagnostics::{DiagnosticReport, Format as DiagnosticsFormat};
 use specify_error::{Error, Result};
+use specify_registry::host::{RunContext, WasiRunner};
+use specify_registry::manifest::ExtensionScope;
 use specify_standards::ResolveInputs;
 use specify_standards::lint::ScanProfile;
 use specify_standards::lint::eval::tool::{ToolOutput, ToolRunError, ToolRunner};
 use specify_standards::lint::runner::PipelineConfig;
-use specify_tool::host::{RunContext, WasiRunner};
-use specify_tool::manifest::ToolScope;
 use specify_workflow::journal::LintScope;
 
 use crate::output::{self, LintRun};
+use crate::runtime::commands::extension::{Inventory, ScopedTool, build_inventory};
 use crate::runtime::commands::lint::cli::ProjectArgs;
-use crate::runtime::commands::tool::{Inventory, ScopedTool, build_inventory};
 use crate::runtime::context::Ctx;
 
 /// Handler entry point dispatched from `src/runtime/commands.rs`.
@@ -224,7 +224,7 @@ impl ToolRunner for WasiToolRunner {
         let Some(scoped) = self.lookup(tool_name) else {
             return Err(ToolRunError::Runtime(format!("tool {tool_name} is not declared")));
         };
-        let resolved = specify_tool::resolver::resolve(
+        let resolved = specify_registry::resolver::resolve(
             scoped.scope(),
             scoped.tool(),
             Timestamp::now(),
@@ -232,7 +232,7 @@ impl ToolRunner for WasiToolRunner {
         )
         .map_err(|err| ToolRunError::Runtime(err.to_string()))?;
         let mut run_ctx = RunContext::new(project_dir, args.to_vec());
-        if let ToolScope::Plugin { capability_dir, .. } = scoped.scope() {
+        if let ExtensionScope::Plugin { capability_dir, .. } = scoped.scope() {
             run_ctx = run_ctx.with_capability_dir(capability_dir);
         }
         let captured = self

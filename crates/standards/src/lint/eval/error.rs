@@ -62,7 +62,7 @@ pub enum HintError {
         #[source]
         source: ::regex::Error,
     },
-    /// Tool invocation failed at the runtime boundary (the WASI host
+    /// Extension invocation failed at the runtime boundary (the WASI host
     /// could not invoke the declared tool). Recoverable
     /// non-zero-exit outcomes flow as `tool.invocation-failed`
     /// findings on the Ok path per `kind: tool` evaluator contract.
@@ -70,7 +70,7 @@ pub enum HintError {
     ToolInvocation {
         /// Originating rule id.
         rule_id: String,
-        /// Tool name from the hint's `value`.
+        /// Extension name from the hint's `value`.
         tool: String,
         /// Free-form invocation failure detail.
         detail: String,
@@ -83,7 +83,7 @@ pub enum HintError {
     ToolUndeclared {
         /// Originating rule id.
         rule_id: String,
-        /// Tool name from the hint's `value`.
+        /// Extension name from the hint's `value`.
         tool: String,
     },
     /// Filesystem I/O against a candidate file failed during

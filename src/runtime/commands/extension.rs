@@ -14,8 +14,8 @@ pub(super) use fetch::run as fetch;
 pub(super) use gc::run as gc;
 pub(super) use run::{run, run_captured};
 use specify_error::{Error, Result};
-use specify_tool::load::{self};
-use specify_tool::manifest::{Axis as ToolAxis, Tool, ToolManifest, ToolScope};
+use specify_registry::load::{self};
+use specify_registry::manifest::{Axis as ToolAxis, Extension, ExtensionManifest, ExtensionScope};
 use specify_workflow::adapter::{ResolvedTargetAdapter, TargetAdapter};
 use specify_workflow::init::adapter_ref_from_value;
 
@@ -24,7 +24,7 @@ use self::dto::{WarningRow, warning_row};
 use crate::runtime::context::Ctx;
 
 pub fn build_inventory(ctx: &Ctx) -> Result<Inventory> {
-    let project_scope = ToolScope::Project {
+    let project_scope = ExtensionScope::Project {
         project_name: ctx.config.name.clone(),
     };
     validate_manifest_tools(&ctx.config.tools, &project_scope)?;
@@ -33,7 +33,7 @@ pub fn build_inventory(ctx: &Ctx) -> Result<Inventory> {
     let mut scopes = vec![project_scope];
     let plugin = resolve_project_adapter(ctx)?;
     let plugin_tools = if let Some(plugin) = plugin {
-        let plugin_scope = ToolScope::Plugin {
+        let plugin_scope = ExtensionScope::Plugin {
             axis: ToolAxis::Target,
             plugin_slug: plugin.manifest.name.clone(),
             capability_dir: plugin.location.path().clone(),
@@ -41,7 +41,7 @@ pub fn build_inventory(ctx: &Ctx) -> Result<Inventory> {
         scopes.push(plugin_scope.clone());
         let sidecar_tools =
             load::plugin_sidecar(plugin.location.path(), &plugin.manifest.name, ToolAxis::Target)?;
-        let tools: Vec<Tool> = sidecar_tools.iter().map(|(_, tool)| tool.clone()).collect();
+        let tools: Vec<Extension> = sidecar_tools.iter().map(|(_, tool)| tool.clone()).collect();
         validate_manifest_tools(&tools, &plugin_scope)?;
         sidecar_tools
     } else {
@@ -64,8 +64,8 @@ fn resolve_project_adapter(ctx: &Ctx) -> Result<Option<ResolvedTargetAdapter>> {
     TargetAdapter::resolve(&adapter_ref, &ctx.project_dir).map(Some)
 }
 
-fn validate_manifest_tools(tools: &[Tool], scope: &ToolScope) -> Result<()> {
-    let manifest = ToolManifest {
+fn validate_manifest_tools(tools: &[Extension], scope: &ExtensionScope) -> Result<()> {
+    let manifest = ExtensionManifest {
         tools: tools.to_vec(),
     };
     // `validate_structure` returns one deterministic `violation`
@@ -99,8 +99,10 @@ fn select<'a>(inventory: &'a Inventory, name: Option<&str>) -> Result<Vec<&'a Sc
     }
 }
 
-fn kept_by_scope(inventory: &Inventory) -> HashMap<ToolScope, HashSet<(String, String, String)>> {
-    let mut kept: HashMap<ToolScope, HashSet<(String, String, String)>> =
+fn kept_by_scope(
+    inventory: &Inventory,
+) -> HashMap<ExtensionScope, HashSet<(String, String, String)>> {
+    let mut kept: HashMap<ExtensionScope, HashSet<(String, String, String)>> =
         inventory.scopes.iter().cloned().map(|scope| (scope, HashSet::new())).collect();
     for scoped in &inventory.tools {
         kept.entry(scoped.scope.clone()).or_default().insert((

@@ -16,14 +16,13 @@ pub const SOURCE_JSON_SCHEMA: &str = include_str!("../../../schemas/source.schem
 /// Schema for a target-axis adapter manifest (`shape` / `build` / `merge`).
 pub const TARGET_JSON_SCHEMA: &str = include_str!("../../../schemas/target.schema.json");
 
-/// Schema for a WASI tool manifest (`tool.schema.json`) declared by an
-/// adapter under `tools[]`.
-pub const TOOL_JSON_SCHEMA: &str = include_str!("../../../schemas/tool.schema.json");
+/// Schema for an adapter's declared WASI extension (`extension.schema.json`).
+pub const EXTENSION_JSON_SCHEMA: &str = include_str!("../../../schemas/extension.schema.json");
 
-/// Schema for a fetched WASI tool sidecar metadata file
+/// Schema for a fetched WASI extension sidecar metadata file
 /// (`<artifact>.sha256` companion manifest).
-pub const TOOL_SIDECAR_JSON_SCHEMA: &str =
-    include_str!("../../../schemas/tool-sidecar.schema.json");
+pub const EXTENSION_SIDECAR_JSON_SCHEMA: &str =
+    include_str!("../../../schemas/extension-sidecar.schema.json");
 
 /// Schema for `plan.yaml` (workflow contract — `slices[].sources[]`
 /// bindings, `target`, slice-level `divergence` enum).
@@ -180,8 +179,12 @@ pub const EMBEDDED_SCHEMAS: &[(&str, &str, &str)] = &[
     ("ADAPTER_JSON_SCHEMA", "schemas/adapter.schema.json", ADAPTER_JSON_SCHEMA),
     ("SOURCE_JSON_SCHEMA", "schemas/source.schema.json", SOURCE_JSON_SCHEMA),
     ("TARGET_JSON_SCHEMA", "schemas/target.schema.json", TARGET_JSON_SCHEMA),
-    ("TOOL_JSON_SCHEMA", "schemas/tool.schema.json", TOOL_JSON_SCHEMA),
-    ("TOOL_SIDECAR_JSON_SCHEMA", "schemas/tool-sidecar.schema.json", TOOL_SIDECAR_JSON_SCHEMA),
+    ("EXTENSION_JSON_SCHEMA", "schemas/extension.schema.json", EXTENSION_JSON_SCHEMA),
+    (
+        "EXTENSION_SIDECAR_JSON_SCHEMA",
+        "schemas/extension-sidecar.schema.json",
+        EXTENSION_SIDECAR_JSON_SCHEMA,
+    ),
     ("PLAN_JSON_SCHEMA", "schemas/plan/plan.schema.json", PLAN_JSON_SCHEMA),
     ("EVIDENCE_JSON_SCHEMA", "schemas/evidence.schema.json", EVIDENCE_JSON_SCHEMA),
     ("LEAD_JSON_SCHEMA", "schemas/discovery/lead.schema.json", LEAD_JSON_SCHEMA),

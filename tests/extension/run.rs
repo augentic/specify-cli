@@ -127,7 +127,7 @@ fn write_adapter_tools(adapter: &Path, tools: &str) {
 fn run_json_failure(project: &Path, cache: &Path, args: &[&str], code: i32) -> Value {
     let assert = specify_cmd()
         .current_dir(project)
-        .env("SPECIFY_TOOLS_CACHE", cache)
+        .env("SPECIFY_EXTENSIONS_CACHE", cache)
         .args(["--format", "json"])
         .args(args)
         .assert()
@@ -137,7 +137,7 @@ fn run_json_failure(project: &Path, cache: &Path, args: &[&str], code: i32) -> V
 }
 
 fn assert_validation_rule(value: &Value, rule_id: &str) {
-    // Tool-manifest validation failures surface as a payload-free
+    // Extension-manifest validation failures surface as a payload-free
     // `Error::Validation` keyed on the first failing rule id; the wire
     // `error` discriminant is that rule id directly.
     assert_eq!(value["error"], rule_id, "{value}");
@@ -167,7 +167,7 @@ fn gc_prunes_orphaned_cache_entry() {
 
     specify_cmd()
         .current_dir(&project)
-        .env("SPECIFY_TOOLS_CACHE", &cache)
+        .env("SPECIFY_EXTENSIONS_CACHE", &cache)
         .args(["tool", "run", "echo", "--", "seed"])
         .assert()
         .success();
@@ -179,7 +179,7 @@ fn gc_prunes_orphaned_cache_entry() {
 
     let assert = specify_cmd()
         .current_dir(&project)
-        .env("SPECIFY_TOOLS_CACHE", &cache)
+        .env("SPECIFY_EXTENSIONS_CACHE", &cache)
         .args(["--format", "json", "tool", "gc"])
         .assert()
         .success();
@@ -279,7 +279,7 @@ fn cache_miss_hit_and_override_observable() {
 
     let first = specify_cmd()
         .current_dir(&project)
-        .env("SPECIFY_TOOLS_CACHE", &cache)
+        .env("SPECIFY_EXTENSIONS_CACHE", &cache)
         .args(["tool", "run", "echo", "--", "hello", "world"])
         .assert()
         .success();
@@ -289,12 +289,12 @@ fn cache_miss_hit_and_override_observable() {
     assert!(stdout.contains("PATH=<unset>"), "{stdout}");
 
     let sidecar = cache.join("project--tools-test/echo/0.1.0/meta.yaml");
-    assert!(sidecar.is_file(), "SPECIFY_TOOLS_CACHE override should receive cache writes");
+    assert!(sidecar.is_file(), "SPECIFY_EXTENSIONS_CACHE override should receive cache writes");
     let fetched_at = fs::read_to_string(&sidecar).expect("read sidecar");
 
     specify_cmd()
         .current_dir(&project)
-        .env("SPECIFY_TOOLS_CACHE", &cache)
+        .env("SPECIFY_EXTENSIONS_CACHE", &cache)
         .args(["tool", "run", "echo", "--", "hello", "world"])
         .assert()
         .success();
@@ -315,7 +315,7 @@ fn cache_miss_hit_and_override_observable() {
 
     specify_cmd()
         .current_dir(&project)
-        .env("SPECIFY_TOOLS_CACHE", &cache)
+        .env("SPECIFY_EXTENSIONS_CACHE", &cache)
         .args(["tool", "fetch", "echo"])
         .assert()
         .success();
@@ -357,7 +357,7 @@ fn local_path_source_runs_without_file_uri() {
 
     let assert = specify_cmd()
         .current_dir(&project)
-        .env("SPECIFY_TOOLS_CACHE", &cache)
+        .env("SPECIFY_EXTENSIONS_CACHE", &cache)
         .args(["tool", "run", "echo", "--", "local"])
         .assert()
         .success();
@@ -407,7 +407,7 @@ fn allowed_fs_reads_and_writes_declared() {
 
     let read = specify_cmd()
         .current_dir(&project)
-        .env("SPECIFY_TOOLS_CACHE", &cache)
+        .env("SPECIFY_EXTENSIONS_CACHE", &cache)
         .args(["tool", "run", "read-only"])
         .assert()
         .success();
@@ -418,7 +418,7 @@ fn allowed_fs_reads_and_writes_declared() {
     drop(fs::remove_file(&result));
     let write = specify_cmd()
         .current_dir(&project)
-        .env("SPECIFY_TOOLS_CACHE", &cache)
+        .env("SPECIFY_EXTENSIONS_CACHE", &cache)
         .args(["tool", "run", "read-write"])
         .assert()
         .success();
@@ -464,7 +464,7 @@ fn adapter_non_zero_exit_caches_by_scope() {
     let cache = cache_dir("exit-seven");
     let assert = specify_cmd()
         .current_dir(fixtures.cap_project())
-        .env("SPECIFY_TOOLS_CACHE", &cache)
+        .env("SPECIFY_EXTENSIONS_CACHE", &cache)
         .args(["tool", "run", "exit-seven"])
         .assert()
         .failure();
@@ -488,7 +488,7 @@ fn name_collision_project_scope_wins() {
 
     let run = specify_cmd()
         .current_dir(&project)
-        .env("SPECIFY_TOOLS_CACHE", &cache)
+        .env("SPECIFY_EXTENSIONS_CACHE", &cache)
         .args(["tool", "run", "echo", "--", "project-wins"])
         .assert()
         .success();

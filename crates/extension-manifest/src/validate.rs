@@ -6,11 +6,11 @@ use std::path::Path;
 use specify_diagnostics::{Artifact, Diagnostic};
 /// Canonical JSON Schema for the two `tools:` declaration sites,
 /// re-exported from the central [`specify_schema`] embed.
-pub use specify_schema::TOOL_JSON_SCHEMA;
+pub use specify_schema::EXTENSION_JSON_SCHEMA;
 
 use crate::{
-    Tool, ToolManifest, ToolScope, ToolSource, first_party_permissions, looks_like_sha256_hex,
-    looks_like_windows_absolute,
+    Extension, ExtensionManifest, ExtensionScope, ExtensionSource, first_party_permissions,
+    looks_like_sha256_hex, looks_like_windows_absolute,
 };
 
 const RULE_NAME_FORMAT: &str = "tool.name-format";
@@ -27,15 +27,15 @@ const RULE_CAPABILITY_DIR_SCOPE: &str = "tool.capability-dir-out-of-scope";
 const RULE_SOURCE_CAPABILITY_DIR_SCOPE: &str = "tool.source-capability-dir-out-of-scope";
 const RULE_NAME_UNIQUE: &str = "tool.name-unique";
 
-impl Tool {
+impl Extension {
     /// Validate the tool declaration against the structural rules
     /// (`name`, `version`, `source`, `sha256`, permission shape).
     /// Returns one deterministic `violation` [`Diagnostic`] per failing
     /// rule; passing rules emit nothing, so an empty vector means the
     /// tool is structurally valid.
     #[must_use]
-    pub fn validate_structure(&self, scope: &ToolScope) -> Vec<Diagnostic> {
-        let package = if let ToolSource::Package(p) = &self.source { Some(p) } else { None };
+    pub fn validate_structure(&self, scope: &ExtensionScope) -> Vec<Diagnostic> {
+        let package = if let ExtensionSource::Package(p) = &self.source { Some(p) } else { None };
 
         let name_valid = !self.name.is_empty()
             && self.name.len() <= 64
@@ -140,12 +140,12 @@ impl Tool {
     }
 }
 
-impl ToolManifest {
+impl ExtensionManifest {
     /// Validate a manifest and all of its contained tools. Returns one
     /// deterministic `violation` [`Diagnostic`] per failing rule; an
     /// empty vector means the manifest is structurally valid.
     #[must_use]
-    pub fn validate_structure(&self, scope: &ToolScope) -> Vec<Diagnostic> {
+    pub fn validate_structure(&self, scope: &ExtensionScope) -> Vec<Diagnostic> {
         let mut results = Vec::with_capacity(1 + self.tools.len() * 12);
 
         let mut seen: HashSet<&str> = HashSet::new();
@@ -177,24 +177,26 @@ fn check(rule_id: &'static str, rule: &'static str, detail: Option<String>) -> O
     detail.map(|detail| Diagnostic::violation(rule_id, rule, detail, Artifact::Plan, None))
 }
 
-fn validate_source(source: &ToolSource, scope: &ToolScope) -> (Option<String>, Option<String>) {
+fn validate_source(
+    source: &ExtensionSource, scope: &ExtensionScope,
+) -> (Option<String>, Option<String>) {
     let valid = match source {
-        ToolSource::LocalPath(path) => {
+        ExtensionSource::LocalPath(path) => {
             path.is_absolute() || path.to_str().is_some_and(looks_like_windows_absolute)
         }
-        ToolSource::FileUri(uri) => {
+        ExtensionSource::FileUri(uri) => {
             uri.strip_prefix("file://").is_some_and(|rest| !rest.is_empty())
         }
-        ToolSource::HttpsUri(uri) => {
+        ExtensionSource::HttpsUri(uri) => {
             uri.strip_prefix("https://").is_some_and(|rest| !rest.is_empty())
         }
-        ToolSource::Package(p) => !p.name_ref().is_empty(),
-        ToolSource::TemplatePath(t) => is_project_dir_path(t) || is_capability_dir_path(t),
+        ExtensionSource::Package(p) => !p.name_ref().is_empty(),
+        ExtensionSource::TemplatePath(t) => is_project_dir_path(t) || is_capability_dir_path(t),
     };
     let detail =
         (!valid).then(|| format!("`{}` is not a supported source", source.to_wire_string()));
-    let scope_detail = if let ToolSource::TemplatePath(t) = source {
-        (t.contains("$CAPABILITY_DIR") && !matches!(scope, ToolScope::Plugin { .. }))
+    let scope_detail = if let ExtensionSource::TemplatePath(t) = source {
+        (t.contains("$CAPABILITY_DIR") && !matches!(scope, ExtensionScope::Plugin { .. }))
             .then(|| "project-scope source references $CAPABILITY_DIR".to_string())
     } else {
         None
@@ -226,10 +228,10 @@ fn validate_lifecycle_writes(write: &[String]) -> Option<Diagnostic> {
 }
 
 fn validate_capability_dir_scope(
-    scope: &ToolScope, read: &[String], write: &[String],
+    scope: &ExtensionScope, read: &[String], write: &[String],
 ) -> Option<Diagnostic> {
     const RULE: &str = "$CAPABILITY_DIR is only available to plugin-scope tools";
-    let failures: Vec<String> = if matches!(scope, ToolScope::Plugin { .. }) {
+    let failures: Vec<String> = if matches!(scope, ExtensionScope::Plugin { .. }) {
         Vec::new()
     } else {
         read.iter()

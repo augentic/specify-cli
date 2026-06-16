@@ -114,7 +114,7 @@ pub enum HintKind {
     /// Validate against an embedded JSON Schema.
     Schema,
     /// Invoke a declared WASI tool.
-    Tool,
+    Extension,
     /// Assert that some field across a candidate set is unique
     /// (v1 fact-family selector: `skill`; field in `config: { field }`).
     Unique,

@@ -90,7 +90,7 @@ briefs:
   merge: briefs/merge.md
 ";
     let manifest: TargetAdapter = serde_saphyr::from_str(yaml).expect("parse");
-    assert_eq!(manifest.execution, Some(Execution::Tool));
+    assert_eq!(manifest.execution, Some(Execution::Extension));
 }
 
 #[test]
@@ -109,7 +109,7 @@ fn check_execution_rejects_missing_mode() {
 fn check_execution_accepts_declared_mode() {
     check_execution(Some(Execution::Agent), Path::new("adapter.yaml"))
         .expect("agent execution passes");
-    check_execution(Some(Execution::Tool), Path::new("adapter.yaml"))
+    check_execution(Some(Execution::Extension), Path::new("adapter.yaml"))
         .expect("tool execution passes (target axis)");
 }
 

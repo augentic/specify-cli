@@ -51,7 +51,7 @@ use specify_error::{Error, Result};
 use specify_workflow::design_system::{ComponentsCatalog, Parts};
 
 use super::cli::InferPhase;
-use crate::runtime::commands::tool;
+use crate::runtime::commands::extension;
 use crate::runtime::context::Ctx;
 
 /// Length of the fingerprint prefix appended when two distinct
@@ -60,7 +60,7 @@ use crate::runtime::context::Ctx;
 /// suffix readable while collisions stay astronomically unlikely.
 const FP_PREFIX_LEN: usize = 8;
 
-/// Tool name the composition inference subcommand lives under.
+/// Extension name the composition inference subcommand lives under.
 const VECTIS_TOOL: &str = "vectis";
 
 /// Composition baseline path relative to the project root.
@@ -128,7 +128,7 @@ fn dispatch_infer(ctx: &Ctx, min_occurrences: Option<u32>) -> Result<Option<Valu
         args.push(n.to_string());
     }
 
-    let captured = tool::run_captured(ctx, VECTIS_TOOL, args)?;
+    let captured = extension::run_captured(ctx, VECTIS_TOOL, args)?;
     if captured.exit_code != 0 {
         let stderr = String::from_utf8_lossy(&captured.stderr);
         let stdout = String::from_utf8_lossy(&captured.stdout);

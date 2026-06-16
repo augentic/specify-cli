@@ -50,7 +50,7 @@ pub struct PipelineConfig<'a> {
     pub apply_ignore_directives: bool,
     /// Operator allow-list of `rule_id`s (empty means no filtering).
     pub rule_filter: &'a [&'a str],
-    /// Tool runner backing `kind: tool` hints.
+    /// Extension runner backing `kind: tool` hints.
     pub tool_runner: &'a dyn ToolRunner,
     /// Binary-injected CLI contract backing `kind: cli-contract`
     /// hints. The root binary builds it (clap introspection + const

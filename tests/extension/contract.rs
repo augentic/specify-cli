@@ -108,7 +108,7 @@ fn preserves_validator_json_for_clean() {
 
     let assert = specify_cmd()
         .current_dir(&fixture.project)
-        .env("SPECIFY_TOOLS_CACHE", &fixture.cache)
+        .env("SPECIFY_EXTENSIONS_CACHE", &fixture.cache)
         .arg("tool")
         .arg("run")
         .arg("contract")
@@ -134,7 +134,7 @@ fn preserves_validator_findings_exit_code() {
 
     let assert = specify_cmd()
         .current_dir(&fixture.project)
-        .env("SPECIFY_TOOLS_CACHE", &fixture.cache)
+        .env("SPECIFY_EXTENSIONS_CACHE", &fixture.cache)
         .arg("tool")
         .arg("run")
         .arg("contract")

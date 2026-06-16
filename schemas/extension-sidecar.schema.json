@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://specify.cli/schemas/tool-sidecar.schema.json",
+  "$id": "https://specify.cli/schemas/extension-sidecar.schema.json",
   "title": "Specify WASI tool cache sidecar",
   "type": "object",
   "additionalProperties": false,

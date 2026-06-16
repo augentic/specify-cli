@@ -53,7 +53,7 @@ fn dump_carries_known_surface() {
         "source",
         "target",
         "rules",
-        "tool",
+        "extension",
         "lint",
         "slice",
         "archive",

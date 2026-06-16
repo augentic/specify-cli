@@ -60,7 +60,7 @@ pub enum DiagnosticSource {
     /// Recorded by a human reviewer.
     Human,
     /// Emitted by an external WASI tool (e.g. the contract verifier).
-    Tool,
+    Extension,
 }
 
 /// Orthogonal nature axis for a [`Diagnostic`].
@@ -605,7 +605,7 @@ mod tests {
     /// `tool` is a legal producer source.
     #[test]
     fn tool_source_round_trips() {
-        let value = serde_json::to_value(DiagnosticSource::Tool).expect("serialise");
+        let value = serde_json::to_value(DiagnosticSource::Extension).expect("serialise");
         assert_eq!(value, Value::from("tool"));
     }
 }

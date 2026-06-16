@@ -3,8 +3,8 @@
 //! [`crate::runtime::output::Exit::Code`].
 
 use specify_error::Result;
-use specify_tool::host::{CapturedOutput, RunContext, WasiRunner};
-use specify_tool::manifest::ToolScope;
+use specify_registry::host::{CapturedOutput, RunContext, WasiRunner};
+use specify_registry::manifest::ExtensionScope;
 
 use super::{build_inventory, emit_warnings_to_stderr, find};
 use crate::runtime::context::Ctx;
@@ -13,10 +13,14 @@ pub fn run(ctx: &Ctx, name: &str, args: Vec<String>) -> Result<u8> {
     let inventory = build_inventory(ctx)?;
     emit_warnings_to_stderr(&inventory.warnings);
     let scoped = find(&inventory, name)?;
-    let resolved =
-        specify_tool::resolver::resolve(&scoped.scope, &scoped.tool, ctx.now(), &ctx.project_dir)?;
+    let resolved = specify_registry::resolver::resolve(
+        &scoped.scope,
+        &scoped.tool,
+        ctx.now(),
+        &ctx.project_dir,
+    )?;
     let mut run_ctx = RunContext::new(&ctx.project_dir, args);
-    if let ToolScope::Plugin { capability_dir, .. } = &scoped.scope {
+    if let ExtensionScope::Plugin { capability_dir, .. } = &scoped.scope {
         run_ctx = run_ctx.with_capability_dir(capability_dir);
     }
     let runner = WasiRunner::new()?;
@@ -38,10 +42,14 @@ pub fn run_captured(ctx: &Ctx, name: &str, args: Vec<String>) -> Result<Captured
     let inventory = build_inventory(ctx)?;
     emit_warnings_to_stderr(&inventory.warnings);
     let scoped = find(&inventory, name)?;
-    let resolved =
-        specify_tool::resolver::resolve(&scoped.scope, &scoped.tool, ctx.now(), &ctx.project_dir)?;
+    let resolved = specify_registry::resolver::resolve(
+        &scoped.scope,
+        &scoped.tool,
+        ctx.now(),
+        &ctx.project_dir,
+    )?;
     let mut run_ctx = RunContext::new(&ctx.project_dir, args);
-    if let ToolScope::Plugin { capability_dir, .. } = &scoped.scope {
+    if let ExtensionScope::Plugin { capability_dir, .. } = &scoped.scope {
         run_ctx = run_ctx.with_capability_dir(capability_dir);
     }
     let runner = WasiRunner::new()?;

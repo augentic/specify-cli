@@ -39,25 +39,25 @@ pub const DEFAULT_WASM_PKG_CONFIG: &str = "default_registry = \"augentic.io\"\n\
 /// One declared WASI tool.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(from = "ToolForm")]
-pub struct Tool {
-    /// Tool name used by `specify tool run <name>`.
+pub struct Extension {
+    /// Extension name used by `specify tool run <name>`.
     pub name: String,
     /// Exact SemVer version string. Parsed during structural validation.
     pub version: String,
     /// Source of the WASI component bytes.
-    pub source: ToolSource,
+    pub source: ExtensionSource,
     /// Optional lower-case hex SHA-256 digest over the component bytes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sha256: Option<String>,
     /// Filesystem preopen requests.
-    #[serde(default, skip_serializing_if = "ToolPermissions::is_default")]
-    pub permissions: ToolPermissions,
+    #[serde(default, skip_serializing_if = "ExtensionPermissions::is_default")]
+    pub permissions: ExtensionPermissions,
 }
 
 /// Supported source locations for WASI component bytes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(into = "String", try_from = "String")]
-pub enum ToolSource {
+pub enum ExtensionSource {
     /// Absolute local filesystem path.
     LocalPath(PathBuf),
     /// `file://` URI.
@@ -83,7 +83,7 @@ pub struct PackageRequest {
     pub version: String,
 }
 
-impl ToolSource {
+impl ExtensionSource {
     /// Classify a manifest `source:` string into a supported source variant.
     ///
     /// # Errors
@@ -181,13 +181,13 @@ impl PackageRequest {
     }
 }
 
-impl From<ToolSource> for String {
-    fn from(value: ToolSource) -> Self {
+impl From<ExtensionSource> for String {
+    fn from(value: ExtensionSource) -> Self {
         value.to_wire_string().into_owned()
     }
 }
 
-impl TryFrom<String> for ToolSource {
+impl TryFrom<String> for ExtensionSource {
     type Error = String;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
@@ -207,14 +207,14 @@ enum ToolForm {
 struct ToolObject {
     name: String,
     version: String,
-    source: ToolSource,
+    source: ExtensionSource,
     #[serde(default)]
     sha256: Option<String>,
     #[serde(default)]
-    permissions: ToolPermissions,
+    permissions: ExtensionPermissions,
 }
 
-impl From<ToolForm> for Tool {
+impl From<ToolForm> for Extension {
     fn from(form: ToolForm) -> Self {
         match form {
             ToolForm::Scalar(value) => {
@@ -223,7 +223,7 @@ impl From<ToolForm> for Tool {
                 Self {
                     name: package.name.clone(),
                     version: package.version.clone(),
-                    source: ToolSource::Package(package),
+                    source: ExtensionSource::Package(package),
                     sha256: None,
                     permissions,
                 }
@@ -248,7 +248,7 @@ impl From<ToolForm> for Tool {
 /// Filesystem permissions requested by a tool.
 #[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-pub struct ToolPermissions {
+pub struct ExtensionPermissions {
     /// Read-only preopen path templates.
     #[serde(default)]
     pub read: Vec<String>,
@@ -257,7 +257,7 @@ pub struct ToolPermissions {
     pub write: Vec<String>,
 }
 
-impl ToolPermissions {
+impl ExtensionPermissions {
     const fn is_default(&self) -> bool {
         self.read.is_empty() && self.write.is_empty()
     }
@@ -265,16 +265,16 @@ impl ToolPermissions {
 
 /// Return embedded permissions for first-party scalar package declarations.
 #[must_use]
-pub fn first_party_permissions(package: &PackageRequest) -> Option<ToolPermissions> {
+pub fn first_party_permissions(package: &PackageRequest) -> Option<ExtensionPermissions> {
     if package.namespace != "specify" {
         return None;
     }
     match package.name.as_str() {
-        "contract" => Some(ToolPermissions {
+        "contract" => Some(ExtensionPermissions {
             read: vec!["$PROJECT_DIR/contracts".to_string()],
             write: Vec::new(),
         }),
-        "vectis" => Some(ToolPermissions {
+        "vectis" => Some(ExtensionPermissions {
             read: vec!["$PROJECT_DIR".to_string(), "$CAPABILITY_DIR".to_string()],
             write: vec!["$PROJECT_DIR".to_string()],
         }),
@@ -285,10 +285,10 @@ pub fn first_party_permissions(package: &PackageRequest) -> Option<ToolPermissio
 /// A `tools:` array as it appears in either declaration site.
 #[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-pub struct ToolManifest {
+pub struct ExtensionManifest {
     /// Declared tools.
     #[serde(default)]
-    pub tools: Vec<Tool>,
+    pub tools: Vec<Extension>,
 }
 
 /// Plugin axis discriminator per workflow §Adapter vocabulary.
@@ -296,7 +296,7 @@ pub struct ToolManifest {
 /// Source plugins (`extract` / `survey`) and target plugins
 /// (`shape` / `build` / `merge`) share the `adapter.yaml` shape and
 /// on-disk filename; `Axis` is what disambiguates them in
-/// [`ToolScope::Plugin`] and in the out-of-tree cache layout under
+/// [`ExtensionScope::Plugin`] and in the out-of-tree cache layout under
 /// `<project-cache>/manifests/{sources,targets}/<name>/`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::Display)]
 #[serde(rename_all = "kebab-case")]
@@ -323,17 +323,17 @@ impl Axis {
 
 /// Identifies which declaration site a tool came from.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, strum::EnumDiscriminants)]
-#[strum_discriminants(name(ToolScopeKind))]
+#[strum_discriminants(name(ExtensionScopeKind))]
 #[strum_discriminants(derive(Hash, serde::Serialize, serde::Deserialize, strum::Display))]
 #[strum_discriminants(serde(rename_all = "kebab-case"))]
 #[strum_discriminants(strum(serialize_all = "kebab-case"))]
-pub enum ToolScope {
-    /// Tool declared in `.specify/project.yaml`.
+pub enum ExtensionScope {
+    /// Extension declared in `.specify/project.yaml`.
     Project {
         /// Project name from `project.yaml`.
         project_name: String,
     },
-    /// Tool declared in a resolved plugin's sidecar `tools.yaml`.
+    /// Extension declared in a resolved plugin's sidecar `tools.yaml`.
     /// Per workflow §Adapter implementation shape, plugins carry an
     /// [`Axis`] (`source` / `target`); the read-only plugin-owned
     /// cache root exposed to guests as `$CAPABILITY_DIR` is
@@ -385,36 +385,36 @@ mod tests {
 
     #[test]
     fn manifest_round_trips_all_sources() {
-        let manifest = ToolManifest {
+        let manifest = ExtensionManifest {
             tools: vec![
-                Tool {
+                Extension {
                     name: "local-tool".to_string(),
                     version: "1.0.0".to_string(),
-                    source: ToolSource::LocalPath(PathBuf::from("/opt/specify/local.wasm")),
+                    source: ExtensionSource::LocalPath(PathBuf::from("/opt/specify/local.wasm")),
                     sha256: None,
-                    permissions: ToolPermissions::default(),
+                    permissions: ExtensionPermissions::default(),
                 },
-                Tool {
+                Extension {
                     name: "file-tool".to_string(),
                     version: "1.0.1".to_string(),
-                    source: ToolSource::FileUri("file:///opt/specify/file.wasm".to_string()),
+                    source: ExtensionSource::FileUri("file:///opt/specify/file.wasm".to_string()),
                     sha256: None,
-                    permissions: ToolPermissions {
+                    permissions: ExtensionPermissions {
                         read: vec!["$PROJECT_DIR/contracts".to_string()],
                         write: Vec::new(),
                     },
                 },
-                Tool {
+                Extension {
                     name: "https-tool".to_string(),
                     version: "1.0.2".to_string(),
-                    source: ToolSource::HttpsUri(
+                    source: ExtensionSource::HttpsUri(
                         "https://example.com/specify/https.wasm".to_string(),
                     ),
                     sha256: Some(
                         "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
                             .to_string(),
                     ),
-                    permissions: ToolPermissions {
+                    permissions: ExtensionPermissions {
                         read: Vec::new(),
                         write: vec!["$PROJECT_DIR/generated".to_string()],
                     },
@@ -427,13 +427,13 @@ mod tests {
         assert!(yaml.contains("source: file:///opt/specify/file.wasm"));
         assert!(yaml.contains("source: https://example.com/specify/https.wasm"));
 
-        let parsed: ToolManifest = serde_saphyr::from_str(&yaml).expect("parse manifest");
+        let parsed: ExtensionManifest = serde_saphyr::from_str(&yaml).expect("parse manifest");
         assert_eq!(parsed, manifest);
     }
 
     #[test]
     fn unsupported_source_fails() {
-        serde_saphyr::from_str::<ToolManifest>(
+        serde_saphyr::from_str::<ExtensionManifest>(
             "tools:\n  - name: bad\n    version: 1.0.0\n    source: relative.wasm\n",
         )
         .expect_err("relative source must fail");
@@ -441,7 +441,7 @@ mod tests {
 
     #[test]
     fn scalar_package_derives_fields() {
-        let manifest: ToolManifest =
+        let manifest: ExtensionManifest =
             serde_saphyr::from_str("tools:\n  - \"specify:contract@1.2.3\"\n")
                 .expect("parse package manifest");
         assert_eq!(manifest.tools.len(), 1);
@@ -450,14 +450,14 @@ mod tests {
         assert_eq!(tool.version, "1.2.3");
         assert!(matches!(
             &tool.source,
-            ToolSource::Package(package)
+            ExtensionSource::Package(package)
                 if package.namespace == "specify"
                     && package.name == "contract"
                     && package.version == "1.2.3"
         ));
         assert_eq!(
             tool.permissions,
-            ToolPermissions {
+            ExtensionPermissions {
                 read: vec!["$PROJECT_DIR/contracts".to_string()],
                 write: Vec::new(),
             }
@@ -469,24 +469,24 @@ mod tests {
 
     #[test]
     fn unknown_package_keeps_empty_perms() {
-        let manifest: ToolManifest =
+        let manifest: ExtensionManifest =
             serde_saphyr::from_str("tools:\n  - \"other:helper@latest\"\n")
                 .expect("parse package manifest");
         let tool = &manifest.tools[0];
         assert_eq!(tool.name, "helper");
         assert_eq!(tool.version, "latest");
-        assert_eq!(tool.permissions, ToolPermissions::default());
+        assert_eq!(tool.permissions, ExtensionPermissions::default());
     }
 
     #[test]
     fn template_source_round_trips() {
-        let manifest: ToolManifest = serde_saphyr::from_str(
+        let manifest: ExtensionManifest = serde_saphyr::from_str(
             "tools:\n  - name: vectis\n    version: 0.3.0\n    source: $PROJECT_DIR/../specify-cli/target/vectis.wasm\n",
         )
         .expect("parse template source");
         let tool = &manifest.tools[0];
         assert!(
-            matches!(&tool.source, ToolSource::TemplatePath(t) if t == "$PROJECT_DIR/../specify-cli/target/vectis.wasm"),
+            matches!(&tool.source, ExtensionSource::TemplatePath(t) if t == "$PROJECT_DIR/../specify-cli/target/vectis.wasm"),
         );
         let yaml = serde_saphyr::to_string(&manifest).expect("serialize template source");
         assert!(yaml.contains("source: $PROJECT_DIR/../specify-cli/target/vectis.wasm"), "{yaml}");
@@ -494,33 +494,36 @@ mod tests {
 
     #[test]
     fn expand_replaces_project_dir() {
-        let source = ToolSource::TemplatePath("$PROJECT_DIR/tools/vectis.wasm".to_string());
+        let source = ExtensionSource::TemplatePath("$PROJECT_DIR/tools/vectis.wasm".to_string());
         let expanded = source.expand(Path::new("/home/user/project"), None).expect("expand");
         assert_eq!(
             expanded,
-            ToolSource::LocalPath(PathBuf::from("/home/user/project/tools/vectis.wasm"))
+            ExtensionSource::LocalPath(PathBuf::from("/home/user/project/tools/vectis.wasm"))
         );
     }
 
     #[test]
     fn expand_replaces_capability_dir() {
-        let source = ToolSource::TemplatePath("$CAPABILITY_DIR/bin/tool.wasm".to_string());
+        let source = ExtensionSource::TemplatePath("$CAPABILITY_DIR/bin/tool.wasm".to_string());
         let expanded =
             source.expand(Path::new("/project"), Some(Path::new("/caps/vectis"))).expect("expand");
-        assert_eq!(expanded, ToolSource::LocalPath(PathBuf::from("/caps/vectis/bin/tool.wasm")));
+        assert_eq!(
+            expanded,
+            ExtensionSource::LocalPath(PathBuf::from("/caps/vectis/bin/tool.wasm"))
+        );
     }
 
     #[test]
     fn expand_rejects_capability_dir() {
-        let source = ToolSource::TemplatePath("$CAPABILITY_DIR/bin/tool.wasm".to_string());
+        let source = ExtensionSource::TemplatePath("$CAPABILITY_DIR/bin/tool.wasm".to_string());
         source.expand(Path::new("/project"), None).expect_err("must reject missing adapter dir");
     }
 
     #[test]
     fn expand_identity_for_non_template() {
-        let source = ToolSource::LocalPath(PathBuf::from("/absolute/path.wasm"));
+        let source = ExtensionSource::LocalPath(PathBuf::from("/absolute/path.wasm"));
         let expanded = source.expand(Path::new("/project"), None).expect("expand");
-        assert_eq!(expanded, ToolSource::LocalPath(PathBuf::from("/absolute/path.wasm")));
+        assert_eq!(expanded, ExtensionSource::LocalPath(PathBuf::from("/absolute/path.wasm")));
     }
 
     #[test]
@@ -541,29 +544,39 @@ mod tests {
     #[test]
     fn parse_wire_classifies_each_scheme() {
         assert!(matches!(
-            ToolSource::parse_wire("https://example.com/t.wasm"),
-            Ok(ToolSource::HttpsUri(_))
-        ));
-        assert!(matches!(ToolSource::parse_wire("file:///opt/t.wasm"), Ok(ToolSource::FileUri(_))));
-        assert!(matches!(
-            ToolSource::parse_wire("/opt/specify/t.wasm"),
-            Ok(ToolSource::LocalPath(_))
-        ));
-        assert!(matches!(ToolSource::parse_wire(r"C:\tools\t.wasm"), Ok(ToolSource::LocalPath(_))));
-        assert!(matches!(ToolSource::parse_wire("C:/tools/t.wasm"), Ok(ToolSource::LocalPath(_))));
-        assert!(matches!(
-            ToolSource::parse_wire("$PROJECT_DIR/tools/t.wasm"),
-            Ok(ToolSource::TemplatePath(_))
+            ExtensionSource::parse_wire("https://example.com/t.wasm"),
+            Ok(ExtensionSource::HttpsUri(_))
         ));
         assert!(matches!(
-            ToolSource::parse_wire("$CAPABILITY_DIR"),
-            Ok(ToolSource::TemplatePath(_))
+            ExtensionSource::parse_wire("file:///opt/t.wasm"),
+            Ok(ExtensionSource::FileUri(_))
         ));
         assert!(matches!(
-            ToolSource::parse_wire("specify:contract@1.0.0"),
-            Ok(ToolSource::Package(_))
+            ExtensionSource::parse_wire("/opt/specify/t.wasm"),
+            Ok(ExtensionSource::LocalPath(_))
         ));
-        ToolSource::parse_wire("relative/t.wasm").expect_err("relative path is unclassifiable");
+        assert!(matches!(
+            ExtensionSource::parse_wire(r"C:\tools\t.wasm"),
+            Ok(ExtensionSource::LocalPath(_))
+        ));
+        assert!(matches!(
+            ExtensionSource::parse_wire("C:/tools/t.wasm"),
+            Ok(ExtensionSource::LocalPath(_))
+        ));
+        assert!(matches!(
+            ExtensionSource::parse_wire("$PROJECT_DIR/tools/t.wasm"),
+            Ok(ExtensionSource::TemplatePath(_))
+        ));
+        assert!(matches!(
+            ExtensionSource::parse_wire("$CAPABILITY_DIR"),
+            Ok(ExtensionSource::TemplatePath(_))
+        ));
+        assert!(matches!(
+            ExtensionSource::parse_wire("specify:contract@1.0.0"),
+            Ok(ExtensionSource::Package(_))
+        ));
+        ExtensionSource::parse_wire("relative/t.wasm")
+            .expect_err("relative path is unclassifiable");
     }
 
     // `PackageRequest::parse` is deliberately permissive so structural
@@ -631,7 +644,7 @@ mod tests {
     // grant a tool zero filesystem authority.
     #[test]
     fn scalar_vectis_embeds_permissions() {
-        let manifest: ToolManifest =
+        let manifest: ExtensionManifest =
             serde_saphyr::from_str("tools:\n  - \"specify:vectis@0.3.0\"\n")
                 .expect("parse vectis scalar");
         let tool = &manifest.tools[0];
@@ -639,7 +652,7 @@ mod tests {
         assert_eq!(tool.version, "0.3.0");
         assert_eq!(
             tool.permissions,
-            ToolPermissions {
+            ExtensionPermissions {
                 read: vec!["$PROJECT_DIR".to_string(), "$CAPABILITY_DIR".to_string()],
                 write: vec!["$PROJECT_DIR".to_string()],
             }
