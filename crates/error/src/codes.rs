@@ -16,6 +16,7 @@ pub const WIRE_CODES: &[&str] = &[
     "adapter-arg-malformed",
     "adapter-axis-mismatch",
     "adapter-canonicalize-failed",
+    "adapter-cli-too-old",
     "adapter-dir-missing-manifest",
     "adapter-dir-name-unresolved",
     "adapter-execution-mode-required",

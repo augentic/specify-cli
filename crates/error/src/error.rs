@@ -69,6 +69,23 @@ pub enum Error {
         found: String,
     },
 
+    /// The installed CLI version is older than an adapter's declared
+    /// host-CLI compatibility floor (RFC-47 D3, the `specify` manifest
+    /// key). Routes to exit 3 (`Exit::VersionTooOld`) like
+    /// [`Self::CliTooOld`] but carries the distinct `adapter-cli-too-old`
+    /// discriminant so the operator sees which adapter outran the binary.
+    #[error(
+        "specify version {found} is older than the floor {required} required by adapter {adapter}; upgrade the CLI"
+    )]
+    AdapterCliTooOld {
+        /// Adapter identity (and manifest path) that declared the floor.
+        adapter: String,
+        /// Minimum version the adapter requires.
+        required: String,
+        /// Version currently installed.
+        found: String,
+    },
+
     /// A required artifact was not found at the expected path.
     #[error("{kind} not found at {}", path.display())]
     ArtifactNotFound {
@@ -175,6 +192,7 @@ impl Error {
             Self::Argument { .. } => Cow::Borrowed("argument"),
             Self::Validation { code, .. } => code.clone(),
             Self::CliTooOld { .. } => Cow::Borrowed("specify-version-too-old"),
+            Self::AdapterCliTooOld { .. } => Cow::Borrowed("adapter-cli-too-old"),
             Self::ArtifactNotFound { .. } => Cow::Borrowed("artifact-not-found"),
             Self::Filesystem { op, .. } => Cow::Owned(format!("filesystem-{op}")),
             Self::BranchPrepareFailed { .. } => Cow::Borrowed("branch-preparation-failed"),
@@ -238,6 +256,24 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("0.9.0") && msg.contains("1.0.0"), "both versions in display: {msg}");
         assert!(err.hint().is_none(), "CliTooOld has no recovery hint");
+    }
+
+    #[test]
+    fn adapter_cli_too_old_discriminant_display() {
+        // RFC-47 D3: the adapter floor reuses the exit-3 family but carries
+        // a distinct discriminant naming the adapter that outran the binary.
+        let err = Error::AdapterCliTooOld {
+            adapter: "omnia (adapter.yaml)".to_string(),
+            required: "2.0.0".to_string(),
+            found: "1.0.0".to_string(),
+        };
+        assert_eq!(err.variant_str(), "adapter-cli-too-old");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("1.0.0") && msg.contains("2.0.0") && msg.contains("omnia"),
+            "versions and adapter in display: {msg}"
+        );
+        assert!(err.hint().is_none(), "AdapterCliTooOld has no recovery hint");
     }
 
     #[test]

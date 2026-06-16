@@ -12,7 +12,8 @@ use specify_error::Error;
 use super::core::{
     ADAPTER_FILENAME, AdapterLocation, AdapterRef, Axis, ResolvedSourceAdapter,
     ResolvedTargetAdapter, SourceAdapter, TargetAdapter, adapter_axis_dir, cache_dir,
-    check_axis_and_name, check_execution, check_requested_version, check_version,
+    check_axis_and_name, check_execution, check_requested_version, check_requires_specify,
+    check_version,
 };
 use super::validate_manifest::{axis_collision_error, sibling_manifest_path, validate_schema};
 
@@ -47,6 +48,8 @@ impl SourceAdapter {
     /// - `adapter-version-malformed` — manifest `version` is not semver.
     /// - `adapter-version-required` — a version pin does not match the
     ///   installed identity.
+    /// - `adapter-cli-too-old` — the running binary is older than the
+    ///   adapter's declared `specify` floor (RFC-47 D3, exit 3).
     pub fn resolve(
         adapter_ref: &AdapterRef, project_dir: &Path,
     ) -> Result<ResolvedSourceAdapter, Error> {
@@ -59,6 +62,12 @@ impl SourceAdapter {
             adapter_ref.version.as_ref(),
             name,
             &manifest.version,
+            &manifest_path,
+        )?;
+        check_requires_specify(
+            manifest.requires_specify.as_ref(),
+            env!("CARGO_PKG_VERSION"),
+            name,
             &manifest_path,
         )?;
         Ok(ResolvedSourceAdapter { manifest, location })
@@ -96,6 +105,8 @@ impl TargetAdapter {
     /// - `adapter-version-malformed` — manifest `version` is not semver.
     /// - `adapter-version-required` — a version pin does not match the
     ///   installed identity.
+    /// - `adapter-cli-too-old` — the running binary is older than the
+    ///   adapter's declared `specify` floor (RFC-47 D3, exit 3).
     pub fn resolve(
         adapter_ref: &AdapterRef, project_dir: &Path,
     ) -> Result<ResolvedTargetAdapter, Error> {
@@ -108,6 +119,12 @@ impl TargetAdapter {
             adapter_ref.version.as_ref(),
             name,
             &manifest.version,
+            &manifest_path,
+        )?;
+        check_requires_specify(
+            manifest.requires_specify.as_ref(),
+            env!("CARGO_PKG_VERSION"),
+            name,
             &manifest_path,
         )?;
         Ok(ResolvedTargetAdapter { manifest, location })

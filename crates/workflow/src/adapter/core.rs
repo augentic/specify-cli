@@ -378,6 +378,15 @@ pub struct SourceAdapter {
     /// the semver `pattern` and `check_version` is the typed
     /// belt-and-suspenders gate (`adapter-version-malformed`).
     pub version: semver::Version,
+    /// Optional host-CLI compatibility floor (RFC-47 D3): the exact
+    /// minimum `specify` platform version this adapter needs,
+    /// deserialized from the `specify` manifest key. The loader compares
+    /// it against the running binary at resolve time
+    /// ([`check_requires_specify`]) and aborts with `adapter-cli-too-old`
+    /// (exit 3) when the binary is older. `None` means no floor — the
+    /// field is optional and back-compatible.
+    #[serde(default, rename = "specify", skip_serializing_if = "Option::is_none")]
+    pub requires_specify: Option<semver::Version>,
     /// Axis discriminator on the wire. Always [`Axis::Source`] after a
     /// successful [`SourceAdapter::resolve`]; the field is retained
     /// so YAML round-trips byte-for-byte through serde.
@@ -422,6 +431,15 @@ pub struct TargetAdapter {
     /// the semver `pattern` and `check_version` is the typed
     /// belt-and-suspenders gate (`adapter-version-malformed`).
     pub version: semver::Version,
+    /// Optional host-CLI compatibility floor (RFC-47 D3): the exact
+    /// minimum `specify` platform version this adapter needs,
+    /// deserialized from the `specify` manifest key. The loader compares
+    /// it against the running binary at resolve time
+    /// ([`check_requires_specify`]) and aborts with `adapter-cli-too-old`
+    /// (exit 3) when the binary is older. `None` means no floor — the
+    /// field is optional and back-compatible.
+    #[serde(default, rename = "specify", skip_serializing_if = "Option::is_none")]
+    pub requires_specify: Option<semver::Version>,
     /// Axis discriminator on the wire. Always [`Axis::Target`] after
     /// a successful [`TargetAdapter::resolve`]; the field is retained
     /// so YAML round-trips byte-for-byte through serde.
@@ -635,6 +653,44 @@ pub(super) fn check_requested_version(
                 manifest_path.display(),
             ),
         ));
+    }
+    Ok(())
+}
+
+/// Enforce an adapter's host-CLI compatibility floor (RFC-47 D3).
+///
+/// `floor` is the adapter's optional `specify` minimum (already parsed
+/// into a typed `semver::Version`); `current` is the running binary's
+/// version (the resolve call sites pass `env!("CARGO_PKG_VERSION")`,
+/// the same source [`crate::config`] uses). When the binary is older
+/// than the floor the adapter cannot be honored, so resolution aborts
+/// with [`Error::AdapterCliTooOld`] on the exit-3 `EXIT_VERSION_TOO_OLD`
+/// path — the adapter-granularity analog of the `project.yaml`
+/// `specify_version` floor.
+///
+/// `current` is parsed permissively: an unparseable running version is
+/// treated as "not older" rather than bricking resolution, mirroring
+/// `config::version_is_older`. An absent `floor` is a clean pass.
+///
+/// # Errors
+///
+/// Returns [`Error::AdapterCliTooOld`] when `current` parses below
+/// `floor`.
+pub(super) fn check_requires_specify(
+    floor: Option<&semver::Version>, current: &str, name: &str, manifest_path: &Path,
+) -> Result<(), Error> {
+    let Some(floor) = floor else {
+        return Ok(());
+    };
+    let Ok(current_version) = semver::Version::parse(current) else {
+        return Ok(());
+    };
+    if current_version < *floor {
+        return Err(Error::AdapterCliTooOld {
+            adapter: format!("{name} ({})", manifest_path.display()),
+            required: floor.to_string(),
+            found: current.to_string(),
+        });
     }
     Ok(())
 }

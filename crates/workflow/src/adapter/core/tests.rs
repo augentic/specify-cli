@@ -168,6 +168,88 @@ fn requested_version_matches_identity() {
 }
 
 #[test]
+fn requires_specify_floor_parses() {
+    // RFC-47 D3: the optional `specify` key deserializes into the typed
+    // `requires_specify` floor and round-trips byte-for-byte.
+    let yaml = r#"name: omnia
+version: 1.0.0
+specify: "0.28.0"
+axis: target
+execution: agent
+briefs:
+  shape: briefs/shape.md
+  build: briefs/build.md
+  merge: briefs/merge.md
+"#;
+    let manifest: TargetAdapter = serde_saphyr::from_str(yaml).expect("parse");
+    assert_eq!(manifest.requires_specify, Some(semver::Version::new(0, 28, 0)));
+    let rendered = serde_saphyr::to_string(&manifest).expect("serialise");
+    assert!(
+        rendered.contains("specify: 0.28.0"),
+        "specify floor must round-trip, got:\n{rendered}"
+    );
+    let reparsed: TargetAdapter = serde_saphyr::from_str(&rendered).expect("reparse");
+    assert_eq!(manifest, reparsed);
+}
+
+#[test]
+fn requires_specify_absent_is_no_floor() {
+    // RFC-47 D3: an absent `specify` key leaves no floor and the gate is
+    // a clean pass — back-compatible at the schema boundary.
+    let yaml = r"name: documentation
+version: 1.0.0
+axis: source
+execution: agent
+briefs:
+  survey: briefs/survey.md
+  extract: briefs/extract.md
+";
+    let manifest: SourceAdapter = serde_saphyr::from_str(yaml).expect("parse");
+    assert_eq!(manifest.requires_specify, None);
+    check_requires_specify(
+        manifest.requires_specify.as_ref(),
+        "0.1.0",
+        "documentation",
+        Path::new("adapter.yaml"),
+    )
+    .expect("absent floor never gates, even against an ancient binary");
+}
+
+#[test]
+fn check_requires_specify_satisfied() {
+    // RFC-47 D3: a binary at or above the floor resolves cleanly.
+    let floor = semver::Version::new(0, 28, 0);
+    check_requires_specify(Some(&floor), "0.28.0", "omnia", Path::new("adapter.yaml"))
+        .expect("exact floor match passes");
+    check_requires_specify(Some(&floor), "0.29.1", "omnia", Path::new("adapter.yaml"))
+        .expect("a newer binary passes");
+}
+
+#[test]
+fn check_requires_specify_too_old() {
+    // RFC-47 D3: a binary below the floor aborts with the
+    // `adapter-cli-too-old` discriminant on the exit-3 path.
+    let floor = semver::Version::new(2, 0, 0);
+    let err = check_requires_specify(Some(&floor), "1.5.0", "omnia", Path::new("adapter.yaml"))
+        .expect_err("a binary below the floor must be rejected");
+    assert_eq!(err.variant_str(), "adapter-cli-too-old");
+    let Error::AdapterCliTooOld { required, found, .. } = err else {
+        panic!("expected Error::AdapterCliTooOld, got: {err:?}");
+    };
+    assert_eq!(required, "2.0.0");
+    assert_eq!(found, "1.5.0");
+}
+
+#[test]
+fn requires_specify_permissive_current() {
+    // Mirrors `config::version_is_older`: an unparseable running version
+    // is treated as "not older" rather than bricking resolution.
+    let floor = semver::Version::new(2, 0, 0);
+    check_requires_specify(Some(&floor), "not-a-version", "omnia", Path::new("adapter.yaml"))
+        .expect("unparseable current version is permissive");
+}
+
+#[test]
 fn unknown_brief_key_rejected() {
     // `shape` is a target operation; appearing on a source manifest
     // must fail at the typed `briefs: BTreeMap<SourceOperation, _>`

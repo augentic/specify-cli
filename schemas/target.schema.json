@@ -12,6 +12,11 @@
       "type": "string",
       "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$"
     },
+    "specify": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$",
+      "description": "Optional host-CLI compatibility floor (RFC-47 D3): the exact minimum `specify` platform version this adapter needs. The loader compares it against the running binary at resolve time and aborts with `adapter-cli-too-old` (exit 3) when the binary is older. Absent means no floor."
+    },
     "axis": {
       "type": "string",
       "const": "target",
