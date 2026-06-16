@@ -273,6 +273,22 @@ fn run_plan_lock_with(format: Format, plan_dir: Option<PathBuf>, command: &[Stri
     }
 }
 
+/// `specify plan lock -- <cmd>` runs a child under the plan lock and
+/// passes its exit code through. Like [`run_tool_with`] it sits outside
+/// the `Result<()>` channel so the success branch can carry the child's
+/// own exit code rather than collapsing to `Success`.
+fn run_plan_lock_with(format: Format, plan_dir: Option<PathBuf>, command: &[String]) -> Exit {
+    let ctx = match Ctx::load(format, plan_dir) {
+        Ok(ctx) => ctx,
+        Err(err) => return report(format, &err),
+    };
+    match plan::lock::run(&ctx, command) {
+        Ok(0) => Exit::Success,
+        Ok(code) => Exit::Code(code),
+        Err(err) => report(format, &err),
+    }
+}
+
 /// Directory segment under a resolved adapter root that holds the
 /// brief markdown files. Manifest brief paths are relative and join
 /// onto `<adapter-root>/briefs/`. Shared with the source prep seam
