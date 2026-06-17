@@ -202,7 +202,7 @@ fn locate_axis(
     // global content-addressed adapter store, the immutable install
     // target the registry transport populates. The store is keyed by
     // version, so it is only probed when the ref carries one.
-    let store_version = adapter_ref.version.as_ref().map(std::string::ToString::to_string);
+    let store_version = adapter_ref.version.as_ref().map(ToString::to_string);
     let store = store_version
         .as_ref()
         .map(|version| specify_schema::cache::adapter_store_entry(name, version));
