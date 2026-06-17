@@ -56,3 +56,23 @@ fn install_layer_is_idempotent() {
 fn entry_key_is_name_at_version() {
     assert_eq!(entry_key(Path::new("/store/omnia@1.2.0")).expect("key"), "omnia@1.2.0");
 }
+
+#[test]
+fn install_tofu_returns_present_entry_without_pull() {
+    use crate::test_support::{EnvGuard, env_lock};
+
+    let _lock = env_lock();
+    let store = TempDir::new().expect("store root");
+    let _guard = EnvGuard::scoped("SPECIFY_ADAPTER_CACHE", Some(store.path()));
+
+    // Seed the immutable entry at the resolved store location, then assert
+    // TOFU install short-circuits to it without touching the network
+    // (the reference is deliberately unreachable).
+    let entry = adapter_store_entry("demo", "1.0.0");
+    install_layer(&entry, &packed_demo()).expect("seed entry");
+
+    let resolved =
+        install_tofu("demo", "1.0.0", "unused.invalid/specify/demo:1.0.0", &RegistryAuth::Anonymous)
+            .expect("idempotent tofu");
+    assert_eq!(resolved, entry);
+}

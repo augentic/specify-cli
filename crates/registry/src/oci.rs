@@ -78,6 +78,27 @@ fn non_empty_env(key: &str) -> Option<String> {
     std::env::var(key).ok().filter(|value| !value.is_empty())
 }
 
+/// Canonical first-party adapter registry host. Must match the
+/// publish-side `${SPECIFY_REGISTRY:-augentic.io}/<namespace>/<name>:<version>`
+/// reference the `specify-adapters` release workflow pushes, and the
+/// `specify -> augentic.io` namespace mapping `specify init` writes into a
+/// consumer's `.specify/wasm-pkg.toml`.
+const DEFAULT_ADAPTER_REGISTRY: &str = "augentic.io";
+
+/// Derive the immutable OCI reference for a first-party adapter package
+/// `<namespace>:<name>@<version>` as `<host>/<namespace>/<name>:<version>`.
+///
+/// `host` is `$SPECIFY_REGISTRY` when set and non-empty, else
+/// [`DEFAULT_ADAPTER_REGISTRY`] — the same precedence the publish workflow
+/// uses, so a `specify init specify:<name>@<ver>` install pulls back
+/// exactly what `specify adapter publish` pushed.
+#[must_use]
+pub fn adapter_reference(namespace: &str, name: &str, version: &str) -> String {
+    let host =
+        non_empty_env("SPECIFY_REGISTRY").unwrap_or_else(|| DEFAULT_ADAPTER_REGISTRY.to_string());
+    format!("{host}/{namespace}/{name}:{version}")
+}
+
 fn parse_reference(reference: &str) -> Result<Reference, ExtensionError> {
     reference
         .parse::<Reference>()
@@ -143,5 +164,26 @@ mod tests {
     fn reference_parse_rejects_garbage() {
         let err = parse_reference("not a reference!!").expect_err("garbage reference");
         assert!(matches!(err, ExtensionError::Diag { code: "adapter-transport-failed", .. }));
+    }
+
+    // The derived install reference must equal the publish-side
+    // `<host>/<namespace>/<name>:<version>` form, defaulting the host to
+    // `augentic.io` and honouring a `SPECIFY_REGISTRY` override.
+    #[test]
+    fn adapter_reference_defaults_and_overrides_host() {
+        use std::path::Path;
+
+        use crate::test_support::EnvGuard;
+
+        let _guard = crate::test_support::env_lock();
+        let unset = EnvGuard::scoped("SPECIFY_REGISTRY", None);
+        assert_eq!(adapter_reference("specify", "omnia", "1.2.0"), "augentic.io/specify/omnia:1.2.0");
+        drop(unset);
+
+        let _set = EnvGuard::scoped("SPECIFY_REGISTRY", Some(Path::new("ghcr.io/augentic")));
+        assert_eq!(
+            adapter_reference("specify", "omnia", "1.2.0"),
+            "ghcr.io/augentic/specify/omnia:1.2.0"
+        );
     }
 }

@@ -12,16 +12,19 @@
 //! A package reference (`<namespace>:<name>@<semver>`, e.g.
 //! `specify:omnia@1.2.0`) is the RFC-48 D2 registry locator: an
 //! *immutable*, content-addressed identity with a mandatory exact
-//! SemVer pin and no branch or tag defaulting. The recorded registry
-//! content digest (D4) backstops a moved tag as `adapter-digest-mismatch`
-//! at read time. Registry transport (fetch + verify-on-read) lands in
-//! the RFC-48 Step 4 loop; this module owns the locator parse.
+//! SemVer pin and no branch or tag defaulting. The root `specify init`
+//! layer installs the pinned artifact into the global content-addressed
+//! store ([`recognize_package`] → `registry::store::install_tofu`) before
+//! this flow runs, so a package reference resolves from the store entry
+//! ([`AdapterUri::from_package`]) as a local source.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use specify_error::Error;
 use tempfile::TempDir;
+
+use specify_schema::cache::adapter_store_entry;
 
 use crate::adapter::AdapterRef;
 use crate::init::git::sparse_checkout_github;
@@ -48,20 +51,34 @@ impl AdapterUri {
         Self::from_local(adapter, project_dir)
     }
 
-    /// Resolve an immutable [`AdapterPackageRef`] registry locator.
+    /// Resolve an immutable [`AdapterPackageRef`] registry locator from
+    /// the global content-addressed adapter store (RFC-48 D5).
     ///
-    /// The locator parse is complete here; the registry transport
-    /// (fetch → verify-on-read against the recorded content digest)
-    /// lands in the RFC-48 Step 4 loop, so a recognised package
-    /// reference is reported as not-yet-fetchable rather than silently
-    /// falling back to a mutable git checkout.
+    /// The artifact is installed into the store by the root `specify init`
+    /// layer (`registry::store::install_tofu`) before this workflow flow
+    /// runs, so the store entry for the pinned `(name, version)` is
+    /// already present and this resolves it as a local source. A missing
+    /// entry is `adapter-package-not-installed` — the install step did not
+    /// run or failed — rather than a silent fallback to a mutable
+    /// checkout.
     fn from_package(package: &AdapterPackageRef) -> Result<Self, Error> {
-        Err(Error::Diag {
-            code: "adapter-package-transport-unavailable",
-            detail: format!(
-                "adapter package reference `{}` resolves to an immutable registry locator, but registry transport is not yet wired (RFC-48 Step 4)",
-                package.wire_value()
-            ),
+        let version = package.version.to_string();
+        let source_dir = adapter_store_entry(&package.name, &version);
+        if !source_dir.join(crate::adapter::ADAPTER_FILENAME).is_file() {
+            return Err(Error::Diag {
+                code: "adapter-package-not-installed",
+                detail: format!(
+                    "adapter package `{}` is not installed in the global store at {}; `specify init` installs the artifact before scaffolding (RFC-48 D5)",
+                    package.wire_value(),
+                    source_dir.display()
+                ),
+            });
+        }
+        Ok(Self {
+            adapter_value: package.wire_value(),
+            adapter_name: package.name.clone(),
+            source_dir,
+            _checkout_guard: None,
         })
     }
 
@@ -259,6 +276,41 @@ impl AdapterPackageRef {
     fn wire_value(&self) -> String {
         format!("{}:{}@{}", self.namespace, self.name, self.version)
     }
+}
+
+/// Public projection of an adapter package reference for the root layer.
+///
+/// Carries the `(namespace, name, version)` the root `specify init`
+/// install layer derives an OCI reference from
+/// (`registry::oci::adapter_reference`) and keys the global store entry by
+/// (`registry::store::install_tofu`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdapterPackage {
+    /// First-party package namespace (e.g. `specify`) — the OCI repo
+    /// path segment under the registry host.
+    pub namespace: String,
+    /// Kebab-case adapter name.
+    pub name: String,
+    /// Mandatory exact-SemVer pin (RFC-48 D2).
+    pub version: semver::Version,
+}
+
+/// Recognise a `<namespace>:<name>@<semver>` adapter package reference so
+/// the root install layer can fetch it before scaffolding.
+///
+/// Returns `None` for non-package shapes (shorthand, paths, URLs), so
+/// those keep flowing through the git / local branches; `Some(Err(_))`
+/// when the shape *is* a package reference but the SemVer pin is missing
+/// or malformed (RFC-48 D2 forbids branch/tag defaulting).
+#[must_use]
+pub fn recognize_package(value: &str) -> Option<Result<AdapterPackage, Error>> {
+    AdapterPackageRef::recognize(value).map(|parsed| {
+        parsed.map(|package| AdapterPackage {
+            namespace: package.namespace,
+            name: package.name,
+            version: package.version,
+        })
+    })
 }
 
 fn is_github_url(adapter: &str) -> bool {

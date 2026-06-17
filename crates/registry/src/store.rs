@@ -44,6 +44,33 @@ pub fn install(
     Ok(entry)
 }
 
+/// Trust-on-first-use install: pull the artifact from `reference` and
+/// materialize it at the immutable store entry for `(name, version)`
+/// without a recorded-digest pre-check (RFC-48 D5 install-on-fetch).
+///
+/// The store entry is content-addressed, read-only, and immutable once
+/// installed, so its presence is the read-integrity guarantee. A future
+/// recorded `project.yaml` content digest layers cross-machine
+/// verify-on-read (D4) on top via the pinned [`install`] path.
+///
+/// Idempotent: an already-present entry is returned without a re-pull.
+///
+/// # Errors
+///
+/// Propagates `adapter-transport-failed` (pull) and `adapter-pack-failed`
+/// (unpack / store I/O).
+pub fn install_tofu(
+    name: &str, version: &str, reference: &str, auth: &RegistryAuth,
+) -> Result<PathBuf, ExtensionError> {
+    let entry = adapter_store_entry(name, version);
+    if entry.is_dir() {
+        return Ok(entry);
+    }
+    let layer = oci::pull_adapter(reference, auth)?;
+    install_layer(&entry, &layer)?;
+    Ok(entry)
+}
+
 /// Materialize a verified `layer` at the immutable store `entry` with
 /// atomic, idempotent, read-only semantics. Exposed within the crate so
 /// the store layout is exercised without a live registry.

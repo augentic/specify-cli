@@ -108,17 +108,54 @@ fn package_ref_recognises_only_package_shapes() {
 }
 
 #[test]
-fn parse_routes_package_ref_to_immutable_locator() {
-    // A package reference resolves to the immutable registry locator,
-    // never a mutable git checkout or a local-path fallback — the
-    // RFC-48 Step 4 transport is reported as not-yet-wired rather than
-    // silently degrading.
+fn package_ref_uninstalled_is_not_installed() {
+    // A package reference resolves only from the global content-addressed
+    // store; absent an installed entry (the root `specify init` layer
+    // installs before scaffolding), it is `adapter-package-not-installed`
+    // rather than a silent fallback to a mutable git checkout or a local
+    // path.
+    let store = tempfile::tempdir().expect("store root");
+    let _guard = crate::test_cache::scoped_store(store.path());
+
     let err = AdapterUri::parse("specify:omnia@1.2.0", Path::new("/tmp"))
-        .expect_err("package reference is not yet fetchable");
-    assert!(matches!(
-        err,
-        Error::Diag { code: "adapter-package-transport-unavailable", .. }
-    ));
+        .expect_err("uninstalled package reference must not resolve");
+    assert!(matches!(err, Error::Diag { code: "adapter-package-not-installed", .. }));
+}
+
+#[test]
+fn package_ref_resolves_from_store_entry() {
+    // With the pinned `(name, version)` present in the global store, the
+    // package reference resolves it as a local source and records the
+    // canonical wire value as `adapter_value`.
+    let store = tempfile::tempdir().expect("store root");
+    let _guard = crate::test_cache::scoped_store(store.path());
+
+    let entry = adapter_store_entry("omnia", "1.2.0");
+    fs::create_dir_all(&entry).expect("create store entry");
+    fs::write(entry.join(crate::adapter::ADAPTER_FILENAME), "name: omnia\n").expect("write manifest");
+
+    let parsed =
+        AdapterUri::parse("specify:omnia@1.2.0", Path::new("/tmp")).expect("resolve from store");
+    assert_eq!(parsed.adapter_name, "omnia");
+    assert_eq!(parsed.adapter_value, "specify:omnia@1.2.0");
+    assert_eq!(parsed.source_dir, entry);
+}
+
+#[test]
+fn recognize_package_projects_identity() {
+    // The public projection exposes the `(namespace, name, version)` the
+    // root install layer derives an OCI reference + store key from.
+    let package = recognize_package("specify:omnia@1.2.0")
+        .expect("package shape")
+        .expect("valid package reference");
+    assert_eq!(package.namespace, "specify");
+    assert_eq!(package.name, "omnia");
+    assert_eq!(package.version, semver::Version::new(1, 2, 0));
+    // Non-package shapes are passed through (None) for the git / local
+    // branches; a malformed pin surfaces as an error.
+    assert!(recognize_package("omnia").is_none());
+    assert!(recognize_package("./local").is_none());
+    recognize_package("specify:omnia").expect("package shape").unwrap_err();
 }
 
 #[test]

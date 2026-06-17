@@ -4,8 +4,9 @@ use std::path::{Path, PathBuf};
 use jiff::Timestamp;
 use serde::Serialize;
 use specify_error::{Error, Result};
+use specify_registry::{oci, store};
 use specify_workflow::config::{ProjectConfig, is_slot};
-use specify_workflow::init::{InitOptions, InitResult, init};
+use specify_workflow::init::{AdapterPackage, InitOptions, InitResult, init, recognize_package};
 use specify_workflow::platform::parse_platforms_csv;
 use specify_workflow::registry::Registry;
 use specify_workflow::registry::workspace::{regenerate_topology_lock, sync_projects};
@@ -42,6 +43,10 @@ pub(super) fn run(args: &Args<'_>) -> Result<()> {
             detail: e,
         })?;
 
+    if let Some(adapter) = args.adapter {
+        install_adapter_package(adapter)?;
+    }
+
     let opts = InitOptions {
         project_dir: &project_dir,
         adapter: args.adapter,
@@ -64,6 +69,29 @@ pub(super) fn run(args: &Args<'_>) -> Result<()> {
     };
 
     emit_init_result(args.format, &result, context_skip_reason, workspace_sync_message)
+}
+
+/// Install a first-party adapter **package reference**
+/// (`<namespace>:<name>@<semver>`) into the global content-addressed
+/// store before the workflow init flow resolves it (RFC-48 D5
+/// install-on-fetch). A non-package `<adapter>` — first-party shorthand,
+/// a local path, or a GitHub URL — is recognised as such and left to the
+/// workflow flow, so this is a no-op for every non-registry form.
+///
+/// Trust-on-first-use: the pulled artifact is materialized read-only and
+/// immutable, so its store presence is the read-integrity guarantee. The
+/// registry host derives from `$SPECIFY_REGISTRY` (else `augentic.io`),
+/// matching the publish-side reference.
+fn install_adapter_package(adapter: &str) -> Result<()> {
+    let Some(package) = recognize_package(adapter) else {
+        return Ok(());
+    };
+    let package: AdapterPackage = package?;
+    let version = package.version.to_string();
+    let reference = oci::adapter_reference(&package.namespace, &package.name, &version);
+    let auth = oci::registry_auth_from_env();
+    store::install_tofu(&package.name, &version, &reference, &auth)?;
+    Ok(())
 }
 
 /// Materialise registry slots and regenerate topology after workspace init.
