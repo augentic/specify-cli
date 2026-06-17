@@ -139,7 +139,7 @@ fn unpack_round_trips_packed_tree() {
 }
 
 #[test]
-fn verify_digest_accepts_match_rejects_drift() {
+fn verify_digest_match_and_drift() {
     let dir = TempDir::new().expect("tempdir");
     let root = dir.path().join("adapter");
     write(&root, "adapter.yaml", b"name: demo\n");

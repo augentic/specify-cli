@@ -52,7 +52,7 @@ fn name_from_value_handles_shapes() {
 }
 
 #[test]
-fn package_ref_parses_namespace_name_and_semver() {
+fn package_ref_parses_namespace_semver() {
     let parsed = AdapterPackageRef::recognize("specify:omnia@1.2.0")
         .expect("recognised as a package reference")
         .expect("valid package reference");
@@ -68,7 +68,7 @@ fn package_ref_parses_namespace_name_and_semver() {
 }
 
 #[test]
-fn package_ref_requires_exact_semver_never_a_branch() {
+fn package_ref_requires_exact_semver() {
     // RFC-48 D2: an immutable locator pins an exact SemVer version. A
     // missing version, a git-style tag, or `latest` are all rejected —
     // there is no branch or tag defaulting.
@@ -91,7 +91,7 @@ fn package_ref_requires_exact_semver_never_a_branch() {
 }
 
 #[test]
-fn package_ref_recognises_only_package_shapes() {
+fn package_ref_rejects_non_package() {
     // URL schemes, drive paths, bare names, and local paths are not
     // package references — they keep flowing through the other branches.
     for non_package in [
@@ -186,7 +186,7 @@ fn shorthand_splits_name_and_semver_pin() {
 }
 
 #[test]
-fn first_party_repo_routes_extracted_adapters() {
+fn first_party_repo_routes_extracted() {
     // Bundled adapters (a WASI extension) have extracted to
     // specify-adapters; prose-only adapters still resolve from the
     // platform repo during the topology transition (RFC-48 / RFC-49).

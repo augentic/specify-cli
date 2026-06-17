@@ -21,7 +21,7 @@ fn packed_demo() -> Vec<u8> {
 }
 
 #[test]
-fn install_layer_materializes_read_only_tree() {
+fn install_layer_writes_read_only_tree() {
     let store = TempDir::new().expect("store root");
     let entry = store.path().join("demo@1.0.0");
 
@@ -58,7 +58,7 @@ fn entry_key_is_name_at_version() {
 }
 
 #[test]
-fn install_tofu_returns_present_entry_without_pull() {
+fn install_tofu_returns_present_entry() {
     use crate::test_support::{EnvGuard, env_lock};
 
     let _lock = env_lock();
@@ -82,7 +82,7 @@ fn install_tofu_returns_present_entry_without_pull() {
 }
 
 #[test]
-fn record_store_meta_writes_verifiable_sidecar() {
+fn record_store_meta_writes_sidecar() {
     use crate::test_support::{EnvGuard, env_lock};
 
     let _lock = env_lock();
@@ -137,7 +137,7 @@ fn verify_store_entry_detects_corruption() {
 }
 
 #[test]
-fn verify_store_entry_fails_open_without_sidecar() {
+fn verify_store_entry_fails_open() {
     use crate::test_support::{EnvGuard, env_lock};
 
     let _lock = env_lock();

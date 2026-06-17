@@ -97,7 +97,7 @@ fn adapter_group_exposes_build_and_publish() {
 }
 
 #[test]
-fn retired_adapter_resolve_verb_rejected_by_clap() {
+fn retired_adapter_resolve_rejected() {
     // The old `specify adapter resolve` is gone (resolution moved to
     // `source`/`target`); clap rejects the unknown subcommand with 2.
     let assert = specify_cmd().arg("adapter").arg("resolve").arg("omnia").assert().failure();
