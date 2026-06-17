@@ -138,6 +138,17 @@ fn shorthand_splits_name_and_semver_pin() {
 }
 
 #[test]
+fn first_party_repo_routes_extracted_adapters() {
+    // Bundled adapters (a WASI extension) have extracted to
+    // specify-adapters; prose-only adapters still resolve from the
+    // platform repo during the topology transition (RFC-48 / RFC-49).
+    assert_eq!(first_party_repo("contracts"), "specify-adapters");
+    assert_eq!(first_party_repo("vectis"), "specify-adapters");
+    assert_eq!(first_party_repo("omnia"), "specify");
+    assert_eq!(first_party_repo("typescript"), "specify");
+}
+
+#[test]
 fn shorthand_rejects_non_shorthand() {
     // Paths and URLs flow through from_local / from_github instead.
     assert_eq!(parse_first_party_shorthand("./omnia"), None);

@@ -124,23 +124,20 @@ pub fn publish(format: Format, path: &Path, reference: &str) -> Result<()> {
 fn reject_republish_with_different_bytes(
     reference: &str, digest: &str, auth: &oci::RegistryAuth,
 ) -> Result<()> {
-    match oci::pull_adapter(reference, auth) {
-        Ok(existing) => {
-            let existing_digest = pack::content_digest(&existing);
-            if existing_digest == digest {
-                Ok(())
-            } else {
-                Err(Error::Diag {
-                    code: "adapter-republish-conflict",
-                    detail: format!(
-                        "{reference} already published with digest {existing_digest}; refusing to \
-                         overwrite with {digest}"
-                    ),
-                })
-            }
+    oci::pull_adapter(reference, auth).map_or(Ok(()), |existing| {
+        let existing_digest = pack::content_digest(&existing);
+        if existing_digest == digest {
+            Ok(())
+        } else {
+            Err(Error::Diag {
+                code: "adapter-republish-conflict",
+                detail: format!(
+                    "{reference} already published with digest {existing_digest}; refusing to \
+                     overwrite with {digest}"
+                ),
+            })
         }
-        Err(_) => Ok(()),
-    }
+    })
 }
 
 fn read_manifest(path: &Path) -> Result<BuildManifest> {

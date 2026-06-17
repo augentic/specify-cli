@@ -75,12 +75,13 @@ install_crate = "cargo-outdated"
 # `clean` is deliberately not in the dependency list: the
 # `RUSTFLAGS=-Dwarnings` override already differs from the default
 # profile, so cargo rebuilds the workspace under these flags regardless,
-# making a `cargo clean` cold rebuild redundant cost on every run. The
-# `vectis-wasm` fixture build is kept — some integration tests need it.
+# making a `cargo clean` cold rebuild redundant cost on every run.
+# Adapter-tool wasm (contract / vectis) is built in
+# `augentic/specify-adapters`; the integration cases that exercise it
+# self-skip in this repo.
 [tasks.test]
 command = "cargo"
 args = ["nextest", "run", "--all", "--all-features", "--no-tests=pass"]
-dependencies = ["vectis-wasm"]
 env = { RUSTFLAGS = "-Dwarnings" }
 
 # Test Doc
@@ -129,37 +130,3 @@ args = ["publish", "--registry=augentic", "--allow-dirty", "--dry-run"]
 # Auxiliary tasks
 # -------------------------------------
 
-# Mirror the dedicated `wasi-tools` CI job (`.github/workflows/ci.yaml`):
-# the carve-out workspace is not a member of the host workspace, so host
-# `cargo clippy` / `cargo nextest` never compile vectis tests.
-[tasks.wasi-tools-check]
-script = '''
-set -euo pipefail
-cd wasi-tools
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
-'''
-
-# Build the first-party `contract` WASI tool and refresh the checked-in
-# `wasi-tools/contract/dist/` artifact (and its sha256 sidecar) that
-# `tests/tool/contract.rs` loads. Rerun after editing the contract crate
-# so the committed blob reflects the new checks; the `dist_digest_pinned`
-# drift test fails when blob and sidecar disagree.
-[tasks.contract-wasm]
-script = '''
-set -euo pipefail
-cd wasi-tools
-cargo build -p specify-contract --target wasm32-wasip2 --release
-cp target/wasm32-wasip2/release/specify-contract.wasm contract/dist/contract-0.2.0.wasm
-( cd contract/dist && shasum -a 256 contract-0.2.0.wasm > contract-0.2.0.wasm.sha256 )
-echo "contract WASI component written to wasi-tools/contract/dist/contract-0.2.0.wasm"
-'''
-
-# Build the `vectis` WASI tool locally with sha256 sidecars for
-# pre-release smoke tests. Delegates to `scripts/build-vectis-local.sh`;
-# override `VECTIS_WASI_DIST_DIR` to control the output directory.
-[tasks.vectis-wasm]
-script = '''
-set -euo pipefail
-"${CARGO_MAKE_WORKING_DIRECTORY}/scripts/build-vectis-local.sh"
-'''

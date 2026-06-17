@@ -185,6 +185,40 @@ description: Cached source adapter fixture.
 }
 
 #[test]
+fn pinned_resolves_from_store() {
+    // RFC-48 D5: a pinned `(name, version)` resolves first against the
+    // global content-addressed store entry `<store-root>/<name>@<version>/`,
+    // ahead of both the manifest cache and the in-repo tree.
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let store_root = tmp.path().join("store");
+    fs::create_dir_all(&store_root).expect("create store root");
+    let _store = common::scoped_store(&store_root);
+
+    let version = semver::Version::new(2, 3, 4);
+    let entry = store_root.join(format!("typescript@{version}"));
+    fs::create_dir_all(&entry).expect("create store entry");
+    fs::write(
+        entry.join("adapter.yaml"),
+        r"name: typescript
+version: 2.3.4
+axis: source
+execution: agent
+briefs:
+  survey: briefs/survey.md
+  extract: briefs/extract.md
+description: Store-resident source adapter fixture.
+",
+    )
+    .expect("stage store manifest");
+
+    let (_tmp, project) = local_project();
+    let resolved = SourceAdapter::resolve(&AdapterRef::pinned("typescript", version.clone()), &project)
+        .expect("resolve from store");
+    assert_eq!(resolved.manifest.version, version, "pinned store entry wins over in-repo local");
+    assert!(matches!(resolved.location, AdapterLocation::Store(_)));
+}
+
+#[test]
 fn missing_adapter_reports_not_found() {
     let (_tmp, project) = local_project();
     let err = SourceAdapter::resolve(&AdapterRef::bare("nonexistent"), &project)

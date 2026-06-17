@@ -95,21 +95,37 @@ fn add_adapter_input(
         AdapterLocation::Local(_) => collector.add_file(path)?,
         AdapterLocation::Cached(_) => {
             let cache_dir = Layout::new(project_dir).cache_dir();
-            let logical = path.strip_prefix(&cache_dir).map_or_else(
-                |_| format!("cache:{}", path.display()),
-                |rel| {
-                    let rel = rel
-                        .components()
-                        .map(|c| c.as_os_str().to_string_lossy())
-                        .collect::<Vec<_>>()
-                        .join("/");
-                    format!("cache:{rel}")
-                },
-            );
-            collector.add_file_as(&logical, path);
+            collector.add_file_as(&logical_path("cache", &cache_dir, path), path);
+        }
+        AdapterLocation::Store(_) => {
+            // The global store root is machine-specific; key the
+            // fingerprint on the stable `store:<name>@<version>/<rel>`
+            // logical path so the context lock is reproducible.
+            let store_root = specify_schema::cache::adapter_store_root();
+            collector.add_file_as(&logical_path("store", &store_root, path), path);
         }
     }
     Ok(())
+}
+
+/// Machine-independent logical id for a file resolved beneath an
+/// out-of-tree `root` (the per-project manifest cache or the global
+/// adapter store). Strips `root` and joins the relative tail with `/`
+/// under a `<prefix>:` scheme so context-lock fingerprints stay stable
+/// across machines; falls back to the absolute path when `path` is not
+/// under `root`.
+fn logical_path(prefix: &str, root: &Path, path: &Path) -> String {
+    path.strip_prefix(root).map_or_else(
+        |_| format!("{prefix}:{}", path.display()),
+        |rel| {
+            let rel = rel
+                .components()
+                .map(|c| c.as_os_str().to_string_lossy())
+                .collect::<Vec<_>>()
+                .join("/");
+            format!("{prefix}:{rel}")
+        },
+    )
 }
 
 fn adapter_summary(adapter: &ResolvedTargetAdapter) -> render::Adapter {

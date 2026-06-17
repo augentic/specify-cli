@@ -24,41 +24,11 @@ The `.github/workflows/release.yaml` workflow fires on the tag push and runs thr
 
    Each job produces a versioned archive (`specify-${TAG}-${TARGET}.tar.gz` on unix, `.zip` on Windows) plus a companion `.sha256` file, uploaded via `actions/upload-artifact@v4`.
 
-2. **`wasi-tools`.** Builds first-party WASI command components for `wasm32-wasip2`, publishes them as wasm-pkg packages with `wkg`, then pulls each package back for verification:
+2. **`release`.** Waits for every native matrix leg, downloads all artifacts, and creates the GitHub Release with `softprops/action-gh-release@v2`. Release notes are generated from `.github/release.yaml`.
 
-   - `specify:contract@${VERSION}`
-   - `specify:vectis@${VERSION}`
+## Adapter extension packages
 
-   The job logs in to GHCR with the GitHub Actions token, uses the `specify -> augentic.io` wasm-pkg namespace mapping, and verifies both the built component and the pulled package with `wasm-tools validate`. Raw first-party `.wasm` files are not attached to GitHub Releases.
-
-3. **`release`.** Waits for every native matrix leg and the Vectis WASI tools, downloads all artifacts, and creates the GitHub Release with `softprops/action-gh-release@v2`. Release notes are generated from `.github/release.yaml`.
-
-## WASI Tool Packages
-
-Released first-party tool declarations use exact wasm-pkg package requests:
-
-```text
-specify:contract@${VERSION}
-specify:vectis@${VERSION}
-```
-
-The release workflow publishes those package requests through `wkg`; `specify tool fetch` resolves them through the embedded first-party namespace default and Augentic registry metadata. Maintainers may use `wkg` for manual inspection, but operators only need the `specify` runtime binary.
-
-For local development before a public release, build the component into a deterministic local directory:
-
-```bash
-scripts/build-vectis-local.sh
-```
-
-This writes:
-
-```text
-target/vectis-wasi-tools/release/vectis.wasm
-target/vectis-wasi-tools/release/vectis.wasm.sha256
-target/vectis-wasi-tools/release/SHA256SUMS
-```
-
-To smoke-test a adapter before release, add a project-scope object declaration in `.specify/project.yaml` that keeps the adapter's tool name and permissions but overrides `source` to a local `file://` or absolute path. Include a matching `sha256` value if you want cache verification; otherwise omit `sha256` for rapid rebuilds and run `specify tool gc` when switching bytes without changing the declaration tuple. For package-path smoke tests, publish a unique prerelease package such as `specify:vectis@${VERSION}-dev.${RUN_ID}` and point a local `tools.yaml` override at that package.
+First-party adapter extensions (`contract`, `vectis`) are **not** built or published by this repo. They live with their adapters in `augentic/specify-adapters` and are packaged + published as immutable registry artifacts (`specify:<name>@<version>`) by that repo's own release workflow (RFC-48). The `specify` binary resolves them at read time from the global adapter store; operators only need the runtime binary.
 
 ## Installing a release
 

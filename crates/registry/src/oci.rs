@@ -58,10 +58,11 @@ pub fn pull_adapter(reference: &str, auth: &RegistryAuth) -> Result<Vec<u8>, Ext
     runtime.block_on(pull_async(reference, &image, auth))
 }
 
-/// Resolve registry credentials from the environment, mirroring the
-/// wasm-pkg credential path: a `SPECIFY_REGISTRY_TOKEN` bearer token, or
-/// a `SPECIFY_REGISTRY_USER` / `SPECIFY_REGISTRY_PASSWORD` basic pair,
-/// else anonymous (public read).
+/// Resolve registry credentials from the environment.
+///
+/// Mirrors the wasm-pkg credential path: a `SPECIFY_REGISTRY_TOKEN`
+/// bearer token, or a `SPECIFY_REGISTRY_USER` / `SPECIFY_REGISTRY_PASSWORD`
+/// basic pair, else anonymous (public read).
 #[must_use]
 pub fn registry_auth_from_env() -> RegistryAuth {
     if let Some(token) = non_empty_env("SPECIFY_REGISTRY_TOKEN") {
@@ -129,9 +130,9 @@ mod tests {
     // anonymous (public read) rather than panicking or inventing creds.
     #[test]
     fn auth_falls_back_to_anonymous() {
-        let _guard = crate::test_support::env_lock();
         use crate::test_support::EnvGuard;
 
+        let _guard = crate::test_support::env_lock();
         let _token = EnvGuard::scoped("SPECIFY_REGISTRY_TOKEN", None);
         let _user = EnvGuard::scoped("SPECIFY_REGISTRY_USER", None);
         let _password = EnvGuard::scoped("SPECIFY_REGISTRY_PASSWORD", None);

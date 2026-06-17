@@ -256,6 +256,13 @@ pub enum Execution {
 /// Where an adapter manifest was located on disk.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AdapterLocation {
+    /// Resolved from the global content-addressed adapter store entry at
+    /// `<store-root>/<name>@<version>/` (RFC-48 D5). The store is the
+    /// immutable, version-keyed install target resolved by
+    /// `specify_schema::cache::adapter_store_entry` and populated by the
+    /// registry transport. Probed first whenever the [`AdapterRef`]
+    /// carries a pinned version.
+    Store(PathBuf),
     /// Resolved from `<project_dir>/adapters/{sources,targets}/<name>/`.
     Local(PathBuf),
     /// Resolved from the out-of-tree manifest cache at
@@ -269,10 +276,12 @@ pub enum AdapterLocation {
 }
 
 impl AdapterLocation {
-    /// Kebab-case label for JSON envelopes (`"local"` / `"cached"`).
+    /// Kebab-case label for JSON envelopes (`"store"` / `"local"` /
+    /// `"cached"`).
     #[must_use]
     pub const fn label(&self) -> &'static str {
         match self {
+            Self::Store(_) => "store",
             Self::Local(_) => "local",
             Self::Cached(_) => "cached",
         }
@@ -282,7 +291,7 @@ impl AdapterLocation {
     #[must_use]
     pub const fn path(&self) -> &PathBuf {
         match self {
-            Self::Local(path) | Self::Cached(path) => path,
+            Self::Store(path) | Self::Local(path) | Self::Cached(path) => path,
         }
     }
 }

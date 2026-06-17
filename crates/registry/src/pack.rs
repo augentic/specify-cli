@@ -102,11 +102,12 @@ pub fn verify_digest(reference: &str, layer: &[u8], recorded: &str) -> Result<()
     }
 }
 
-/// Unpack a [`pack_adapter`]-produced layer into `dest`, materializing
-/// the adapter tree (RFC-48 D5 install into the global store). `dest` is
-/// created if absent. Packed layers carry only normal files and
-/// directories (symlinks are dereferenced at pack time), so extraction
-/// never re-introduces a symlink.
+/// Unpack a [`pack_adapter`]-produced layer into `dest`.
+///
+/// Materializes the adapter tree (RFC-48 D5 install into the global
+/// store). `dest` is created if absent. Packed layers carry only normal
+/// files and directories (symlinks are dereferenced at pack time), so
+/// extraction never re-introduces a symlink.
 ///
 /// # Errors
 ///

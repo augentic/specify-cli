@@ -7,36 +7,12 @@ use tempfile::tempdir;
 
 use crate::common::{parse_json, repo_root, scaffold_tool_project, specify_cmd};
 
-fn contract_wasm() -> PathBuf {
-    repo_root().join("wasi-tools/contract/dist/contract-0.2.0.wasm")
-}
-
+// Adapter tool wasm now lives with each adapter in
+// `augentic/specify-adapters` (committed `adapter.wasm`), built by that
+// repo's CI. These vectis cases self-skip when the wasm is absent — the
+// happy-path acceptance coverage runs in the adapters repo.
 fn vectis_wasm() -> PathBuf {
     repo_root().join("target/vectis-wasi-tools/release/vectis.wasm")
-}
-
-#[test]
-fn schema_contract_no_schemas_exits_nonzero() {
-    let wasm = contract_wasm();
-    assert!(
-        wasm.is_file(),
-        "contract WASM not found at {}; run `cargo make contract-wasm`",
-        wasm.display()
-    );
-
-    let tmp = tempdir().expect("tempdir");
-    let (project, cache) = scaffold_tool_project(&tmp, "contract", &wasm);
-
-    let assert = specify_cmd()
-        .current_dir(&project)
-        .env("SPECIFY_EXTENSIONS_CACHE", &cache)
-        .args(["extension", "schema", "contract", "tokens"])
-        .assert()
-        .failure();
-
-    let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["error"], "no-schemas-declared");
-    assert_eq!(value["exit-code"], 2);
 }
 
 #[test]

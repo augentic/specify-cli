@@ -2,7 +2,9 @@
 //!
 //! Single source of truth for on-disk shell detection and shell-resident
 //! launcher icon probes (RFC-46 §6.3). The host CLI links this crate
-//! in-process; `wasi-tools/vectis` reuses it for `verify --mode detect`.
+//! in-process; the vectis adapter extension (in `augentic/specify-adapters`,
+//! which forks this crate under `shared/`) reuses it for
+//! `verify --mode detect`.
 
 #![warn(missing_docs)]
 

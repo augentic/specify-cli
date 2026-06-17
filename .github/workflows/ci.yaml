@@ -11,35 +11,3 @@ jobs:
   ci:
     uses: augentic/.github/.github/workflows/ci.yaml@main
     secrets: inherit
-
-  # The wasi-tools/ sibling workspace (contract + vectis adapter tools)
-  # is not a member of the host workspace, so the reusable host job never
-  # builds it. Enforce its clippy posture and run its test suite here;
-  # dist blob <-> source parity stays guarded by the host-side digest
-  # drift test (`tool contract::dist_digest_pinned`).
-  wasi-tools:
-    name: wasi-tools
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 1
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: wasi-tools
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-          cache-on-failure: true
-
-      - name: Clippy
-        working-directory: wasi-tools
-        run: cargo clippy --workspace --all-targets -- -D warnings
-
-      - name: Test
-        working-directory: wasi-tools
-        run: cargo test --workspace

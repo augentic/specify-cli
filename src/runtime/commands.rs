@@ -72,16 +72,7 @@ pub fn run(cli: Cli) -> Exit {
                 dispatch(format, || resolve_adapter(format, Axis::Target, &value, &project_dir))
             }
         },
-        Commands::Adapter { action } => match action {
-            adapter::cli::AdapterAction::Build {
-                path,
-                dry_run,
-                refresh_extension,
-            } => dispatch(format, || adapter::build(format, &path, dry_run, refresh_extension)),
-            adapter::cli::AdapterAction::Publish { path, reference } => {
-                dispatch(format, || adapter::publish(format, &path, &reference))
-            }
-        },
+        Commands::Adapter { action } => dispatch_adapter(format, action),
         Commands::Rules { action } => match action {
             RulesAction::Export(args) => dispatch(format, || rules::export::run(format, &args)),
             RulesAction::Sync(args) => scoped(format, plan_dir, |ctx| rules::sync::run(ctx, &args)),
@@ -148,6 +139,23 @@ pub fn run(cli: Cli) -> Exit {
                 scoped(format, plan_dir, |ctx| workspace::push(ctx, &projects, dry_run))
             }
         },
+    }
+}
+
+/// Dispatch the `specify adapter {build, publish}` family.
+///
+/// Factored out of [`run`] so the top-level dispatcher stays under the
+/// per-function line budget (RFC-48 D6/D10).
+fn dispatch_adapter(format: Format, action: adapter::cli::AdapterAction) -> Exit {
+    match action {
+        adapter::cli::AdapterAction::Build {
+            path,
+            dry_run,
+            refresh_extension,
+        } => dispatch(format, || adapter::build(format, &path, dry_run, refresh_extension)),
+        adapter::cli::AdapterAction::Publish { path, reference } => {
+            dispatch(format, || adapter::publish(format, &path, &reference))
+        }
     }
 }
 

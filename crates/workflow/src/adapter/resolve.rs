@@ -23,13 +23,16 @@ impl SourceAdapter {
     ///
     /// Probe order, per workflow §Resolver and cache:
     ///
-    /// 1. `<project-cache>/manifests/sources/<name>/adapter.yaml`
+    /// 1. `<store-root>/<name>@<version>/adapter.yaml` — the global
+    ///    content-addressed adapter store (RFC-48 D5), probed only when
+    ///    `adapter_ref.version` carries a pin.
+    /// 2. `<project-cache>/manifests/sources/<name>/adapter.yaml`
     ///    (agent-populated out-of-tree manifest cache).
-    /// 2. `<project_dir>/adapters/sources/<name>/adapter.yaml` (in-repo).
+    /// 3. `<project_dir>/adapters/sources/<name>/adapter.yaml` (in-repo).
     ///
-    /// The probe keys on `adapter_ref.name`; a `Some(_)` version pin is
-    /// matched against the installed manifest by equality after load
-    /// (RFC-47 D2).
+    /// The probe keys on `adapter_ref.name` (and, for the store entry,
+    /// the pinned version); a `Some(_)` version pin is matched against
+    /// the installed manifest by equality after load (RFC-47 D2).
     ///
     /// # Errors
     ///
@@ -55,7 +58,7 @@ impl SourceAdapter {
     ) -> Result<ResolvedSourceAdapter, Error> {
         let name = adapter_ref.name.as_str();
         let (manifest, location, manifest_path) =
-            resolve_typed::<Self>(Axis::Source, name, project_dir)?;
+            resolve_typed::<Self>(Axis::Source, adapter_ref, project_dir)?;
         check_axis_and_name(Axis::Source, name, manifest.axis, &manifest.name, &manifest_path)?;
         check_execution(manifest.execution, &manifest_path)?;
         check_requested_version(
@@ -80,13 +83,16 @@ impl TargetAdapter {
     ///
     /// Probe order, per workflow §Resolver and cache:
     ///
-    /// 1. `<project-cache>/manifests/targets/<name>/adapter.yaml`
+    /// 1. `<store-root>/<name>@<version>/adapter.yaml` — the global
+    ///    content-addressed adapter store (RFC-48 D5), probed only when
+    ///    `adapter_ref.version` carries a pin.
+    /// 2. `<project-cache>/manifests/targets/<name>/adapter.yaml`
     ///    (agent-populated out-of-tree manifest cache).
-    /// 2. `<project_dir>/adapters/targets/<name>/adapter.yaml` (in-repo).
+    /// 3. `<project_dir>/adapters/targets/<name>/adapter.yaml` (in-repo).
     ///
-    /// The probe keys on `adapter_ref.name`; a `Some(_)` version pin is
-    /// matched against the installed manifest by equality after load
-    /// (RFC-47 D2).
+    /// The probe keys on `adapter_ref.name` (and, for the store entry,
+    /// the pinned version); a `Some(_)` version pin is matched against
+    /// the installed manifest by equality after load (RFC-47 D2).
     ///
     /// # Errors
     ///
@@ -112,7 +118,7 @@ impl TargetAdapter {
     ) -> Result<ResolvedTargetAdapter, Error> {
         let name = adapter_ref.name.as_str();
         let (manifest, location, manifest_path) =
-            resolve_typed::<Self>(Axis::Target, name, project_dir)?;
+            resolve_typed::<Self>(Axis::Target, adapter_ref, project_dir)?;
         check_axis_and_name(Axis::Target, name, manifest.axis, &manifest.name, &manifest_path)?;
         check_execution(manifest.execution, &manifest_path)?;
         check_requested_version(
@@ -142,9 +148,9 @@ impl TargetAdapter {
 /// typed manifest fields and wrap the result into the matching
 /// `Resolved*Adapter`.
 fn resolve_typed<M: serde::de::DeserializeOwned>(
-    axis: Axis, name: &str, project_dir: &Path,
+    axis: Axis, adapter_ref: &AdapterRef, project_dir: &Path,
 ) -> Result<(M, AdapterLocation, PathBuf), Error> {
-    let (location, manifest_path, raw_value) = load_validated(axis, name, project_dir)?;
+    let (location, manifest_path, raw_value) = load_validated(axis, adapter_ref, project_dir)?;
     let manifest: M = serde_json::from_value(raw_value).map_err(|err| Error::Diag {
         code: "adapter-manifest-malformed",
         detail: format!("failed to deserialize {}: {err}", manifest_path.display()),
@@ -160,9 +166,9 @@ fn resolve_typed<M: serde::de::DeserializeOwned>(
 /// messages), and the schema-validated `serde_json::Value` ready for
 /// typed deserialisation by [`resolve_typed`].
 fn load_validated(
-    axis: Axis, name: &str, project_dir: &Path,
+    axis: Axis, adapter_ref: &AdapterRef, project_dir: &Path,
 ) -> Result<(AdapterLocation, PathBuf, serde_json::Value), Error> {
-    let location = locate_axis(axis, name, project_dir)?;
+    let location = locate_axis(axis, adapter_ref, project_dir)?;
     let root_dir = location.path();
     let manifest_path = root_dir.join(ADAPTER_FILENAME);
     if !manifest_path.is_file() {
@@ -188,21 +194,38 @@ fn load_validated(
     Ok((location, manifest_path, raw_value))
 }
 
-fn locate_axis(axis: Axis, name: &str, project_dir: &Path) -> Result<AdapterLocation, Error> {
+fn locate_axis(
+    axis: Axis, adapter_ref: &AdapterRef, project_dir: &Path,
+) -> Result<AdapterLocation, Error> {
+    let name = adapter_ref.name.as_str();
+    // RFC-48 D5: a pinned `(name, version)` resolves first against the
+    // global content-addressed adapter store, the immutable install
+    // target the registry transport populates. The store is keyed by
+    // version, so it is only probed when the ref carries one.
+    let store = adapter_ref
+        .version
+        .as_ref()
+        .map(|version| specify_schema::cache::adapter_store_entry(name, &version.to_string()));
     let cached = cache_dir(project_dir, axis, name);
     let local = adapter_axis_dir(project_dir, axis).join(name);
+    // Probe order: global store entry (pinned only) → out-of-tree
+    // manifest cache → in-repo `adapters/{sources,targets}/<name>/`.
     // The manifest cache owns its own out-of-tree root
     // (`<project-cache>/manifests/{sources,targets}/<name>/`) — see
     // [DECISIONS.md §"Cache layout"].
-    let location = if cached.is_dir() {
+    let location = if let Some(entry) = store.as_ref().filter(|entry| entry.is_dir()) {
+        AdapterLocation::Store(entry.clone())
+    } else if cached.is_dir() {
         AdapterLocation::Cached(cached)
     } else if local.is_dir() {
         AdapterLocation::Local(local)
     } else {
+        let store_hint =
+            store.as_ref().map_or_else(String::new, |entry| format!("{}, ", entry.display()));
         return Err(Error::Diag {
             code: "adapter-not-found",
             detail: format!(
-                "adapter `{name}` (axis `{axis}`) not found at {} or {}",
+                "adapter `{name}` (axis `{axis}`) not found at {store_hint}{} or {}",
                 cached.display(),
                 local.display(),
             ),

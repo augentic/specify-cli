@@ -146,7 +146,7 @@ fn verify_digest_accepts_match_rejects_drift() {
     verify_digest("specify:demo@1.0.0", &layer, &recorded).expect("matching digest verifies");
 
     let tampered = {
-        let mut bytes = layer.clone();
+        let mut bytes = layer;
         *bytes.last_mut().expect("non-empty") ^= 0xff;
         bytes
     };

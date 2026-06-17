@@ -1,6 +1,7 @@
 //! Integration tests for the `specify extension` surface (WASI extension
-//! dispatch, extension-schema validation, and the contract extension).
-//! Shared helpers live in [`common`].
+//! dispatch and extension-schema validation). Adapter-specific acceptance
+//! tests (contract, vectis) live with their crates in
+//! `augentic/specify-adapters`. Shared helpers live in [`common`].
 
 mod common;
 
@@ -9,6 +10,3 @@ mod run;
 
 #[path = "extension/schema.rs"]
 mod schema;
-
-#[path = "extension/contract.rs"]
-mod contract;

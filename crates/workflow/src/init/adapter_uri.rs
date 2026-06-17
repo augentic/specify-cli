@@ -40,7 +40,7 @@ impl AdapterUri {
             return Self::from_github(adapter);
         }
         if let Some(package) = AdapterPackageRef::recognize(adapter) {
-            return Self::from_package(package?);
+            return Self::from_package(&package?);
         }
         if let Some((name, version)) = parse_first_party_shorthand(adapter) {
             return Self::from_shorthand(name, version.as_ref());
@@ -55,7 +55,7 @@ impl AdapterUri {
     /// lands in the RFC-48 Step 4 loop, so a recognised package
     /// reference is reported as not-yet-fetchable rather than silently
     /// falling back to a mutable git checkout.
-    fn from_package(package: AdapterPackageRef) -> Result<Self, Error> {
+    fn from_package(package: &AdapterPackageRef) -> Result<Self, Error> {
         Err(Error::Diag {
             code: "adapter-package-transport-unavailable",
             detail: format!(
@@ -105,7 +105,8 @@ impl AdapterUri {
     /// checkout URL, so `project.yaml.adapter` carries the version pin.
     fn from_shorthand(name: &str, version: Option<&semver::Version>) -> Result<Self, Error> {
         let git_ref = version.map_or_else(|| "v1".to_string(), |v| format!("v{}", v.major));
-        let url = format!("https://github.com/augentic/specify/adapters/targets/{name}@{git_ref}");
+        let repo = first_party_repo(name);
+        let url = format!("https://github.com/augentic/{repo}/adapters/targets/{name}@{git_ref}");
         let mut uri = Self::from_github(&url)?;
         uri.adapter_value =
             version.map_or_else(|| name.to_string(), |version| format!("{name}@{version}"));
@@ -262,6 +263,23 @@ impl AdapterPackageRef {
 
 fn is_github_url(adapter: &str) -> bool {
     adapter.starts_with("https://github.com/")
+}
+
+/// The `augentic/<repo>` segment hosting a first-party adapter's
+/// sparse-checkout source.
+///
+/// Adapters that bundle a WASI extension have extracted to
+/// `augentic/specify-adapters` (RFC-48 D7/D10, RFC-49 T6); the remaining
+/// prose-only adapters still live in the platform repo until the rest of
+/// the topology migration lands. This git shorthand is itself
+/// transitional — the durable first-party resolution path is the RFC-48
+/// D2 registry locator (`specify:<name>@<semver>`), which retires the
+/// per-name routing once registry transport is wired.
+fn first_party_repo(name: &str) -> &'static str {
+    match name {
+        "contracts" | "vectis" => "specify-adapters",
+        _ => "specify",
+    }
 }
 
 /// Recognise a first-party adapter shorthand and split it into

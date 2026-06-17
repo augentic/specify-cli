@@ -1,7 +1,7 @@
 //! Repo-local Rust-quality predicates, dev-only.
 //!
 //! These scan the specify-cli workspace tree (`crates/` + `src/`,
-//! skipping `target/` and the `wasi-tools/` carve-out) and back the
+//! skipping `target/`) and back the
 //! `cargo test --test rust_quality` gate. They are deliberately not a
 //! lint producer: `specify lint framework` runs entirely through
 //! declarative hints and WASI tools, so this code lives with its only
@@ -65,7 +65,7 @@ fn walk(root: &Path, dir: &Path, findings: &mut Vec<Finding>) {
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            if path.file_name().is_some_and(|n| n == "target" || n == "wasi-tools") {
+            if path.file_name().is_some_and(|n| n == "target") {
                 continue;
             }
             walk(root, &path, findings);

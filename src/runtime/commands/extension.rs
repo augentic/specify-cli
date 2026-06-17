@@ -33,10 +33,8 @@ pub fn build_inventory(ctx: &Ctx) -> Result<Inventory> {
     let project_tools = load::project_tools(ctx.config.name.clone(), ctx.config.tools.clone());
 
     let mut scopes = vec![project_scope];
-    let plugin_tools = match resolve_project_adapter(ctx)? {
-        Some(plugin) => adapter_extension_scoped(&plugin, &mut scopes),
-        None => Vec::new(),
-    };
+    let plugin_tools = resolve_project_adapter(ctx)?
+        .map_or_else(Vec::new, |plugin| adapter_extension_scoped(&plugin, &mut scopes));
 
     let (merged, warnings) = load::merge_scoped(project_tools, plugin_tools);
     Ok(Inventory {
