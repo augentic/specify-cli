@@ -213,8 +213,20 @@ struct ToolObject {
 
 impl From<ToolObject> for Extension {
     fn from(object: ToolObject) -> Self {
-        let ToolObject { name, version, source, sha256, permissions } = object;
-        Self { name, version, source, sha256, permissions }
+        let ToolObject {
+            name,
+            version,
+            source,
+            sha256,
+            permissions,
+        } = object;
+        Self {
+            name,
+            version,
+            source,
+            sha256,
+            permissions,
+        }
     }
 }
 
@@ -590,5 +602,4 @@ mod tests {
         assert!(!looks_like_windows_absolute("1:/dir"), "drive letter must be alphabetic");
         assert!(!looks_like_windows_absolute("C"), "too short");
     }
-
 }

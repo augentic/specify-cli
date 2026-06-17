@@ -72,14 +72,18 @@ fn package_ref_requires_exact_semver_never_a_branch() {
     // RFC-48 D2: an immutable locator pins an exact SemVer version. A
     // missing version, a git-style tag, or `latest` are all rejected —
     // there is no branch or tag defaulting.
-    for malformed in ["specify:omnia", "specify:omnia@v1", "specify:omnia@1", "specify:omnia@latest"]
+    for malformed in
+        ["specify:omnia", "specify:omnia@v1", "specify:omnia@1", "specify:omnia@latest"]
     {
         let result = AdapterPackageRef::recognize(malformed)
             .unwrap_or_else(|| panic!("`{malformed}` is a package-ref shape"));
         assert!(
             matches!(
                 result,
-                Err(Error::Diag { code: "adapter-package-ref-version-required", .. })
+                Err(Error::Diag {
+                    code: "adapter-package-ref-version-required",
+                    ..
+                })
             ),
             "`{malformed}` must demand an exact SemVer pin",
         );
@@ -119,7 +123,13 @@ fn package_ref_uninstalled_is_not_installed() {
 
     let err = AdapterUri::parse("specify:omnia@1.2.0", Path::new("/tmp"))
         .expect_err("uninstalled package reference must not resolve");
-    assert!(matches!(err, Error::Diag { code: "adapter-package-not-installed", .. }));
+    assert!(matches!(
+        err,
+        Error::Diag {
+            code: "adapter-package-not-installed",
+            ..
+        }
+    ));
 }
 
 #[test]
@@ -132,7 +142,8 @@ fn package_ref_resolves_from_store_entry() {
 
     let entry = adapter_store_entry("omnia", "1.2.0");
     fs::create_dir_all(&entry).expect("create store entry");
-    fs::write(entry.join(crate::adapter::ADAPTER_FILENAME), "name: omnia\n").expect("write manifest");
+    fs::write(entry.join(crate::adapter::ADAPTER_FILENAME), "name: omnia\n")
+        .expect("write manifest");
 
     let parsed =
         AdapterUri::parse("specify:omnia@1.2.0", Path::new("/tmp")).expect("resolve from store");

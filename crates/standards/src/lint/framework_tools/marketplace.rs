@@ -40,6 +40,13 @@ fn check_marketplace_drift(project_dir: &Path) -> Vec<ToolFinding> {
     let manifest_path = project_dir.join(".cursor-plugin").join("marketplace.json");
     let manifest_rel = relative_display(project_dir, &manifest_path);
 
+    // An adapters-only framework root (RFC-48 H1) carries no plugin
+    // marketplace, so an absent manifest is a legitimate skip — distinct
+    // from a present-but-unreadable manifest, which still flags below.
+    if !manifest_path.exists() {
+        return Vec::new();
+    }
+
     let Ok(contents) = std::fs::read_to_string(&manifest_path) else {
         return vec![drift(&manifest_rel, "Cannot read .cursor-plugin/marketplace.json")];
     };
@@ -217,6 +224,14 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         write(dir.path(), ".cursor-plugin/marketplace.json", VALID_MANIFEST);
         write_plugin(dir.path(), "spec");
+        assert!(check_marketplace_drift(dir.path()).is_empty());
+    }
+
+    #[test]
+    fn absent_manifest_is_silent() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        // An adapters-only framework root (RFC-48 H1) has no
+        // marketplace.json at all: absent is a skip, not drift.
         assert!(check_marketplace_drift(dir.path()).is_empty());
     }
 

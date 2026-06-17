@@ -8,6 +8,9 @@ mod support;
 #[path = "lint/framework.rs"]
 mod framework;
 
+#[path = "lint/framework_adapters.rs"]
+mod framework_adapters;
+
 #[path = "lint/framework_json.rs"]
 mod framework_json;
 

@@ -92,10 +92,7 @@ fn adapter_group_exposes_build_and_publish() {
     specify_cmd().args(["adapter", "--help"]).assert().success();
     let verbs = common::contract_dump_verbs(&["adapter"]);
     for verb in ["build", "publish"] {
-        assert!(
-            verbs.iter().any(|v| v == verb),
-            "adapter must declare `{verb}`, got: {verbs:?}"
-        );
+        assert!(verbs.iter().any(|v| v == verb), "adapter must declare `{verb}`, got: {verbs:?}");
     }
 }
 
@@ -105,7 +102,10 @@ fn retired_adapter_resolve_verb_rejected_by_clap() {
     // `source`/`target`); clap rejects the unknown subcommand with 2.
     let assert = specify_cmd().arg("adapter").arg("resolve").arg("omnia").assert().failure();
     let code = assert.get_output().status.code().expect("exit code");
-    assert_eq!(code, 2, "clap must reject the removed `adapter resolve` verb with exit 2, got {code}");
+    assert_eq!(
+        code, 2,
+        "clap must reject the removed `adapter resolve` verb with exit 2, got {code}"
+    );
 }
 
 #[test]

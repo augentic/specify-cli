@@ -71,8 +71,85 @@ fn install_tofu_returns_present_entry_without_pull() {
     let entry = adapter_store_entry("demo", "1.0.0");
     install_layer(&entry, &packed_demo()).expect("seed entry");
 
-    let resolved =
-        install_tofu("demo", "1.0.0", "unused.invalid/specify/demo:1.0.0", &RegistryAuth::Anonymous)
-            .expect("idempotent tofu");
+    let resolved = install_tofu(
+        "demo",
+        "1.0.0",
+        "unused.invalid/specify/demo:1.0.0",
+        &RegistryAuth::Anonymous,
+    )
+    .expect("idempotent tofu");
     assert_eq!(resolved, entry);
+}
+
+#[test]
+fn record_store_meta_writes_verifiable_sidecar() {
+    use crate::test_support::{EnvGuard, env_lock};
+
+    let _lock = env_lock();
+    let store = TempDir::new().expect("store root");
+    let _guard = EnvGuard::scoped("SPECIFY_ADAPTER_CACHE", Some(store.path()));
+
+    // The record-on-install half of RFC-48 D4: a freshly installed entry
+    // gains a verify-on-read sidecar that the resolver later re-checks.
+    let entry = adapter_store_entry("demo", "1.0.0");
+    let layer = packed_demo();
+    install_layer(&entry, &layer).expect("install");
+    record_store_meta("demo", "1.0.0", &entry, &layer).expect("record sidecar");
+
+    // The sidecar is a writable sibling, never inside the read-only entry
+    // tree the digest walks.
+    let meta_path = cache::store_meta_path("demo", "1.0.0");
+    assert!(meta_path.is_file(), "install must record a verify-on-read sidecar");
+    assert!(!meta_path.starts_with(&entry), "the sidecar must be an entry sibling");
+
+    // Verify-on-read passes for the freshly recorded, untouched entry.
+    cache::verify_store_entry("demo", "1.0.0").expect("a freshly recorded entry verifies");
+}
+
+#[test]
+fn verify_store_entry_detects_corruption() {
+    use crate::test_support::{EnvGuard, env_lock};
+
+    let _lock = env_lock();
+    let store = TempDir::new().expect("store root");
+    let _guard = EnvGuard::scoped("SPECIFY_ADAPTER_CACHE", Some(store.path()));
+
+    let entry = adapter_store_entry("demo", "1.0.0");
+    let layer = packed_demo();
+    install_layer(&entry, &layer).expect("install");
+    record_store_meta("demo", "1.0.0", &entry, &layer).expect("record sidecar");
+
+    // Corrupt an installed (read-only) file: relax its perms, rewrite the
+    // bytes. The recomputed tree digest must no longer match the sidecar.
+    let target = entry.join("adapter.yaml");
+    let mut perms = fs::metadata(&target).expect("stat").permissions();
+    #[expect(
+        clippy::permissions_set_readonly_false,
+        reason = "test deliberately makes a read-only store entry writable to simulate on-disk corruption"
+    )]
+    perms.set_readonly(false);
+    fs::set_permissions(&target, perms).expect("relax perms");
+    fs::write(&target, b"name: tampered\nversion: 9.9.9\n").expect("corrupt file");
+
+    let mismatch = cache::verify_store_entry("demo", "1.0.0")
+        .expect_err("a corrupted entry must fail verify-on-read");
+    assert_ne!(mismatch.recorded, mismatch.actual, "the mismatch carries both digests");
+}
+
+#[test]
+fn verify_store_entry_fails_open_without_sidecar() {
+    use crate::test_support::{EnvGuard, env_lock};
+
+    let _lock = env_lock();
+    let store = TempDir::new().expect("store root");
+    let _guard = EnvGuard::scoped("SPECIFY_ADAPTER_CACHE", Some(store.path()));
+
+    // A legacy / foreign entry installed before sidecars existed carries
+    // no `.meta`, so verify-on-read is a pass — the entry's read-only
+    // immutability remains the baseline guarantee (RFC-48 D4 fail-open).
+    let entry = adapter_store_entry("demo", "1.0.0");
+    install_layer(&entry, &packed_demo()).expect("install");
+    assert!(!cache::store_meta_path("demo", "1.0.0").exists(), "no sidecar was recorded");
+
+    cache::verify_store_entry("demo", "1.0.0").expect("an absent sidecar fails open");
 }

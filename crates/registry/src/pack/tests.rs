@@ -131,7 +131,10 @@ fn unpack_round_trips_packed_tree() {
     let out = dir.path().join("unpacked");
     unpack_adapter(&layer, &out).expect("unpack");
 
-    assert_eq!(fs::read(out.join("adapter.yaml")).expect("read yaml"), b"name: demo\nversion: 1.0.0\n");
+    assert_eq!(
+        fs::read(out.join("adapter.yaml")).expect("read yaml"),
+        b"name: demo\nversion: 1.0.0\n"
+    );
     assert_eq!(fs::read(out.join("briefs/build.md")).expect("read brief"), b"# build\n");
 }
 
@@ -152,5 +155,11 @@ fn verify_digest_accepts_match_rejects_drift() {
     };
     let err = verify_digest("specify:demo@1.0.0", &tampered, &recorded)
         .expect_err("a moved tag / tampered layer must be refused");
-    assert!(matches!(err, ExtensionError::Diag { code: "adapter-digest-mismatch", .. }));
+    assert!(matches!(
+        err,
+        ExtensionError::Diag {
+            code: "adapter-digest-mismatch",
+            ..
+        }
+    ));
 }

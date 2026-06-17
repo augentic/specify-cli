@@ -61,14 +61,14 @@ pub fn pull_adapter(reference: &str, auth: &RegistryAuth) -> Result<Vec<u8>, Ext
 /// Resolve registry credentials from the environment.
 ///
 /// Mirrors the wasm-pkg credential path: a `SPECIFY_REGISTRY_TOKEN`
-/// bearer token, or a `SPECIFY_REGISTRY_USER` / `SPECIFY_REGISTRY_PASSWORD`
+/// bearer token, or a `SPECIFY_REGISTRY_USERNAME` / `SPECIFY_REGISTRY_PASSWORD`
 /// basic pair, else anonymous (public read).
 #[must_use]
 pub fn registry_auth_from_env() -> RegistryAuth {
     if let Some(token) = non_empty_env("SPECIFY_REGISTRY_TOKEN") {
         return RegistryAuth::Bearer(token);
     }
-    match (non_empty_env("SPECIFY_REGISTRY_USER"), non_empty_env("SPECIFY_REGISTRY_PASSWORD")) {
+    match (non_empty_env("SPECIFY_REGISTRY_USERNAME"), non_empty_env("SPECIFY_REGISTRY_PASSWORD")) {
         (Some(user), Some(password)) => RegistryAuth::Basic(user, password),
         _ => RegistryAuth::Anonymous,
     }
@@ -100,9 +100,9 @@ pub fn adapter_reference(namespace: &str, name: &str, version: &str) -> String {
 }
 
 fn parse_reference(reference: &str) -> Result<Reference, ExtensionError> {
-    reference
-        .parse::<Reference>()
-        .map_err(|err| ExtensionError::transport(reference, format!("invalid OCI reference: {err}")))
+    reference.parse::<Reference>().map_err(|err| {
+        ExtensionError::transport(reference, format!("invalid OCI reference: {err}"))
+    })
 }
 
 fn build_runtime(reference: &str) -> Result<tokio::runtime::Runtime, ExtensionError> {
@@ -155,7 +155,7 @@ mod tests {
 
         let _guard = crate::test_support::env_lock();
         let _token = EnvGuard::scoped("SPECIFY_REGISTRY_TOKEN", None);
-        let _user = EnvGuard::scoped("SPECIFY_REGISTRY_USER", None);
+        let _user = EnvGuard::scoped("SPECIFY_REGISTRY_USERNAME", None);
         let _password = EnvGuard::scoped("SPECIFY_REGISTRY_PASSWORD", None);
         assert!(matches!(registry_auth_from_env(), RegistryAuth::Anonymous));
     }
@@ -163,7 +163,13 @@ mod tests {
     #[test]
     fn reference_parse_rejects_garbage() {
         let err = parse_reference("not a reference!!").expect_err("garbage reference");
-        assert!(matches!(err, ExtensionError::Diag { code: "adapter-transport-failed", .. }));
+        assert!(matches!(
+            err,
+            ExtensionError::Diag {
+                code: "adapter-transport-failed",
+                ..
+            }
+        ));
     }
 
     // The derived install reference must equal the publish-side
@@ -177,7 +183,10 @@ mod tests {
 
         let _guard = crate::test_support::env_lock();
         let unset = EnvGuard::scoped("SPECIFY_REGISTRY", None);
-        assert_eq!(adapter_reference("specify", "omnia", "1.2.0"), "augentic.io/specify/omnia:1.2.0");
+        assert_eq!(
+            adapter_reference("specify", "omnia", "1.2.0"),
+            "augentic.io/specify/omnia:1.2.0"
+        );
         drop(unset);
 
         let _set = EnvGuard::scoped("SPECIFY_REGISTRY", Some(Path::new("ghcr.io/augentic")));

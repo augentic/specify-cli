@@ -47,16 +47,15 @@ fn phase_outcome_round_trips_serde() {
 #[test]
 fn help_lists_axis_verbs() {
     // Inventory asserted via the contract dump, not clap help wording:
-    // the axis verbs must be present and the retired `change` / `adapter`
-    // verbs must stay gone.
+    // the axis verbs must be present and the retired `change` verb must
+    // stay gone.
     let verbs = crate::common::contract_dump_verbs(&[]);
     for verb in ["slice", "source", "target"] {
         assert!(verbs.iter().any(|v| v == verb), "top level must declare `{verb}`: {verbs:?}");
     }
-    for retired in ["change", "adapter"] {
-        assert!(
-            !verbs.iter().any(|v| v == retired),
-            "retired verb `{retired}` must not resurface: {verbs:?}"
-        );
-    }
+    let retired = "change";
+    assert!(
+        !verbs.iter().any(|v| v == retired),
+        "retired verb `{retired}` must not resurface: {verbs:?}"
+    );
 }

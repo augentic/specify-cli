@@ -33,9 +33,9 @@ mod validate_manifest;
 
 pub use core::{
     ADAPTER_FILENAME, ADAPTER_WASM_FILENAME, ADAPTERS_DIR, AdapterExtensionDeclaration,
-    AdapterLocation, AdapterRef, Axis, BuildInputDeclaration,
-    Execution, PlatformsCapability, PlatformsViolation, ResolvedTargetAdapter, SourceAdapter,
-    TargetAdapter, adapter_axis_dir, cache_axis_dir, cache_dir, scratch_dir,
+    AdapterLocation, AdapterRef, Axis, BuildInputDeclaration, Execution, PlatformsCapability,
+    PlatformsViolation, ResolvedTargetAdapter, SourceAdapter, TargetAdapter, adapter_axis_dir,
+    cache_axis_dir, cache_dir, scratch_dir,
 };
 
 pub use operation::{SourceOperation, TargetOperation};

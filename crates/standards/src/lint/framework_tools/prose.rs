@@ -49,6 +49,15 @@ fn caps(config: Option<&JsonValue>) -> Option<(u64, u64)> {
 /// schema's `description.maxLength`, and both caps must appear in the
 /// standards document prose.
 fn check_numeric_caps(project_dir: &Path, description_cap: u64, body_cap: u64) -> Vec<ToolFinding> {
+    let standards_path = project_dir.join(STANDARDS_REL);
+    // The standards document is a plugins-repo authoring artifact; an
+    // adapters-only framework root (RFC-48 H1) legitimately omits it, so
+    // an absent doc is a skip — distinct from a present-but-unreadable
+    // doc, which still flags below.
+    if !standards_path.exists() {
+        return Vec::new();
+    }
+
     let mut findings = Vec::new();
 
     match schema_description_max_length() {
@@ -73,7 +82,6 @@ fn check_numeric_caps(project_dir: &Path, description_cap: u64, body_cap: u64) -
 
     let description = description_cap.to_string();
     let body = body_cap.to_string();
-    let standards_path = project_dir.join(STANDARDS_REL);
     match std::fs::read_to_string(&standards_path) {
         Ok(content) => {
             if !content.contains(&description) {
@@ -150,9 +158,10 @@ mod tests {
     }
 
     #[test]
-    fn flags_missing_standards_doc() {
+    fn absent_standards_doc_is_silent() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let findings = check_numeric_caps(dir.path(), 512, 200);
-        assert!(findings.iter().any(|f| f.message.contains("numeric cap source missing")));
+        // An adapters-only framework root (RFC-48 H1) carries no
+        // standards doc: absent is a skip, not a missing-source finding.
+        assert!(check_numeric_caps(dir.path(), 512, 200).is_empty());
     }
 }

@@ -18,7 +18,9 @@ use std::env;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
-use crate::digest::sha256_hex;
+use serde::{Deserialize, Serialize};
+
+use crate::digest::{Hasher, sha256_hex};
 
 /// Environment override for the per-project cache parent. When set to
 /// an absolute path, per-project directories are created directly
@@ -150,6 +152,166 @@ pub fn adapter_store_root() -> PathBuf {
     env::temp_dir().join("specify").join("adapters")
 }
 
+/// Absolute path to the verify-on-read sidecar for a store entry
+/// (RFC-48 D4) — `<store>/<name>@<version>.meta`.
+///
+/// A *sibling* of [`adapter_store_entry`], never a child: the sidecar is
+/// a writable provenance record that [`tree_content_digest`] must not
+/// walk (it digests only the entry's own tree) and that must not perturb
+/// the read-only immutability of the installed entry.
+#[must_use]
+pub fn store_meta_path(name: &str, version: &str) -> PathBuf {
+    adapter_store_root().join(format!("{name}@{version}.meta"))
+}
+
+/// Deterministic content digest over an installed store entry tree, in
+/// the `sha256:<hex>` form (RFC-48 D4).
+///
+/// Walks every regular file under `entry` recursively, sorts by the
+/// forward-slash relative path so the result is independent of the
+/// filesystem's iteration order, and folds each `(relative path, length,
+/// file bytes)` triple into a single SHA-256. The framing is internal:
+/// the install (record) and resolve (verify) paths both call this one
+/// function, so they always agree on a clean tree.
+///
+/// Infallible by design, mirroring the other cache helpers — a directory
+/// that cannot be walked or a file that cannot be read contributes
+/// nothing rather than poisoning the digest, since a healthy read-only
+/// store entry never trips those paths.
+#[must_use]
+pub fn tree_content_digest(entry: &Path) -> String {
+    let mut files: Vec<(String, PathBuf)> = Vec::new();
+    collect_entry_files(entry, entry, &mut files);
+    files.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut hasher = Hasher::new();
+    for (rel, path) in &files {
+        let bytes = std::fs::read(path).unwrap_or_default();
+        hasher.update(rel.as_bytes());
+        hasher.update(b"\0");
+        hasher.update(&(bytes.len() as u64).to_le_bytes());
+        hasher.update(&bytes);
+    }
+    format!("sha256:{}", hasher.finalize_hex())
+}
+
+/// Verify-on-read sidecar contents (RFC-48 D4). Registry-internal YAML;
+/// deliberately *not* an embedded JSON Schema artifact.
+#[derive(Debug, Serialize, Deserialize)]
+struct StoreMeta {
+    /// Deterministic [`tree_content_digest`] of the installed entry.
+    tree_digest: String,
+    /// Registry layer content digest recorded for provenance only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    layer_digest: Option<String>,
+}
+
+/// The recorded vs recomputed entry digests when verify-on-read fails.
+///
+/// Returned by [`verify_store_entry`] when a store entry's current tree
+/// content digest no longer matches the digest recorded at install time
+/// — the signal that an immutable artifact has drifted (a moved tag, a
+/// corrupted store entry).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DigestMismatch {
+    /// Digest recorded in the sidecar at install time.
+    pub recorded: String,
+    /// Digest recomputed from the entry's current contents.
+    pub actual: String,
+}
+
+/// Write the verify-on-read sidecar beside the store entry for
+/// `(name, version)` (RFC-48 D4 record-on-install).
+///
+/// `tree_digest` is the [`tree_content_digest`] of the freshly installed
+/// entry; `layer_digest` is the registry layer content digest, recorded
+/// for provenance when known. The sidecar is a writable sibling of the
+/// read-only entry ([`store_meta_path`]).
+///
+/// # Errors
+///
+/// Returns the underlying [`std::io::Error`] when the sidecar cannot be
+/// serialised or written.
+pub fn write_store_meta(
+    name: &str, version: &str, tree_digest: &str, layer_digest: Option<&str>,
+) -> std::io::Result<()> {
+    let meta = StoreMeta {
+        tree_digest: tree_digest.to_string(),
+        layer_digest: layer_digest.map(ToString::to_string),
+    };
+    let body =
+        serde_saphyr::to_string(&meta).map_err(|err| std::io::Error::other(err.to_string()))?;
+    std::fs::write(store_meta_path(name, version), body)
+}
+
+/// Read the recorded tree digest from the verify-on-read sidecar for
+/// `(name, version)`, or `None` when no sidecar exists or it cannot be
+/// parsed.
+///
+/// `None` is the fail-open signal for a legacy or foreign store entry
+/// installed before the sidecar existed — verify-on-read treats it as a
+/// pass rather than refusing the entry.
+#[must_use]
+pub fn read_store_meta(name: &str, version: &str) -> Option<String> {
+    let raw = std::fs::read_to_string(store_meta_path(name, version)).ok()?;
+    let meta: StoreMeta = serde_saphyr::from_str(&raw).ok()?;
+    Some(meta.tree_digest)
+}
+
+/// Verify a store entry against its recorded tree digest (RFC-48 D4
+/// verify-on-read).
+///
+/// Reads the recorded digest from the sidecar, recomputes
+/// [`tree_content_digest`] over the entry, and reports a
+/// [`DigestMismatch`] when they differ. A missing sidecar is fail-open
+/// (`Ok`): legacy and foreign entries predate the sidecar, and the
+/// entry's own read-only immutability remains the baseline guarantee.
+///
+/// # Errors
+///
+/// Returns [`DigestMismatch`] when the recorded and recomputed digests
+/// differ.
+pub fn verify_store_entry(name: &str, version: &str) -> Result<(), DigestMismatch> {
+    let Some(recorded) = read_store_meta(name, version) else {
+        return Ok(());
+    };
+    let actual = tree_content_digest(&adapter_store_entry(name, version));
+    if actual == recorded { Ok(()) } else { Err(DigestMismatch { recorded, actual }) }
+}
+
+/// Recursively collect `(relative slash-path, absolute path)` for every
+/// regular file under `root`, used by [`tree_content_digest`]. Symlinks
+/// are not followed: installed store entries carry only plain files and
+/// directories (the pack stage dereferences symlinks at publish time).
+fn collect_entry_files(root: &Path, dir: &Path, out: &mut Vec<(String, PathBuf)>) {
+    let Ok(read) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in read.flatten() {
+        let path = entry.path();
+        let Ok(meta) = std::fs::symlink_metadata(&path) else {
+            continue;
+        };
+        if meta.is_dir() {
+            collect_entry_files(root, &path, out);
+        } else if meta.is_file()
+            && let Some(rel) = relative_slash_path(root, &path)
+        {
+            out.push((rel, path));
+        }
+    }
+}
+
+/// Forward-slash relative path of `path` under `root`, or `None` for a
+/// non-UTF-8 component or a path outside `root`.
+fn relative_slash_path(root: &Path, path: &Path) -> Option<String> {
+    let rel = path.strip_prefix(root).ok()?;
+    let mut parts = Vec::new();
+    for component in rel.components() {
+        parts.push(component.as_os_str().to_str()?);
+    }
+    Some(parts.join("/"))
+}
+
 /// Stable per-project identifier — the SHA-256 hex of the canonicalised
 /// project path, falling back to the raw path when canonicalisation
 /// fails (e.g. the directory does not yet exist).
@@ -172,7 +334,10 @@ fn absolute(value: OsString) -> Option<PathBuf> {
 mod tests {
     use std::path::Path;
 
-    use super::{adapter_store_entry, adapter_store_root, project_cache_dir};
+    use super::{
+        adapter_store_entry, adapter_store_root, project_cache_dir, store_meta_path,
+        tree_content_digest,
+    };
 
     #[test]
     fn distinct_projects_get_distinct_dirs() {
@@ -205,6 +370,46 @@ mod tests {
             adapter_store_entry("omnia", "1.2.0"),
             adapter_store_entry("omnia", "1.2.0"),
             "the same pinned identity is stable across calls"
+        );
+    }
+
+    #[test]
+    fn store_meta_path_is_entry_sibling_not_child() {
+        // RFC-48 D4: the verify-on-read sidecar must sit beside the entry,
+        // never inside the tree `tree_content_digest` walks, so recording
+        // it cannot perturb the entry's own digest.
+        let entry = adapter_store_entry("omnia", "1.2.0");
+        let meta = store_meta_path("omnia", "1.2.0");
+        assert_eq!(meta.parent(), entry.parent(), "the sidecar is a sibling of the entry");
+        assert!(
+            !meta.starts_with(&entry),
+            "the sidecar must not live inside the walked entry tree"
+        );
+        assert_eq!(meta.file_name().expect("sidecar file name"), "omnia@1.2.0.meta");
+    }
+
+    #[test]
+    fn tree_digest_is_order_independent_and_content_sensitive() {
+        use std::fs;
+
+        // The digest commits to the whole tree deterministically: the
+        // same bytes hash identically across calls, and changing any
+        // file's bytes changes the digest (RFC-48 D4 verify-on-read).
+        let dir = tempfile::tempdir().expect("tempdir");
+        let entry = dir.path().join("omnia@1.0.0");
+        fs::create_dir_all(entry.join("briefs")).expect("mkdir briefs");
+        fs::write(entry.join("adapter.yaml"), b"name: omnia\n").expect("write manifest");
+        fs::write(entry.join("briefs/build.md"), b"# build\n").expect("write brief");
+
+        let first = tree_content_digest(&entry);
+        assert!(first.starts_with("sha256:"), "digest carries the sha256 prefix: {first}");
+        assert_eq!(first, tree_content_digest(&entry), "a stable tree digests identically");
+
+        fs::write(entry.join("briefs/build.md"), b"# build changed\n").expect("rewrite brief");
+        assert_ne!(
+            first,
+            tree_content_digest(&entry),
+            "changing a file's bytes must change the tree digest"
         );
     }
 }

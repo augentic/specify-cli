@@ -78,9 +78,8 @@ fn scalar_package_form_no_longer_parses() {
     // The first-party scalar shorthand (`specify:<name>@<ver>`) and its
     // embedded permissions catalog are retired (RFC-48 D10): a tool must
     // be a full object with its own `source` and `permissions`.
-    let parsed = serde_saphyr::from_str::<ExtensionManifest>(
-        "tools:\n  - \"specify:contract@1.2.3\"\n",
-    );
+    let parsed =
+        serde_saphyr::from_str::<ExtensionManifest>("tools:\n  - \"specify:contract@1.2.3\"\n");
     assert!(parsed.is_err(), "the scalar first-party form must no longer deserialize");
 }
 
@@ -168,8 +167,7 @@ fn schema_accepts_object_rejects_scalar() {
         serde_json::from_str(EXTENSION_JSON_SCHEMA).expect("schema parses");
     let validator = jsonschema::validator_for(&schema).expect("schema compiles");
     // The object form with a package `source:` is still valid.
-    let object =
-        json!({ "tools": [{ "name": "contract", "version": "1.2.3", "source": "specify:contract@1.2.3" }] });
+    let object = json!({ "tools": [{ "name": "contract", "version": "1.2.3", "source": "specify:contract@1.2.3" }] });
     assert!(validator.is_valid(&object), "schema should accept object package case: {object}");
     // The retired scalar first-party shorthand no longer validates.
     let scalar = json!({ "tools": ["specify:contract@1.2.3"] });

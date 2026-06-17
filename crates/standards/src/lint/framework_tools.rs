@@ -11,6 +11,7 @@
 //! trait survives only for the genuine project-side WASI path. Name
 //! resolution and rule-owned `config:` policy forwarding are unchanged.
 
+mod extension;
 mod links_registry;
 mod marketplace;
 mod prose;
@@ -58,6 +59,10 @@ const FRAMEWORK_CHECKERS: &[FrameworkChecker] = &[
         name: "rules",
         run: rules::run,
     },
+    FrameworkChecker {
+        name: "extension",
+        run: extension::run,
+    },
 ];
 
 fn lookup(name: &str) -> Option<&'static FrameworkChecker> {
@@ -92,8 +97,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn declares_exactly_the_six_checkers() {
-        for name in ["scenarios", "skill-body", "links-registry", "marketplace", "prose", "rules"] {
+    fn declares_exactly_the_seven_checkers() {
+        for name in [
+            "scenarios",
+            "skill-body",
+            "links-registry",
+            "marketplace",
+            "prose",
+            "rules",
+            "extension",
+        ] {
             assert!(is_framework_checker(name), "{name} must be declared");
         }
         assert!(!is_framework_checker("agent-teams"), "agent-teams retired with CORE-012");
@@ -101,13 +114,22 @@ mod tests {
     }
 
     #[test]
-    fn marketplace_flags_missing_manifest() {
+    fn marketplace_skips_absent_manifest() {
         let dir = tempfile::tempdir().expect("tempdir");
         let findings =
             run_checker("marketplace", dir.path(), &["sentinel.md".to_string()]).expect("declared");
-        // An empty tree has no marketplace.json: exactly one drift finding.
-        assert_eq!(findings.len(), 1);
-        assert_eq!(findings[0].rule_id.as_deref(), Some("CORE-022"));
+        // An adapters-only tree (RFC-48 H1) has no marketplace.json:
+        // absent is a skip, so no findings.
+        assert!(findings.is_empty());
+    }
+
+    #[test]
+    fn extension_silent_on_tree_without_declarations() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let findings =
+            run_checker("extension", dir.path(), &["sentinel.md".to_string()]).expect("declared");
+        // No adapter declares an extension: the checker stays silent.
+        assert!(findings.is_empty());
     }
 
     #[test]

@@ -22,9 +22,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use specify_error::Error;
-use tempfile::TempDir;
-
 use specify_schema::cache::adapter_store_entry;
+use tempfile::TempDir;
 
 use crate::adapter::AdapterRef;
 use crate::init::git::sparse_checkout_github;
@@ -34,6 +33,11 @@ pub(super) struct AdapterUri {
     pub(crate) adapter_value: String,
     pub(crate) adapter_name: String,
     pub(crate) source_dir: PathBuf,
+    /// `true` when `source_dir` is a global content-addressed store entry
+    /// (RFC-48 D5 package reference). The init manifest-cache copy is
+    /// skipped for these: the resolver reads the store entry in place,
+    /// version-pinned, so there is nothing to mirror per project.
+    pub(crate) from_store: bool,
     _checkout_guard: Option<TempDir>,
 }
 
@@ -78,6 +82,7 @@ impl AdapterUri {
             adapter_value: package.wire_value(),
             adapter_name: package.name.clone(),
             source_dir,
+            from_store: true,
             _checkout_guard: None,
         })
     }
@@ -107,6 +112,7 @@ impl AdapterUri {
             adapter_value,
             adapter_name,
             source_dir: canonical,
+            from_store: false,
             _checkout_guard: None,
         })
     }
@@ -142,6 +148,7 @@ impl AdapterUri {
             adapter_value: adapter.to_string(),
             adapter_name: spec.adapter_name,
             source_dir,
+            from_store: false,
             _checkout_guard: Some(checkout),
         })
     }

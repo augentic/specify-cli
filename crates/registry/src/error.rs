@@ -213,7 +213,11 @@ impl ExtensionError {
     pub(crate) fn transport(reference: impl Into<String>, detail: impl Into<String>) -> Self {
         Self::Diag {
             code: "adapter-transport-failed",
-            detail: format!("adapter registry transport for `{}` failed: {}", reference.into(), detail.into()),
+            detail: format!(
+                "adapter registry transport for `{}` failed: {}",
+                reference.into(),
+                detail.into()
+            ),
         }
     }
 

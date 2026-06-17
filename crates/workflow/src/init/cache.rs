@@ -73,9 +73,17 @@ pub(super) fn cache_adapter(
     // cache directory is rewritten and ahead of the downstream
     // `TargetAdapter::resolve` call in `init/regular.rs`.
     check_axis_unique_for_name(Axis::Target, &source.adapter_name, project_dir)?;
-    let target = adapter_cache_dir(project_dir, Axis::Target, &source.adapter_name);
-    refresh_cached_adapter(&source.source_dir, &target)?;
-    write_manifest_meta(project_dir, &source.adapter_value, now)?;
+    // RFC-48 D5 / L3: a package-ref source already lives in the global
+    // content-addressed store, which the resolver probes first by pinned
+    // `(name, version)`. Skip the per-project manifest-cache copy and its
+    // provenance stamp — there is nothing to mirror, and the store entry
+    // is read in place. A non-store source is mirrored into the cache as
+    // before.
+    if !source.from_store {
+        let target = adapter_cache_dir(project_dir, Axis::Target, &source.adapter_name);
+        refresh_cached_adapter(&source.source_dir, &target)?;
+        write_manifest_meta(project_dir, &source.adapter_value, now)?;
+    }
 
     Ok(source)
 }

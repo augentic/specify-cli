@@ -99,11 +99,7 @@ fn validate_manifest_tools(tools: &[Extension], scope: &ExtensionScope) -> Resul
     };
     let code = first.rule_id.clone().unwrap_or_else(|| "tool-manifest-invalid".to_string());
     let detail = diagnostics.iter().map(|d| d.impact.as_str()).collect::<Vec<_>>().join("; ");
-    Err(Error::validation_failed(
-        code,
-        "declared extensions must satisfy structural rules",
-        detail,
-    ))
+    Err(Error::validation_failed(code, "declared extensions must satisfy structural rules", detail))
 }
 
 fn find<'a>(inventory: &'a Inventory, name: &str) -> Result<&'a ScopedTool> {

@@ -72,8 +72,9 @@ pub fn pack_adapter(root: &Path, extra_excluded: &[&str]) -> Result<Vec<u8>, Ext
         append_entry(&mut tar, entry)?;
     }
 
-    let encoder =
-        tar.into_inner().map_err(|err| ExtensionError::pack(format!("finish tar stream: {err}")))?;
+    let encoder = tar
+        .into_inner()
+        .map_err(|err| ExtensionError::pack(format!("finish tar stream: {err}")))?;
     encoder.finish().map_err(|err| ExtensionError::pack(format!("finish zstd stream: {err}")))
 }
 
@@ -120,9 +121,9 @@ pub fn unpack_adapter(layer: &[u8], dest: &Path) -> Result<(), ExtensionError> {
     let decoder = zstd::stream::read::Decoder::new(layer)
         .map_err(|err| ExtensionError::pack(format!("init zstd decoder: {err}")))?;
     let mut archive = tar::Archive::new(decoder);
-    archive.unpack(dest).map_err(|err| {
-        ExtensionError::pack(format!("unpack layer into {}: {err}", dest.display()))
-    })
+    archive
+        .unpack(dest)
+        .map_err(|err| ExtensionError::pack(format!("unpack layer into {}: {err}", dest.display())))
 }
 
 #[derive(Debug)]
@@ -156,8 +157,9 @@ fn collect_entries(
         .map_err(|err| ExtensionError::pack(format!("read directory {}: {err}", dir.display())))?;
     let mut children = Vec::new();
     for entry in read {
-        let entry = entry
-            .map_err(|err| ExtensionError::pack(format!("read entry in {}: {err}", dir.display())))?;
+        let entry = entry.map_err(|err| {
+            ExtensionError::pack(format!("read entry in {}: {err}", dir.display()))
+        })?;
         children.push(entry.path());
     }
 
@@ -176,15 +178,20 @@ fn collect_entries(
         }
         // `metadata` follows symlinks, so a symlink to a directory is
         // walked as a directory and a symlink to a file is inlined.
-        let meta = std::fs::metadata(&path).map_err(|err| {
-            ExtensionError::pack(format!("stat {}: {err}", path.display()))
-        })?;
+        let meta = std::fs::metadata(&path)
+            .map_err(|err| ExtensionError::pack(format!("stat {}: {err}", path.display())))?;
         let rel = relative_slash_path(root, &path)?;
         if meta.is_dir() {
-            out.push(PackEntry { rel, kind: EntryKind::Dir });
+            out.push(PackEntry {
+                rel,
+                kind: EntryKind::Dir,
+            });
             collect_entries(root, &path, extra_excluded, out, visited)?;
         } else if meta.is_file() {
-            out.push(PackEntry { rel, kind: EntryKind::File(path) });
+            out.push(PackEntry {
+                rel,
+                kind: EntryKind::File(path),
+            });
         } else {
             return Err(ExtensionError::pack(format!(
                 "unsupported tree entry {} (not a file or directory)",

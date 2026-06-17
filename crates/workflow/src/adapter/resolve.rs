@@ -202,10 +202,10 @@ fn locate_axis(
     // global content-addressed adapter store, the immutable install
     // target the registry transport populates. The store is keyed by
     // version, so it is only probed when the ref carries one.
-    let store = adapter_ref
-        .version
+    let store_version = adapter_ref.version.as_ref().map(std::string::ToString::to_string);
+    let store = store_version
         .as_ref()
-        .map(|version| specify_schema::cache::adapter_store_entry(name, &version.to_string()));
+        .map(|version| specify_schema::cache::adapter_store_entry(name, version));
     let cached = cache_dir(project_dir, axis, name);
     let local = adapter_axis_dir(project_dir, axis).join(name);
     // Probe order: global store entry (pinned only) → out-of-tree
@@ -214,6 +214,24 @@ fn locate_axis(
     // (`<project-cache>/manifests/{sources,targets}/<name>/`) — see
     // [DECISIONS.md §"Cache layout"].
     let location = if let Some(entry) = store.as_ref().filter(|entry| entry.is_dir()) {
+        // RFC-48 D4 verify-on-read: a store entry's recorded tree digest
+        // must still match its current content, else the immutable
+        // artifact has drifted (a moved tag, a corrupted store entry). A
+        // missing sidecar fails open. `Cached` / `Local` are
+        // verify-exempt — only the content-addressed store is gated.
+        if let Some(version) = store_version.as_deref()
+            && let Err(mismatch) = specify_schema::cache::verify_store_entry(name, version)
+        {
+            return Err(Error::Diag {
+                code: "adapter-digest-mismatch",
+                detail: format!(
+                    "adapter `{name}` (axis `{axis}`) store entry at {} failed verify-on-read: recorded tree digest {} but recomputed {}",
+                    entry.display(),
+                    mismatch.recorded,
+                    mismatch.actual,
+                ),
+            });
+        }
         AdapterLocation::Store(entry.clone())
     } else if cached.is_dir() {
         AdapterLocation::Cached(cached)

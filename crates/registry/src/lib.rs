@@ -7,13 +7,13 @@ pub mod error;
 pub mod host;
 pub mod load;
 pub mod oci;
-mod package;
 pub mod pack;
+mod package;
 pub mod permissions;
 pub mod resolver;
 pub mod store;
 // The manifest DTOs and structural validation live in the wasmtime-free
-// `specify-tool-manifest` leaf; re-export them under their historical
+// `specify-extension-manifest` leaf; re-export them under their historical
 // module paths so `specify_registry::manifest::Extension` and
 // `specify_registry::validate` keep resolving.
 pub use package::PackageMetadata;

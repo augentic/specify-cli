@@ -11,10 +11,10 @@ specify-error                    # leaf — thiserror + serde-saphyr only
 specify-schema                   # depends on specify-error (embedded JSON Schemas + jsonschema plumbing; also owns schema::digest — SHA-256 hex via sha2 + base16ct)
 specify-diagnostics              # depends on specify-{error,schema} (Diagnostic substrate: report, fingerprint, validator, renderers, blocking)
 specify-model                    # depends on specify-{error,diagnostics} (artifact types + parsers: spec, task, evidence, discovery; shared atomic writer; model::validate artifact rule registry — NOT on specify-workflow or anything named lint)
-specify-tool-manifest            # depends on specify-{diagnostics,schema} (tool manifest DTOs + structural validation; wasmtime-free)
-specify-tool                     # depends on specify-{error,schema,tool-manifest} (WASI tool runner; wasmtime, gated)
-specify-standards                # standards layer — depends on specify-{error,schema,diagnostics}; NOT on specify-workflow or specify-tool
-specify-workflow                 # workflow layer — depends on specify-{error,schema,tool-manifest,model,diagnostics} (also owns workflow::agents — init-time AGENTS.md context-fence generation); NOT on specify-standards / specify-tool (no wasmtime in its graph)
+specify-extension-manifest       # depends on specify-{diagnostics,schema} (WASI extension manifest DTOs + structural validation; wasmtime-free leaf)
+specify-registry                 # depends on specify-{error,schema,extension-manifest} (WASI runner + OCI transport + adapter pack/store; wasmtime, gated)
+specify-standards                # standards layer — depends on specify-{error,schema,diagnostics}; NOT on specify-workflow or specify-registry
+specify-workflow                 # workflow layer — depends on specify-{error,schema,extension-manifest,model,diagnostics} (also owns workflow::agents — init-time AGENTS.md context-fence generation); NOT on specify-standards / specify-registry (no wasmtime in its graph)
 specify (root crate)             # wires runtime + framework crates into the specify binary
 ```
 
@@ -57,9 +57,9 @@ Four module trees carry the workflow contract — three in `specify-workflow`, p
 
 ## WASI tool sidecar scope
 
-The WASI tool cache root resolves `$SPECIFY_EXTENSIONS_CACHE` → `$XDG_CACHE_HOME/specify/extensions/` → `$HOME/.cache/specify/extensions/`. Inside it the scope segment is `project--<project-name>` for project-scope tools and `adapter--<axis>--<slug>` for adapter-scope tools (e.g. `adapter--target--contracts` for tools declared in the `contracts` target adapter's `tools.yaml`). The `--` separator avoids collisions with hyphenated tool names. The adapter-scope substitution variable that maps into permission paths is `$CAPABILITY_DIR` (it expands to the resolved adapter's root directory and is rejected on project-scope use as `tool.capability-dir-out-of-scope`).
+The WASI tool cache root resolves `$SPECIFY_EXTENSIONS_CACHE` → `$XDG_CACHE_HOME/specify/extensions/` → `$HOME/.cache/specify/extensions/`. Inside it the scope segment is `project--<project-name>` for project-scope tools and `adapter--<axis>--<slug>` for adapter-scope extensions (e.g. `adapter--target--contracts` for the `contracts` target adapter's `extension`). The `--` separator avoids collisions with hyphenated names. The adapter-scope substitution variable that maps into permission paths is `$CAPABILITY_DIR` (it expands to the resolved adapter's root directory and is rejected on project-scope use as `tool.capability-dir-out-of-scope`).
 
-Beside the per-scope tool directories, `<tool cache root>/wasmtime/` holds the wasmtime **compilation** cache (compiled-component artifacts, not tool bytes) configured by `WasiRunner::new`. It is best-effort — any resolution or setup failure disables it — and `$SPECIFY_WASMTIME_CACHE` overrides its location independently of the tool cache root (the integration suite pins it to `target/wasmtime-cache/` so per-test `SPECIFY_EXTENSIONS_CACHE` isolation does not defeat compiled-component reuse). The gc scan never touches it: `tool gc` enumerates only `<root>/<scope-segment>/` trees.
+Beside the per-scope tool directories, `<tool cache root>/wasmtime/` holds the wasmtime **compilation** cache (compiled-component artifacts, not tool bytes) configured by `WasiRunner::new`. It is best-effort — any resolution or setup failure disables it — and `$SPECIFY_WASMTIME_CACHE` overrides its location independently of the tool cache root (the integration suite pins it to `target/wasmtime-cache/` so per-test `SPECIFY_EXTENSIONS_CACHE` isolation does not defeat compiled-component reuse). The gc scan never touches it: `specify extension gc` enumerates only `<root>/<scope-segment>/` trees.
 
 ## WASI carve-outs
 
@@ -67,7 +67,7 @@ The two adapter validators — `contract` and `vectis` — no longer live in thi
 
 The framework checkers behind `specify lint framework`'s Road B rules are not WASI components — they run in-process inside `specify-standards` (`crates/standards/src/lint/framework_tools/`), resolved by name from the `kind: tool` evaluator before the `ToolRunner` trait (which survives for the project-side WASI path).
 
-**Host runner invariant.** The host CLI consumes an adapter's WASI extension only as an opaque component, resolved from the installed adapter tree (its committed `adapter.wasm`) and loaded by the `specify-tool` runner (`wasmtime` + `wasmtime-wasi`) through `specify extension run <name>` per the adapter manifest's declared `extension.permissions`. No `specify-*` workspace crate may import adapter-specific validation, scaffold, or rendering logic — that lives entirely in the adapters repo.
+**Host runner invariant.** The host CLI consumes an adapter's WASI extension only as an opaque component, resolved from the installed adapter tree (its committed `adapter.wasm`) and loaded by the `specify-registry` runner (`wasmtime` + `wasmtime-wasi`) through `specify extension run <name>` per the adapter manifest's declared `extension.permissions`. No `specify-*` workspace crate may import adapter-specific validation, scaffold, or rendering logic — that lives entirely in the adapters repo.
 
 ## Layout boundary
 
@@ -79,7 +79,7 @@ Functions that record a timestamp into a serialised artifact accept `now: jiff::
 
 ## ureq fetch hardening
 
-The WASI tool fetch in `crates/tool/src/resolver.rs` runs every HTTP request with explicit per-call timeouts, a `MAX_RESPONSE_BYTES` cap (64 MiB) checked on both the `Content-Length` header and the streamed body, and streams the response to a tempfile before persisting into the cache. Any new HTTP path that lands in this crate must adopt the same shape (timeouts + size cap + stream-to-tempfile); do not buffer arbitrary remote bodies into memory.
+The WASI extension fetch in `crates/registry/src/resolver.rs` runs every HTTP request with explicit per-call timeouts, a `MAX_RESPONSE_BYTES` cap (64 MiB) checked on both the `Content-Length` header and the streamed body, and streams the response to a tempfile before persisting into the cache. Any new HTTP path that lands in this crate must adopt the same shape (timeouts + size cap + stream-to-tempfile); do not buffer arbitrary remote bodies into memory.
 
 ## Atomic writes
 

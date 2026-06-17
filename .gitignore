@@ -9,7 +9,14 @@
 
 .env
 target/
+/specify
 
 **/*.rs.bk
 rustc-ice-*
 .DS_Store
+
+# Specify project state and integration-run scratch logs
+.specify/.cache/
+.specify/project.yaml
+stderr.log
+stdout.log

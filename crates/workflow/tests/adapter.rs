@@ -212,8 +212,9 @@ description: Store-resident source adapter fixture.
     .expect("stage store manifest");
 
     let (_tmp, project) = local_project();
-    let resolved = SourceAdapter::resolve(&AdapterRef::pinned("typescript", version.clone()), &project)
-        .expect("resolve from store");
+    let resolved =
+        SourceAdapter::resolve(&AdapterRef::pinned("typescript", version.clone()), &project)
+            .expect("resolve from store");
     assert_eq!(resolved.manifest.version, version, "pinned store entry wins over in-repo local");
     assert!(matches!(resolved.location, AdapterLocation::Store(_)));
 }
