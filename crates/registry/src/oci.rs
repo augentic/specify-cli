@@ -12,7 +12,7 @@
 //! The Step-1 spike established that `wkg` / `wasm-pkg-client` reject an
 //! opaque (non-component) blob in both directions, so adapter transport
 //! uses the raw OCI layer path here rather than the wasm-pkg package
-//! path in [`crate::package`].
+//! path in `crate::package`.
 
 use oci_client::client::{Config, ImageLayer};
 pub use oci_client::secrets::RegistryAuth;
@@ -89,7 +89,7 @@ const DEFAULT_ADAPTER_REGISTRY: &str = "augentic.io";
 /// `<namespace>:<name>@<version>` as `<host>/<namespace>/<name>:<version>`.
 ///
 /// `host` is `$SPECIFY_REGISTRY` when set and non-empty, else
-/// [`DEFAULT_ADAPTER_REGISTRY`] — the same precedence the publish workflow
+/// `DEFAULT_ADAPTER_REGISTRY` — the same precedence the publish workflow
 /// uses, so a `specify init specify:<name>@<ver>` install pulls back
 /// exactly what `specify adapter publish` pushed.
 #[must_use]

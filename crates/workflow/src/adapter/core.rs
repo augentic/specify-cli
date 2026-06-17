@@ -408,7 +408,7 @@ pub struct SourceAdapter {
     /// minimum `specify` platform version this adapter needs,
     /// deserialized from the `specify` manifest key. The loader compares
     /// it against the running binary at resolve time
-    /// ([`check_requires_specify`]) and aborts with `adapter-cli-too-old`
+    /// (`check_requires_specify`) and aborts with `adapter-cli-too-old`
     /// (exit 3) when the binary is older. `None` means no floor — the
     /// field is optional and back-compatible.
     #[serde(default, rename = "specify", skip_serializing_if = "Option::is_none")]
@@ -461,7 +461,7 @@ pub struct TargetAdapter {
     /// minimum `specify` platform version this adapter needs,
     /// deserialized from the `specify` manifest key. The loader compares
     /// it against the running binary at resolve time
-    /// ([`check_requires_specify`]) and aborts with `adapter-cli-too-old`
+    /// (`check_requires_specify`) and aborts with `adapter-cli-too-old`
     /// (exit 3) when the binary is older. `None` means no floor — the
     /// field is optional and back-compatible.
     #[serde(default, rename = "specify", skip_serializing_if = "Option::is_none")]

@@ -137,7 +137,7 @@ pub fn adapter_store_entry(name: &str, version: &str) -> PathBuf {
 /// `$XDG_CACHE_HOME/specify/adapters`, then
 /// `$HOME/.cache/specify/adapters`, then `<temp>/specify/adapters`.
 /// Empty or relative overrides are skipped rather than treated as an
-/// error, mirroring [`projects_root`].
+/// error, mirroring `projects_root`.
 #[must_use]
 pub fn adapter_store_root() -> PathBuf {
     if let Some(root) = env::var_os(ADAPTER_STORE_ENV).and_then(absolute) {
