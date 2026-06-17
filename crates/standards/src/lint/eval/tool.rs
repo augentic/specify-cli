@@ -249,7 +249,7 @@ fn parse_tool_findings(output: &ToolOutput) -> Vec<Diagnostic> {
 
 fn build_undeclared(rule: &ResolvedRule, hint: &RuleHint, id_num: u64) -> Diagnostic {
     let evidence = FindingEvidence::Snippet {
-        value: format!("tool {tool} not declared by the project's tools.yaml", tool = hint.value),
+        value: format!("tool {tool} not declared in the project's project.yaml", tool = hint.value),
     };
     make_synthetic_finding(SyntheticFinding {
         id_num,
@@ -262,7 +262,10 @@ fn build_undeclared(rule: &ResolvedRule, hint: &RuleHint, id_num: u64) -> Diagno
             "Rule {rule} cannot run; declared-tool gating refused the invocation.",
             rule = rule.rule_id
         ),
-        remediation: format!("Declare {tool} in tools.yaml or remove the hint.", tool = hint.value),
+        remediation: format!(
+            "Declare {tool} in project.yaml or remove the hint.",
+            tool = hint.value
+        ),
         target_adapter: None,
     })
 }

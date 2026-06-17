@@ -245,7 +245,7 @@ impl From<ExtensionError> for specify_error::Error {
             ExtensionError::Diag { code, detail } => Self::Diag { code, detail },
             err @ ExtensionError::ToolNotDeclared { .. } => Self::validation_failed(
                 "tool-not-declared",
-                "tool must be declared in tools.yaml",
+                "tool must be declared in project.yaml or by a bound adapter",
                 err.to_string(),
             ),
             err @ (ExtensionError::InvalidPermission { .. }

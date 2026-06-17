@@ -141,7 +141,7 @@ pub fn map_hint_error(rule: &ResolvedRule, err: HintError) -> Error {
         HintError::ToolUndeclared { rule_id, tool } => Error::validation_failed(
             "review-tool-undeclared",
             format!("rule {rule_id}: tool {tool} not declared by the project"),
-            format!("declare {tool} in tools.yaml or remove the hint (rule path: {})", rule.path),
+            format!("declare {tool} in project.yaml or remove the hint (rule path: {})", rule.path),
         ),
         HintError::Filesystem { path, source, .. } => Error::Filesystem {
             op: "review-eval",
