@@ -17,8 +17,9 @@ mod common;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use common::{parse_json, parse_stderr, repo_root, sha256_hex, specify_cmd};
+use common::{parse_json, parse_stderr, repo_root, specify_cmd};
 use serde_json::Value;
+use specify_workflow::adapter::ADAPTER_WASM_FILENAME;
 use specify_workflow::design_system::{ComponentStatus, ComponentsCatalog};
 use tempfile::{TempDir, tempdir};
 
@@ -65,10 +66,11 @@ fn bind_project() -> TempDir {
     tmp
 }
 
-/// Scaffold a project that declares the `vectis` WASI tool with read
-/// access to `.specify/`, plus a composition baseline — everything the
-/// `report` phase needs to dispatch the real tool. Returns the project
-/// tempdir and the tools cache dir.
+/// Scaffold a project that declares the `vectis` WASI extension via the
+/// adapter's singular `extension:` object with read access to `.specify/`,
+/// stages the committed `adapter.wasm`, and writes a composition baseline
+/// — everything the `report` phase needs to dispatch the real tool.
+/// Returns the project tempdir and the extensions cache dir.
 fn report_project(baseline: &str) -> (TempDir, PathBuf) {
     let tmp = tempdir().expect("tempdir");
     let project = tmp.path();
@@ -84,7 +86,7 @@ fn report_project(baseline: &str) -> (TempDir, PathBuf) {
     .expect("write project.yaml");
     fs::write(
         adapter.join("adapter.yaml"),
-        "name: vectis\nversion: 1.0.0\naxis: target\nexecution: agent\nbriefs:\n  shape: briefs/shape.md\n  build: briefs/build.md\n  merge: briefs/merge.md\ndescription: Test vectis adapter\n",
+        "name: vectis\nversion: 1.0.0\naxis: target\nexecution: agent\nbriefs:\n  shape: briefs/shape.md\n  build: briefs/build.md\n  merge: briefs/merge.md\nextension:\n  name: vectis\n  permissions:\n    read:\n      - $PROJECT_DIR/.specify\n    write: []\ndescription: Test vectis adapter\n",
     )
     .expect("write adapter.yaml");
     for op in ["shape", "build", "merge"] {
@@ -95,16 +97,10 @@ fn report_project(baseline: &str) -> (TempDir, PathBuf) {
         .expect("write brief");
     }
 
-    let wasm = vectis_wasm();
-    let source = format!("file://{}", wasm.display());
-    let sha256 = sha256_hex(&wasm);
-    fs::write(
-        adapter.join("tools.yaml"),
-        format!(
-            "tools:\n  - name: vectis\n    version: 0.4.0\n    source: \"{source}\"\n    sha256: \"{sha256}\"\n    permissions:\n      read:\n        - \"$PROJECT_DIR/.specify\"\n      write: []\n"
-        ),
-    )
-    .expect("write tools.yaml");
+    // RFC-48 D11: the resolved adapter declares its WASI extension via the
+    // singular `extension:` object; the host sources the component from the
+    // committed `adapter.wasm`, not a retired `tools.yaml` sidecar.
+    fs::copy(vectis_wasm(), adapter.join(ADAPTER_WASM_FILENAME)).expect("stage adapter.wasm");
 
     fs::write(project.join(".specify/specs/composition.yaml"), baseline)
         .expect("write composition.yaml");
